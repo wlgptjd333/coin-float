@@ -197,6 +197,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     val marketPrices = marketDataRepository.marketPrices
+    val symbolInfoMap = marketDataRepository.symbolInfoCache
 
     init {
         viewModelScope.launch {

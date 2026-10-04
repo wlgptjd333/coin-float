@@ -69,56 +69,66 @@ fun SettingsScreen(
     val searchResults by viewModel.searchResults.collectAsState()
     val isLoadingSymbols by viewModel.isLoadingSymbols.collectAsState()
     val marketPrices by viewModel.marketPrices.collectAsState()
+    val symbolInfoMap by viewModel.symbolInfoMap.collectAsState()
     val isServiceActive by viewModel.isServiceActive.collectAsState()
 
     val selectedTabIndex by viewModel.selectedTabIndex.collectAsState()
     val activeChartSymbol by viewModel.activeChartSymbol.collectAsState()
+    var isChartFullscreen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val tabs = listOf("상태", "차트", "심볼", "설정", "안내")
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = "CoinFloat",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Text(
-                            text = "초소형 암호화폐 실시간 시세 오버레이",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+            if (!(selectedTabIndex == 1 && isChartFullscreen)) {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                text = "CoinFloat",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                            Text(
+                                text = "초소형 암호화폐 실시간 시세 오버레이",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
                 )
-            )
+            }
         }
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(if (selectedTabIndex == 1 && isChartFullscreen) androidx.compose.foundation.layout.PaddingValues(0.dp) else innerPadding)
         ) {
-            PrimaryTabRow(selectedTabIndex = selectedTabIndex) {
-                tabs.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedTabIndex == index,
-                        onClick = { viewModel.selectTab(index) },
-                        text = { Text(text = title, fontWeight = FontWeight.SemiBold) }
-                    )
+            if (!(selectedTabIndex == 1 && isChartFullscreen)) {
+                PrimaryTabRow(selectedTabIndex = selectedTabIndex) {
+                    tabs.forEachIndexed { index, title ->
+                        Tab(
+                            selected = selectedTabIndex == index,
+                            onClick = { viewModel.selectTab(index) },
+                            text = { Text(text = title, fontWeight = FontWeight.SemiBold) }
+                        )
+                    }
                 }
             }
 
             if (selectedTabIndex == 1) {
-                // Interactive TradingView Chart (full viewport without outer vertical scroll)
+                // Interactive Pro TradingView Chart
                 TradingViewChartScreen(
                     selectedSymbols = settings.selectedSymbols,
                     activeSymbol = activeChartSymbol,
                     onSymbolSelected = viewModel::selectChartSymbol,
+                    marketPrices = marketPrices,
+                    symbolInfoMap = symbolInfoMap,
+                    isFullscreen = isChartFullscreen,
+                    onToggleFullscreen = { isChartFullscreen = !isChartFullscreen },
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -431,7 +441,7 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "CoinFloat v1.3.2",
+                                    text = "CoinFloat v1.3.3",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
