@@ -14,22 +14,26 @@
             -webkit-tap-highlight-color: transparent;
         }
         html, body {
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
             background-color: #131722;
             color: #D1D4DC;
             font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
             overflow: hidden;
-            position: relative;
         }
         #wrapper {
-            position: absolute;
+            position: fixed;
             top: 0;
             left: 0;
+            right: 0;
+            bottom: 0;
             width: 100%;
             height: 100%;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
         }
         #toolbar {
             height: 40px;
@@ -111,9 +115,10 @@
         .ma99-color { color: #00E5FF; }
 
         #chart_container {
-            flex: 1;
+            flex: 1 1 0;
             width: 100%;
             height: calc(100% - 40px);
+            min-height: 0;
             position: relative;
             background-color: #131722;
         }
@@ -317,8 +322,16 @@
             });
 
             window.addEventListener('resize', resizeChart);
+            if (window.ResizeObserver && container) {
+                try {
+                    new ResizeObserver(() => {
+                        resizeChart();
+                    }).observe(container);
+                } catch(e) {}
+            }
             setTimeout(resizeChart, 50);
             setTimeout(resizeChart, 200);
+            setTimeout(resizeChart, 500);
 
             // Crosshair subscribe
             chart.subscribeCrosshairMove(param => {

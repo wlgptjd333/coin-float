@@ -326,4 +326,8 @@ class MiniChartView(
     fun setChartError(message: String) {
         chartView.setError(message)
     }
+
+    fun updateLivePrice(price: Float) {
+        chartView.updateLastPrice(price)
+    }
 }

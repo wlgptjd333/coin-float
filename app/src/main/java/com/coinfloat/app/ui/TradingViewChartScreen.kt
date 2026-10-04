@@ -174,6 +174,10 @@ fun TradingViewChartScreen(
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        layoutParams = android.view.ViewGroup.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                        )
                         WebView.setWebContentsDebuggingEnabled(true)
                         setBackgroundColor(android.graphics.Color.parseColor("#131722"))
                         tag = currentSymbol
@@ -187,8 +191,8 @@ fun TradingViewChartScreen(
                             allowFileAccessFromFileURLs = true
                             allowUniversalAccessFromFileURLs = true
                             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                            loadWithOverviewMode = true
-                            useWideViewPort = true
+                            loadWithOverviewMode = false
+                            useWideViewPort = false
                             cacheMode = WebSettings.LOAD_NO_CACHE
                             builtInZoomControls = false
                             displayZoomControls = false

@@ -20,6 +20,8 @@ import com.coinfloat.app.market.SymbolInfo
 import com.coinfloat.app.settings.OverlaySettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -42,6 +44,7 @@ class OverlayController(private val context: Context) {
     private var isMiniChartShowing = false
     private var currentChartSymbol: String = "BTCUSDT"
     private var currentChartInterval: String = "15m"
+    private var chartRefreshJob: Job? = null
 
     private var latestSettings: OverlaySettings = OverlaySettings()
     private var latestPriceMap: Map<String, MarketPrice> = emptyMap()
@@ -229,6 +232,11 @@ class OverlayController(private val context: Context) {
                 val info = symbolInfoMap[currentChartSymbol] ?: symbolInfoMap[currentChartSymbol.uppercase()]
                 val formattedPrice = PriceFormatter.formatPrice(marketPrice?.price, info?.tickSize)
                 miniChartView?.updateHeader(currentChartSymbol, formattedPrice)
+
+                val livePrice = marketPrice?.price?.toFloat()
+                if (livePrice != null && livePrice > 0f) {
+                    miniChartView?.updateLivePrice(livePrice)
+                }
             }
         }
     }
@@ -473,17 +481,20 @@ class OverlayController(private val context: Context) {
                 miniChartParams = params
                 isMiniChartShowing = true
                 loadChartData()
+                startChartRefreshLoop()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to add mini chart view: ${e.message}", e)
                 miniChartView = null
                 miniChartParams = null
                 isMiniChartShowing = false
+                stopChartRefreshLoop()
             }
         }
     }
 
     fun hideMiniChart() {
         runOnMainThread {
+            stopChartRefreshLoop()
             val chart = miniChartView
             if (chart != null) {
                 try {
@@ -514,6 +525,11 @@ class OverlayController(private val context: Context) {
                 val klines = klineFetcher?.invoke(currentChartSymbol, currentChartInterval) ?: emptyList()
                 mainHandler.post {
                     miniChartView?.setChartData(klines)
+                    val currentPrice = latestPriceMap[currentChartSymbol] ?: latestPriceMap[currentChartSymbol.uppercase()]
+                    val livePrice = currentPrice?.price?.toFloat()
+                    if (livePrice != null && livePrice > 0f) {
+                        miniChartView?.updateLivePrice(livePrice)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load klines: ${e.message}")
@@ -522,5 +538,35 @@ class OverlayController(private val context: Context) {
                 }
             }
         }
+    }
+
+    private fun startChartRefreshLoop() {
+        chartRefreshJob?.cancel()
+        chartRefreshJob = coroutineScope?.launch(Dispatchers.IO) {
+            while (isMiniChartShowing) {
+                delay(15_000L)
+                if (!isMiniChartShowing) break
+                try {
+                    val klines = klineFetcher?.invoke(currentChartSymbol, currentChartInterval) ?: emptyList()
+                    if (klines.isNotEmpty()) {
+                        mainHandler.post {
+                            if (isMiniChartShowing) {
+                                miniChartView?.setChartData(klines)
+                                val currentPrice = latestPriceMap[currentChartSymbol] ?: latestPriceMap[currentChartSymbol.uppercase()]
+                                val livePrice = currentPrice?.price?.toFloat()
+                                if (livePrice != null && livePrice > 0f) {
+                                    miniChartView?.updateLivePrice(livePrice)
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun stopChartRefreshLoop() {
+        chartRefreshJob?.cancel()
+        chartRefreshJob = null
     }
 }

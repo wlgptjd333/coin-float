@@ -87,6 +87,21 @@ class CandleStickChartView @JvmOverloads constructor(
         invalidate()
     }
 
+    fun updateLastPrice(price: Float) {
+        if (klines.isEmpty() || isLoading || errorMessage != null) return
+        val lastIndex = klines.size - 1
+        val last = klines[lastIndex]
+        val newHigh = max(last.high, price)
+        val newLow = min(last.low, price)
+        if (last.close == price && last.high == newHigh && last.low == newLow) {
+            return
+        }
+        val updated = klines.toMutableList()
+        updated[lastIndex] = last.copy(close = price, high = newHigh, low = newLow)
+        this.klines = updated
+        invalidate()
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
