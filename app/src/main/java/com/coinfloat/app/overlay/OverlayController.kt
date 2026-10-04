@@ -58,7 +58,7 @@ class OverlayController(private val context: Context) {
     private var onPositionSavedListener: ((Int, Int) -> Unit)? = null
     var onMiniChartResizedListener: ((Int, Int) -> Unit)? = null
 
-    fun isShowing(): Boolean = isOverlayAttached && overlayView != null
+    fun isShowing(): Boolean = (isOverlayAttached && overlayView != null) || (isMiniChartShowing && miniChartView != null)
 
     private fun runOnMainThread(action: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -224,16 +224,17 @@ class OverlayController(private val context: Context) {
         runOnMainThread {
             this.latestPriceMap = prices
             this.latestSymbolInfoMap = symbolInfoMap
-            if (!isOverlayAttached || overlayView == null) return@runOnMainThread
-            overlayView?.updatePrices(prices, symbolInfoMap)
+            if (isOverlayAttached && overlayView != null) {
+                overlayView?.updatePrices(prices, symbolInfoMap)
+            }
 
             if (isMiniChartShowing && miniChartView != null) {
                 val marketPrice = prices[currentChartSymbol] ?: prices[currentChartSymbol.uppercase()]
                 val info = symbolInfoMap[currentChartSymbol] ?: symbolInfoMap[currentChartSymbol.uppercase()]
                 val formattedPrice = PriceFormatter.formatPrice(marketPrice?.price, info?.tickSize)
-                miniChartView?.updateHeader(currentChartSymbol, formattedPrice)
-
                 val livePrice = marketPrice?.price?.toFloat()
+                miniChartView?.updateHeader(currentChartSymbol, formattedPrice, livePrice)
+
                 if (livePrice != null && livePrice > 0f) {
                     miniChartView?.updateLivePrice(livePrice)
                 }
@@ -517,7 +518,8 @@ class OverlayController(private val context: Context) {
         val marketPrice = latestPriceMap[currentChartSymbol] ?: latestPriceMap[currentChartSymbol.uppercase()]
         val info = latestSymbolInfoMap[currentChartSymbol] ?: latestSymbolInfoMap[currentChartSymbol.uppercase()]
         val formattedPrice = PriceFormatter.formatPrice(marketPrice?.price, info?.tickSize)
-        chart.updateHeader(currentChartSymbol, formattedPrice)
+        val livePrice = marketPrice?.price?.toFloat()
+        chart.updateHeader(currentChartSymbol, formattedPrice, livePrice)
         chart.setChartLoading()
 
         coroutineScope?.launch(Dispatchers.IO) {

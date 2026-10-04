@@ -431,7 +431,7 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "CoinFloat v1.3.1",
+                                    text = "CoinFloat v1.3.2",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )

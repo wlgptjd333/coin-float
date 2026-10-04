@@ -279,9 +279,22 @@ class MiniChartView(
         }
     }
 
-    fun updateHeader(symbol: String, priceStr: String?) {
+    private var lastPrice: Float? = null
+
+    fun updateHeader(symbol: String, priceStr: String?, currentPrice: Float? = null) {
         tvSymbol.text = symbol
         tvPrice.text = priceStr ?: "—"
+        if (currentPrice != null) {
+            val prev = lastPrice
+            if (prev != null) {
+                if (currentPrice > prev) {
+                    tvPrice.setTextColor(Color.parseColor("#0ECB81"))
+                } else if (currentPrice < prev) {
+                    tvPrice.setTextColor(Color.parseColor("#F6465D"))
+                }
+            }
+            lastPrice = currentPrice
+        }
     }
 
     fun setActiveInterval(interval: String) {

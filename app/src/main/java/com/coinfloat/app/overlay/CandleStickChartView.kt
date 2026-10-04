@@ -64,14 +64,37 @@ class CandleStickChartView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER
     }
 
+    private val currentPriceLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#0ECB81")
+        strokeWidth = 1f * density
+        pathEffect = DashPathEffect(floatArrayOf(3f * density, 3f * density), 0f)
+        style = Paint.Style.STROKE
+    }
+
+    private val priceBadgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#0ECB81")
+        style = Paint.Style.FILL
+    }
+
+    private val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 8.5f * density
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
+
     private var klines: List<KlineItem> = emptyList()
     private var isLoading = false
     private var errorMessage: String? = null
+    private var currentLivePrice: Float? = null
+    private var isPriceUp: Boolean = true
 
     fun setData(items: List<KlineItem>) {
         this.klines = items
         this.isLoading = false
         this.errorMessage = null
+        if (currentLivePrice == null && items.isNotEmpty()) {
+            currentLivePrice = items.last().close
+        }
         invalidate()
     }
 
@@ -91,11 +114,21 @@ class CandleStickChartView @JvmOverloads constructor(
         if (klines.isEmpty() || isLoading || errorMessage != null) return
         val lastIndex = klines.size - 1
         val last = klines[lastIndex]
+
+        val prevPrice = currentLivePrice ?: last.close
+        if (price > prevPrice) {
+            isPriceUp = true
+        } else if (price < prevPrice) {
+            isPriceUp = false
+        }
+        currentLivePrice = price
+
+        val activeColor = if (isPriceUp) Color.parseColor("#0ECB81") else Color.parseColor("#F6465D")
+        currentPriceLinePaint.color = activeColor
+        priceBadgePaint.color = activeColor
+
         val newHigh = max(last.high, price)
         val newLow = min(last.low, price)
-        if (last.close == price && last.high == newHigh && last.low == newLow) {
-            return
-        }
         val updated = klines.toMutableList()
         updated[lastIndex] = last.copy(close = price, high = newHigh, low = newLow)
         this.klines = updated
@@ -194,6 +227,28 @@ class CandleStickChartView @JvmOverloads constructor(
             val right = slotCenterX + bodyWidth / 2f
 
             canvas.drawRect(left, topBodyY, right, finalBottomY, bodyPaint)
+        }
+
+        // Draw Current Live Price Line & Badge (TradingView style)
+        val livePrice = currentLivePrice ?: klines.lastOrNull()?.close
+        if (livePrice != null && adjustedRange > 0f) {
+            val liveY = (paddingTop + (1f - (livePrice - adjustedMin) / adjustedRange) * chartHeight)
+                .coerceIn(paddingTop, paddingTop + chartHeight)
+
+            // Dotted horizontal line across the entire chart
+            canvas.drawLine(paddingLeft, liveY, paddingLeft + chartWidth, liveY, currentPriceLinePaint)
+
+            // Live price badge on the right axis
+            val badgeText = formatLabelPrice(livePrice)
+            val badgeWidth = paddingRight - (4f * density)
+            val badgeHeight = 14f * density
+            val badgeLeft = paddingLeft + chartWidth + (2f * density)
+            val badgeTop = liveY - (badgeHeight / 2f)
+            val badgeRect = RectF(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + badgeHeight)
+            canvas.drawRoundRect(badgeRect, 3f * density, 3f * density, priceBadgePaint)
+
+            // Badge text centered vertically
+            canvas.drawText(badgeText, badgeLeft + (3f * density), liveY + (3.5f * density), badgeTextPaint)
         }
     }
 

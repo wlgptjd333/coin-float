@@ -182,6 +182,10 @@ fun TradingViewChartScreen(
                         setBackgroundColor(android.graphics.Color.parseColor("#131722"))
                         tag = currentSymbol
 
+                        val cookieManager = android.webkit.CookieManager.getInstance()
+                        cookieManager.setAcceptCookie(true)
+                        cookieManager.setAcceptThirdPartyCookies(this, true)
+
                         settings.apply {
                             javaScriptEnabled = true
                             domStorageEnabled = true
@@ -193,7 +197,7 @@ fun TradingViewChartScreen(
                             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                             loadWithOverviewMode = false
                             useWideViewPort = false
-                            cacheMode = WebSettings.LOAD_NO_CACHE
+                            cacheMode = WebSettings.LOAD_DEFAULT
                             builtInZoomControls = false
                             displayZoomControls = false
                             setSupportZoom(true)
