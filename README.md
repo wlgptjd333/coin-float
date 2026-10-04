@@ -1,8 +1,14 @@
 # CoinFloat
 
+[![Release](https://img.shields.io/github/v/release/wlgptjd333/coin-float?color=blue&label=version)](https://github.com/wlgptjd333/coin-float/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-green.svg)](https://developer.android.com)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
+
 > **Android 초소형 암호화폐 실시간 시세 오버레이 앱**
 
 다른 앱(유튜브, 웹브라우징, 게임, 메신저 등)을 사용하는 동안에도 화면 위에 방해되지 않는 초소형 플로팅 오버레이를 띄워 Binance USDⓈ-M Futures 실시간 체결 시세를 확인할 수 있는 개인용 APK 앱입니다.
+
+📥 **[최신 버전 APK 다운로드 (v1.0.0)](https://github.com/wlgptjd333/coin-float/releases/latest)**
 
 ---
 
