@@ -222,4 +222,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             settingsRepository.updatePadding(paddingDp)
         }
     }
+
+    fun updateChartEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateChartEnabled(enabled)
+        }
+    }
+
+    fun updateChartInterval(interval: String) {
+        viewModelScope.launch {
+            settingsRepository.updateChartInterval(interval)
+        }
+    }
 }

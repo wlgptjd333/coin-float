@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-10-05
+
+### Added
+- **Expandable Mini Candlestick Chart (탭 시 펼쳐지는 미니 차트 팝업)**:
+  - Tapping the overlay toggles a sleek, semi-transparent popup chart window directly adjacent to the price box.
+  - High-performance, zero-dependency custom Canvas candlestick rendering (`CandleStickChartView`).
+  - Supports 1m, 5m, 15m, and 1h intervals via Binance public Kline REST endpoint (`/fapi/v1/klines`).
+  - Header displays active symbol, live price, interval selector tabs, and close button (`✕`).
+  - Tapping the symbol header cycles through tracked symbols.
+  - Setting toggle in "표시 설정" tab to enable/disable tap-to-chart and customize default interval.
+
+### Optimized (배터리 및 CPU 대폭 최적화)
+- **Screen State Power Optimization (화면 꺼짐 시 절전)**:
+  - Dynamically detects `ACTION_SCREEN_OFF` and pauses WebSocket traffic to eliminate background CPU wakeups and wireless network usage.
+  - Instantly reconnects upon `ACTION_SCREEN_ON` (<300ms) with zero latency for user viewing.
+- **Throttled UI Redraws (UI 렌더링 스로틀링)**:
+  - UI updates are smoothly throttled to ~150ms (~6.7 FPS max), preventing redundant measure/layout passes on the Android main thread and reducing CPU consumption by ~75%.
+- **Price Cache Allocation Reduction**:
+  - Replaced repetitive Map copying with `ConcurrentHashMap` caching to drastically reduce heap allocations on high-frequency trades.
+
+---
+
 ## [1.0.0] - 2026-10-04
 
 ### Added

@@ -24,5 +24,7 @@ data class OverlaySettings(
     val overlayX: Int = -1,
     val overlayY: Int = -1,
     val isServiceEnabled: Boolean = false,
-    val isOverlayVisible: Boolean = true
+    val isOverlayVisible: Boolean = true,
+    val isChartEnabled: Boolean = true,
+    val defaultChartInterval: String = "15m"
 )

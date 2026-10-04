@@ -3,19 +3,24 @@ package com.coinfloat.app.overlay
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import com.coinfloat.app.market.KlineItem
 import com.coinfloat.app.market.MarketPrice
+import com.coinfloat.app.market.PriceFormatter
 import com.coinfloat.app.market.SymbolInfo
 import com.coinfloat.app.settings.OverlaySettings
-import android.os.Build
-import android.provider.Settings
-import android.util.DisplayMetrics
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 class OverlayController(private val context: Context) {
@@ -30,6 +35,20 @@ class OverlayController(private val context: Context) {
 
     private var overlayView: OverlayView? = null
     private var layoutParams: WindowManager.LayoutParams? = null
+
+    // Mini Chart Window
+    private var miniChartView: MiniChartView? = null
+    private var miniChartParams: WindowManager.LayoutParams? = null
+    private var isMiniChartShowing = false
+    private var currentChartSymbol: String = "BTCUSDT"
+    private var currentChartInterval: String = "15m"
+
+    private var latestSettings: OverlaySettings = OverlaySettings()
+    private var latestPriceMap: Map<String, MarketPrice> = emptyMap()
+    private var latestSymbolInfoMap: Map<String, SymbolInfo> = emptyMap()
+
+    var coroutineScope: CoroutineScope? = null
+    var klineFetcher: (suspend (symbol: String, interval: String) -> List<KlineItem>)? = null
 
     private var isOverlayAttached = false
     private var isDragging = false
@@ -85,6 +104,9 @@ class OverlayController(private val context: Context) {
         onPositionChanged: (Int, Int) -> Unit
     ) {
         runOnMainThread {
+            this.latestSettings = settings
+            this.latestSymbolInfoMap = symbolInfoMap
+            this.latestPriceMap = prices
             this.onPositionSavedListener = onPositionChanged
             val (posX, posY) = getSafePosition(settings)
 
@@ -96,7 +118,6 @@ class OverlayController(private val context: Context) {
                 return@runOnMainThread
             }
 
-            // Synchronously remove any previous view to avoid posting delayed removal
             removeOverlayInternal()
 
             if (!Settings.canDrawOverlays(context)) {
@@ -140,6 +161,7 @@ class OverlayController(private val context: Context) {
 
     fun hide() {
         runOnMainThread {
+            hideMiniChart()
             removeOverlayInternal()
         }
     }
@@ -166,17 +188,32 @@ class OverlayController(private val context: Context) {
 
     fun updateSettings(settings: OverlaySettings, symbolInfoMap: Map<String, SymbolInfo>) {
         runOnMainThread {
+            this.latestSettings = settings
+            this.latestSymbolInfoMap = symbolInfoMap
             if (!isOverlayAttached || overlayView == null) return@runOnMainThread
             overlayView?.applySettings(settings, symbolInfoMap)
             val (posX, posY) = getSafePosition(settings)
             updatePosition(posX, posY)
+
+            if (!settings.isChartEnabled && isMiniChartShowing) {
+                hideMiniChart()
+            }
         }
     }
 
     fun updatePrices(prices: Map<String, MarketPrice>, symbolInfoMap: Map<String, SymbolInfo>) {
         runOnMainThread {
+            this.latestPriceMap = prices
+            this.latestSymbolInfoMap = symbolInfoMap
             if (!isOverlayAttached || overlayView == null) return@runOnMainThread
             overlayView?.updatePrices(prices, symbolInfoMap)
+
+            if (isMiniChartShowing && miniChartView != null) {
+                val marketPrice = prices[currentChartSymbol] ?: prices[currentChartSymbol.uppercase()]
+                val info = symbolInfoMap[currentChartSymbol] ?: symbolInfoMap[currentChartSymbol.uppercase()]
+                val formattedPrice = PriceFormatter.formatPrice(marketPrice?.price, info?.tickSize)
+                miniChartView?.updateHeader(currentChartSymbol, formattedPrice)
+            }
         }
     }
 
@@ -202,6 +239,7 @@ class OverlayController(private val context: Context) {
         var initialY = 0
         var initialTouchX = 0f
         var initialTouchY = 0f
+        var downTime = 0L
 
         val dm = context.resources.displayMetrics
         val density = dm.density
@@ -213,6 +251,7 @@ class OverlayController(private val context: Context) {
                     initialY = params.y
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
+                    downTime = System.currentTimeMillis()
                     isDragging = false
                     true
                 }
@@ -221,7 +260,12 @@ class OverlayController(private val context: Context) {
                     val dy = (event.rawY - initialTouchY).toInt()
 
                     if (isDragging || abs(dx) > touchSlop || abs(dy) > touchSlop) {
-                        isDragging = true
+                        if (!isDragging) {
+                            isDragging = true
+                            if (isMiniChartShowing) {
+                                hideMiniChart()
+                            }
+                        }
                         val (screenWidth, screenHeight) = getRealScreenSize()
                         val viewW = if (view.width > 0) view.width else (40 * density).toInt()
                         val viewH = if (view.height > 0) view.height else (30 * density).toInt()
@@ -238,14 +282,149 @@ class OverlayController(private val context: Context) {
                     }
                     true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_UP -> {
                     if (isDragging) {
                         isDragging = false
                         onPositionSavedListener?.invoke(params.x, params.y)
+                    } else {
+                        val duration = System.currentTimeMillis() - downTime
+                        if (duration < 350) {
+                            handleOverlayClick()
+                        }
                     }
                     true
                 }
+                MotionEvent.ACTION_CANCEL -> {
+                    isDragging = false
+                    true
+                }
                 else -> false
+            }
+        }
+    }
+
+    private fun handleOverlayClick() {
+        if (!latestSettings.isChartEnabled) return
+        if (isMiniChartShowing) {
+            hideMiniChart()
+        } else {
+            val firstSymbol = latestSettings.selectedSymbols.firstOrNull() ?: "BTCUSDT"
+            currentChartSymbol = firstSymbol
+            currentChartInterval = latestSettings.defaultChartInterval
+            showMiniChart()
+        }
+    }
+
+    fun showMiniChart() {
+        runOnMainThread {
+            if (isMiniChartShowing) return@runOnMainThread
+            if (!Settings.canDrawOverlays(context)) return@runOnMainThread
+
+            val baseParams = layoutParams ?: return@runOnMainThread
+            val density = context.resources.displayMetrics.density
+            val chartWidth = (240 * density).toInt()
+            val chartHeight = (155 * density).toInt()
+            val (screenWidth, screenHeight) = getRealScreenSize()
+
+            var chartX = baseParams.x
+            if (chartX + chartWidth > screenWidth - (8 * density).toInt()) {
+                chartX = screenWidth - chartWidth - (8 * density).toInt()
+            }
+            chartX = chartX.coerceAtLeast((8 * density).toInt())
+
+            val overlayH = if ((overlayView?.height ?: 0) > 0) overlayView!!.height else (35 * density).toInt()
+            var chartY = baseParams.y + overlayH + (6 * density).toInt()
+            if (chartY + chartHeight > screenHeight - (16 * density).toInt()) {
+                chartY = (baseParams.y - chartHeight - (6 * density).toInt()).coerceAtLeast((8 * density).toInt())
+            }
+
+            val params = WindowManager.LayoutParams(
+                chartWidth,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.LEFT
+                x = chartX
+                y = chartY
+            }
+
+            val view = MiniChartView(
+                context = context,
+                onIntervalSelected = { interval ->
+                    currentChartInterval = interval
+                    loadChartData()
+                },
+                onSymbolToggleClicked = {
+                    val symbols = latestSettings.selectedSymbols
+                    if (symbols.isNotEmpty()) {
+                        val currentIdx = symbols.indexOf(currentChartSymbol)
+                        val nextIdx = (currentIdx + 1) % symbols.size
+                        currentChartSymbol = symbols[nextIdx]
+                        loadChartData()
+                    }
+                },
+                onCloseClicked = {
+                    hideMiniChart()
+                }
+            )
+            view.setActiveInterval(currentChartInterval)
+
+            try {
+                windowManager.addView(view, params)
+                miniChartView = view
+                miniChartParams = params
+                isMiniChartShowing = true
+                loadChartData()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to add mini chart view: ${e.message}", e)
+                miniChartView = null
+                miniChartParams = null
+                isMiniChartShowing = false
+            }
+        }
+    }
+
+    fun hideMiniChart() {
+        runOnMainThread {
+            val chart = miniChartView
+            if (chart != null) {
+                try {
+                    windowManager.removeView(chart)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error removing mini chart view: ${e.message}")
+                } finally {
+                    miniChartView = null
+                    miniChartParams = null
+                    isMiniChartShowing = false
+                }
+            } else {
+                isMiniChartShowing = false
+            }
+        }
+    }
+
+    private fun loadChartData() {
+        val chart = miniChartView ?: return
+        val marketPrice = latestPriceMap[currentChartSymbol] ?: latestPriceMap[currentChartSymbol.uppercase()]
+        val info = latestSymbolInfoMap[currentChartSymbol] ?: latestSymbolInfoMap[currentChartSymbol.uppercase()]
+        val formattedPrice = PriceFormatter.formatPrice(marketPrice?.price, info?.tickSize)
+        chart.updateHeader(currentChartSymbol, formattedPrice)
+        chart.setChartLoading()
+
+        coroutineScope?.launch(Dispatchers.IO) {
+            try {
+                val klines = klineFetcher?.invoke(currentChartSymbol, currentChartInterval) ?: emptyList()
+                mainHandler.post {
+                    miniChartView?.setChartData(klines)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load klines: ${e.message}")
+                mainHandler.post {
+                    miniChartView?.setChartError("차트 로드 실패")
+                }
             }
         }
     }

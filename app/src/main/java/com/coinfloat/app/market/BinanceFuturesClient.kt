@@ -63,12 +63,14 @@ class BinanceFuturesClient(
     private var reconnectJob: Job? = null
     private var reconnectAttempt = 0
     private var isExplicitDisconnect = false
+    private var isPaused = false
 
     fun getActiveSymbols(): Set<String> = synchronized(lock) { activeSymbols.toSet() }
 
     fun connect(symbols: List<String>) {
         synchronized(lock) {
             isExplicitDisconnect = false
+            isPaused = false
             activeSymbols.clear()
             activeSymbols.addAll(symbols.map { it.uppercase() })
         }
@@ -80,11 +82,36 @@ class BinanceFuturesClient(
     fun disconnect() {
         synchronized(lock) {
             isExplicitDisconnect = true
+            isPaused = false
             activeSymbols.clear()
         }
         cancelReconnectJob()
         closeWebSocket()
         _connectionState.value = ConnectionState.DISCONNECTED
+    }
+
+    fun pause() {
+        synchronized(lock) {
+            isPaused = true
+        }
+        cancelReconnectJob()
+        closeWebSocket()
+        _connectionState.value = ConnectionState.DISCONNECTED
+        Log.d(TAG, "BinanceFuturesClient paused (screen off/conserving battery)")
+    }
+
+    fun resume() {
+        val symbols: List<String>
+        synchronized(lock) {
+            if (!isPaused) return
+            isPaused = false
+            symbols = activeSymbols.toList()
+        }
+        Log.d(TAG, "BinanceFuturesClient resumed with symbols: $symbols")
+        if (symbols.isNotEmpty()) {
+            reconnectAttempt = 0
+            initiateConnection()
+        }
     }
 
     fun updateSubscriptions(newSymbols: List<String>) {
@@ -151,7 +178,7 @@ class BinanceFuturesClient(
     }
 
     private fun handleDisconnect() {
-        val shouldReconnect = synchronized(lock) { !isExplicitDisconnect }
+        val shouldReconnect = synchronized(lock) { !isExplicitDisconnect && !isPaused }
         if (shouldReconnect) {
             _connectionState.value = ConnectionState.RECONNECTING
             scheduleReconnect()
@@ -169,7 +196,7 @@ class BinanceFuturesClient(
             Log.d(TAG, "Reconnecting in ${totalDelay}ms (attempt $reconnectAttempt)")
             delay(totalDelay)
             reconnectAttempt++
-            if (isActive && !isExplicitDisconnect) {
+            if (isActive && !isExplicitDisconnect && !isPaused) {
                 initiateConnection()
             }
         }
@@ -307,5 +334,40 @@ class BinanceFuturesClient(
             }
         }
         return result
+    }
+
+    suspend fun fetchKlines(
+        symbol: String,
+        interval: String = "15m",
+        limit: Int = 30
+    ): List<KlineItem> = withContext(Dispatchers.IO) {
+        val url = "https://fapi.binance.com/fapi/v1/klines?symbol=${symbol.uppercase()}&interval=$interval&limit=$limit"
+        val request = Request.Builder().url(url).get().build()
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("Failed to fetch klines: HTTP ${response.code}")
+            }
+            val body = response.body?.string() ?: throw Exception("Empty klines response")
+            parseKlines(body)
+        }
+    }
+
+    fun parseKlines(jsonStr: String): List<KlineItem> {
+        val root = JSONArray(jsonStr)
+        val list = ArrayList<KlineItem>(root.length())
+        for (i in 0 until root.length()) {
+            val item = root.getJSONArray(i)
+            list.add(
+                KlineItem(
+                    openTime = item.getLong(0),
+                    open = item.getString(1).toFloatOrNull() ?: 0f,
+                    high = item.getString(2).toFloatOrNull() ?: 0f,
+                    low = item.getString(3).toFloatOrNull() ?: 0f,
+                    close = item.getString(4).toFloatOrNull() ?: 0f,
+                    volume = item.getString(5).toFloatOrNull() ?: 0f
+                )
+            )
+        }
+        return list
     }
 }

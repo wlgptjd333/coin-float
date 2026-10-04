@@ -30,6 +30,8 @@ class MarketDataRepository(
 
     val connectionState: StateFlow<ConnectionState> = binanceClient.connectionState
 
+    private val priceCache = java.util.concurrent.ConcurrentHashMap<String, MarketPrice>()
+
     private val _marketPrices = MutableStateFlow<Map<String, MarketPrice>>(emptyMap())
     val marketPrices: StateFlow<Map<String, MarketPrice>> = _marketPrices.asStateFlow()
 
@@ -40,7 +42,7 @@ class MarketDataRepository(
     val isLoadingSymbols: StateFlow<Boolean> = _isLoadingSymbols.asStateFlow()
 
     init {
-        // Collect trade events and update price map
+        // Collect trade events and update price map with high efficiency
         clientScope.launch {
             binanceClient.tradeEvents.collect { event ->
                 val bdPrice = try {
@@ -49,32 +51,24 @@ class MarketDataRepository(
                     null
                 }
 
-                _marketPrices.value = _marketPrices.value.toMutableMap().apply {
-                    put(
-                        event.symbol,
-                        MarketPrice(
-                            symbol = event.symbol,
-                            price = bdPrice,
-                            eventTime = event.eventTime,
-                            isStale = false
-                        )
-                    )
-                }
+                priceCache[event.symbol] = MarketPrice(
+                    symbol = event.symbol,
+                    price = bdPrice,
+                    eventTime = event.eventTime,
+                    isStale = false
+                )
+                _marketPrices.value = priceCache.toMap()
             }
         }
     }
 
     fun start(symbols: List<String>) {
         Log.d(TAG, "Starting market data with symbols: $symbols")
-        // Initialize placeholders for symbols if not yet present
-        val current = _marketPrices.value.toMutableMap()
         for (sym in symbols) {
             val upper = sym.uppercase()
-            if (!current.containsKey(upper)) {
-                current[upper] = MarketPrice(symbol = upper, price = null)
-            }
+            priceCache.putIfAbsent(upper, MarketPrice(symbol = upper, price = null))
         }
-        _marketPrices.value = current
+        _marketPrices.value = priceCache.toMap()
         binanceClient.connect(symbols)
     }
 
@@ -83,16 +77,27 @@ class MarketDataRepository(
         binanceClient.disconnect()
     }
 
+    fun pause() {
+        Log.d(TAG, "Pausing market data (screen off)")
+        binanceClient.pause()
+    }
+
+    fun resume() {
+        Log.d(TAG, "Resuming market data (screen on)")
+        binanceClient.resume()
+    }
+
+    suspend fun fetchKlines(symbol: String, interval: String = "15m", limit: Int = 30): List<KlineItem> {
+        return binanceClient.fetchKlines(symbol, interval, limit)
+    }
+
     fun updateSymbols(symbols: List<String>) {
         Log.d(TAG, "Updating symbols to: $symbols")
-        val current = _marketPrices.value.toMutableMap()
         for (sym in symbols) {
             val upper = sym.uppercase()
-            if (!current.containsKey(upper)) {
-                current[upper] = MarketPrice(symbol = upper, price = null)
-            }
+            priceCache.putIfAbsent(upper, MarketPrice(symbol = upper, price = null))
         }
-        _marketPrices.value = current
+        _marketPrices.value = priceCache.toMap()
         binanceClient.updateSubscriptions(symbols)
     }
 

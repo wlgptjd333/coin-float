@@ -371,7 +371,9 @@ fun SettingsScreen(
                             onTextOpacityChange = viewModel::updateTextOpacity,
                             onBackgroundColorChange = viewModel::updateBackgroundColor,
                             onBackgroundOpacityChange = viewModel::updateBackgroundOpacity,
-                            onPaddingChange = viewModel::updatePadding
+                            onPaddingChange = viewModel::updatePadding,
+                            onChartEnabledChange = viewModel::updateChartEnabled,
+                            onChartIntervalChange = viewModel::updateChartInterval
                         )
                     }
 

@@ -129,4 +129,24 @@ class JsonParserTest {
         assertEquals("USDT", btc.quoteAsset)
         assertEquals("0.10", btc.tickSize)
     }
+
+    @Test
+    fun testParseKlines() {
+        val client = BinanceFuturesClient(CoroutineScope(Dispatchers.Unconfined))
+        val klinesJson = """
+            [
+              [1791126900000, "85319.90", "85440.40", "85239.80", "85276.50", "1401.950", 1791127799999],
+              [1791127800000, "85276.50", "85276.60", "85240.60", "85240.60", "177.026", 1791128699999]
+            ]
+        """.trimIndent()
+
+        val parsed = client.parseKlines(klinesJson)
+        assertEquals(2, parsed.size)
+        assertEquals(1791126900000L, parsed[0].openTime)
+        assertEquals(85319.90f, parsed[0].open, 0.01f)
+        assertEquals(85440.40f, parsed[0].high, 0.01f)
+        assertEquals(85239.80f, parsed[0].low, 0.01f)
+        assertEquals(85276.50f, parsed[0].close, 0.01f)
+        assertEquals(1401.950f, parsed[0].volume, 0.01f)
+    }
 }

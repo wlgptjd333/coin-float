@@ -21,6 +21,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,6 +51,8 @@ fun DisplaySettingsContent(
     onBackgroundColorChange: (String) -> Unit,
     onBackgroundOpacityChange: (Float) -> Unit,
     onPaddingChange: (Int) -> Unit,
+    onChartEnabledChange: (Boolean) -> Unit = {},
+    onChartIntervalChange: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -332,6 +336,65 @@ fun DisplaySettingsContent(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+
+        // Mini Chart Settings
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "미니 차트 팝업",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "오버레이를 탭하면 그 자리에 캔들스틱 차트를 펼칩니다.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = settings.isChartEnabled,
+                        onCheckedChange = onChartEnabledChange
+                    )
+                }
+
+                if (settings.isChartEnabled) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "기본 차트 주기 (분봉)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            "1m" to "1분",
+                            "5m" to "5분",
+                            "15m" to "15분",
+                            "1h" to "1시간"
+                        ).forEach { (interval, label) ->
+                            val isSelected = settings.defaultChartInterval == interval
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onChartIntervalChange(interval) },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                }
             }
         }
     }

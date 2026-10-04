@@ -41,6 +41,8 @@ class SettingsRepository(
         private val KEY_OVERLAY_Y = intPreferencesKey("overlay_y")
         private val KEY_SERVICE_ENABLED = booleanPreferencesKey("service_enabled")
         private val KEY_OVERLAY_VISIBLE = booleanPreferencesKey("overlay_visible")
+        private val KEY_CHART_ENABLED = booleanPreferencesKey("chart_enabled")
+        private val KEY_CHART_INTERVAL = stringPreferencesKey("chart_interval")
 
         @Volatile
         private var instance: SettingsRepository? = null
@@ -87,7 +89,9 @@ class SettingsRepository(
                 overlayX = preferences[KEY_OVERLAY_X] ?: -1,
                 overlayY = preferences[KEY_OVERLAY_Y] ?: -1,
                 isServiceEnabled = preferences[KEY_SERVICE_ENABLED] ?: false,
-                isOverlayVisible = preferences[KEY_OVERLAY_VISIBLE] ?: true
+                isOverlayVisible = preferences[KEY_OVERLAY_VISIBLE] ?: true,
+                isChartEnabled = preferences[KEY_CHART_ENABLED] ?: true,
+                defaultChartInterval = preferences[KEY_CHART_INTERVAL] ?: "15m"
             )
         }
         .stateIn(
@@ -208,6 +212,18 @@ class SettingsRepository(
     suspend fun updateOverlayVisible(visible: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_OVERLAY_VISIBLE] = visible
+        }
+    }
+
+    suspend fun updateChartEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_CHART_ENABLED] = enabled
+        }
+    }
+
+    suspend fun updateChartInterval(interval: String) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_CHART_INTERVAL] = interval
         }
     }
 }
