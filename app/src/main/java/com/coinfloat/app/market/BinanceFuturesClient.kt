@@ -370,4 +370,43 @@ class BinanceFuturesClient(
         }
         return list
     }
+
+    suspend fun fetch24hTicker(symbol: String): Ticker24h? = withContext(Dispatchers.IO) {
+        val url = "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${symbol.uppercase()}"
+        val request = Request.Builder().url(url).get().build()
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string() ?: return@withContext null
+                parse24hTicker(body)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch 24h ticker for $symbol: ${e.message}")
+            null
+        }
+    }
+
+    fun parse24hTicker(jsonStr: String): Ticker24h? {
+        return try {
+            val obj = JSONObject(jsonStr)
+            val symbol = obj.getString("symbol")
+            val priceChange = obj.optString("priceChange", "0").toFloatOrNull() ?: 0f
+            val priceChangePercent = obj.optString("priceChangePercent", "0").toFloatOrNull() ?: 0f
+            val highPrice = obj.optString("highPrice", "0").toFloatOrNull() ?: 0f
+            val lowPrice = obj.optString("lowPrice", "0").toFloatOrNull() ?: 0f
+            val volume = obj.optString("volume", "0").toFloatOrNull() ?: 0f
+            val quoteVolume = obj.optString("quoteVolume", "0").toFloatOrNull() ?: 0f
+            Ticker24h(
+                symbol = symbol,
+                priceChange = priceChange,
+                priceChangePercent = priceChangePercent,
+                highPrice = highPrice,
+                lowPrice = lowPrice,
+                volume = volume,
+                quoteVolume = quoteVolume
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
 }

@@ -149,4 +149,30 @@ class JsonParserTest {
         assertEquals(85276.50f, parsed[0].close, 0.01f)
         assertEquals(1401.950f, parsed[0].volume, 0.01f)
     }
+
+    @Test
+    fun testParse24hTicker() {
+        val client = BinanceFuturesClient(CoroutineScope(Dispatchers.Unconfined))
+        val tickerJson = """
+            {
+              "symbol": "BTCUSDT",
+              "priceChange": "1200.50",
+              "priceChangePercent": "1.412",
+              "highPrice": "87057.70",
+              "lowPrice": "84683.30",
+              "volume": "45210.12",
+              "quoteVolume": "3881239821.50"
+            }
+        """.trimIndent()
+
+        val parsed = client.parse24hTicker(tickerJson)
+        assertNotNull(parsed)
+        assertEquals("BTCUSDT", parsed?.symbol)
+        assertEquals(1200.50f, parsed?.priceChange ?: 0f, 0.01f)
+        assertEquals(1.412f, parsed?.priceChangePercent ?: 0f, 0.001f)
+        assertEquals(87057.70f, parsed?.highPrice ?: 0f, 0.01f)
+        assertEquals(84683.30f, parsed?.lowPrice ?: 0f, 0.01f)
+        assertEquals(45210.12f, parsed?.volume ?: 0f, 0.01f)
+        assertEquals(3881239821.50f, parsed?.quoteVolume ?: 0f, 1.0f)
+    }
 }

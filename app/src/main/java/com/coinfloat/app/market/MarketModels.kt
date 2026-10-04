@@ -41,3 +41,14 @@ data class KlineItem(
     val close: Float,
     val volume: Float
 )
+
+data class Ticker24h(
+    val symbol: String,
+    val priceChange: Float = 0f,
+    val priceChangePercent: Float = 0f,
+    val highPrice: Float = 0f,
+    val lowPrice: Float = 0f,
+    val volume: Float = 0f,
+    val quoteVolume: Float = 0f
+)
+

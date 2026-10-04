@@ -50,6 +50,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshPermissions()
+        viewModel.setAppForegroundActive(true)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        viewModel.setAppForegroundActive(false)
     }
 
     private fun handleIntent(intent: android.content.Intent?) {

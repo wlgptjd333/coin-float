@@ -18,6 +18,7 @@ import com.coinfloat.app.settings.ChartSizeProfile
 import com.coinfloat.app.settings.OverlaySettings
 import com.coinfloat.app.settings.SettingsRepository
 import com.coinfloat.app.settings.SymbolDisplayMode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -56,12 +57,38 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _activeChartSymbol = MutableStateFlow("BTCUSDT")
     val activeChartSymbol: StateFlow<String> = _activeChartSymbol.asStateFlow()
 
+    val ticker24hMap: StateFlow<Map<String, com.coinfloat.app.market.Ticker24h>> = marketDataRepository.ticker24hMap
+
     fun selectTab(index: Int) {
         _selectedTabIndex.value = index
+        if (index == 1) {
+            marketDataRepository.setAppActive(true, _activeChartSymbol.value)
+            load24hTicker(_activeChartSymbol.value)
+        }
     }
 
     fun selectChartSymbol(symbol: String) {
-        _activeChartSymbol.value = symbol.uppercase()
+        val upper = symbol.uppercase()
+        _activeChartSymbol.value = upper
+        marketDataRepository.setAppActiveSymbol(upper)
+        load24hTicker(upper)
+    }
+
+    fun setAppForegroundActive(active: Boolean) {
+        marketDataRepository.setAppActive(active, _activeChartSymbol.value)
+        if (active) {
+            load24hTicker(_activeChartSymbol.value)
+        }
+    }
+
+    fun load24hTicker(symbol: String) {
+        viewModelScope.launch {
+            marketDataRepository.load24hTicker(symbol)
+        }
+    }
+
+    fun searchSymbols(query: String): List<SymbolInfo> {
+        return marketDataRepository.searchSymbols(query)
     }
 
     fun refreshPermissions() {
@@ -200,6 +227,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val symbolInfoMap = marketDataRepository.symbolInfoCache
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            marketDataRepository.loadExchangeInfoIfNeeded()
+        }
+        viewModelScope.launch {
+            load24hTicker(_activeChartSymbol.value)
+        }
         viewModelScope.launch {
             settings.collectLatest { s ->
                 if (s.isServiceEnabled && !FloatingOverlayService.isServiceActive.value && checkOverlayPermission()) {

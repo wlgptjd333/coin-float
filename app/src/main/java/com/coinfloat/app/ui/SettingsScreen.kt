@@ -71,6 +71,7 @@ fun SettingsScreen(
     val marketPrices by viewModel.marketPrices.collectAsState()
     val symbolInfoMap by viewModel.symbolInfoMap.collectAsState()
     val isServiceActive by viewModel.isServiceActive.collectAsState()
+    val ticker24hMap by viewModel.ticker24hMap.collectAsState()
 
     val selectedTabIndex by viewModel.selectedTabIndex.collectAsState()
     val activeChartSymbol by viewModel.activeChartSymbol.collectAsState()
@@ -127,6 +128,9 @@ fun SettingsScreen(
                     onSymbolSelected = viewModel::selectChartSymbol,
                     marketPrices = marketPrices,
                     symbolInfoMap = symbolInfoMap,
+                    ticker24hMap = ticker24hMap,
+                    onSearchSymbols = viewModel::searchSymbols,
+                    onAddSymbolToWatchlist = viewModel::addSymbol,
                     isFullscreen = isChartFullscreen,
                     onToggleFullscreen = { isChartFullscreen = !isChartFullscreen },
                     modifier = Modifier.fillMaxSize()
@@ -441,7 +445,7 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "CoinFloat v1.3.3",
+                                    text = "CoinFloat v1.3.4",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )

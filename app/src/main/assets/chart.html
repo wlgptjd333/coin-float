@@ -19,6 +19,7 @@
             background-color: #131722;
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            user-select: none;
         }
         #chart_root {
             position: fixed;
@@ -74,9 +75,37 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        #toast_banner {
+            position: fixed;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(30, 34, 45, 0.95);
+            border: 1px solid #363C4E;
+            color: #D1D4DC;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 11px;
+            z-index: 100;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            align-items: center;
+            gap: 8px;
+        }
+        #toast_btn {
+            background: #2962FF;
+            color: #FFF;
+            border: none;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            cursor: pointer;
+        }
     </style>
+    <!-- Bundled offline high-speed canvas engine (Always loads 100% reliably in 0ms) -->
     <script type="text/javascript" src="lightweight-charts.js"></script>
-    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <!-- Official TradingView Widget script from CDN -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js" async></script>
 </head>
 <body>
     <div id="chart_root">
@@ -94,6 +123,11 @@
         <span id="loading_text">차트 로딩 중...</span>
     </div>
 
+    <div id="toast_banner">
+        <span id="toast_msg">안내 메시지</span>
+        <button id="toast_btn" onclick="retryTvWidget()">재시도</button>
+    </div>
+
     <script type="text/javascript">
         let currentMode = "tv"; // "tv" or "fast"
         let currentSymbol = "BTCUSDT";
@@ -104,6 +138,7 @@
         let fastVolumeSeries = null;
         let fastMaSeries = null;
         let fastCandles = [];
+        let tvInitRetryCount = 0;
 
         function showLoading(msg) {
             const cover = document.getElementById('loading_cover');
@@ -119,7 +154,27 @@
             const cover = document.getElementById('loading_cover');
             if (cover) {
                 cover.style.opacity = '0';
-                setTimeout(() => { cover.style.display = 'none'; }, 250);
+                setTimeout(() => { cover.style.display = 'none'; }, 200);
+            }
+        }
+
+        function showToast(msg, showBtn = false, btnText = "재시도", btnAction = null) {
+            const banner = document.getElementById('toast_banner');
+            const txt = document.getElementById('toast_msg');
+            const btn = document.getElementById('toast_btn');
+            if (banner && txt) {
+                txt.innerText = msg;
+                if (showBtn && btn) {
+                    btn.style.display = 'inline-block';
+                    btn.innerText = btnText;
+                    if (btnAction) btn.onclick = btnAction;
+                } else if (btn) {
+                    btn.style.display = 'none';
+                }
+                banner.style.display = 'flex';
+                setTimeout(() => {
+                    banner.style.display = 'none';
+                }, 5000);
             }
         }
 
@@ -128,18 +183,55 @@
             return clean.endsWith("USDT") ? `BINANCE:${clean}.P` : `BINANCE:${clean}`;
         }
 
-        // 1. Official TradingView Widget
+        function getIntervalSeconds(intv) {
+            if (intv === "1" || intv === "1m") return 60;
+            if (intv === "3" || intv === "3m") return 180;
+            if (intv === "5" || intv === "5m") return 300;
+            if (intv === "15" || intv === "15m") return 900;
+            if (intv === "30" || intv === "30m") return 1800;
+            if (intv === "60" || intv === "1h") return 3600;
+            if (intv === "240" || intv === "4h") return 14400;
+            if (intv === "D" || intv === "1d") return 86400;
+            return 900;
+        }
+
+        function isTvAvailable() {
+            return typeof TradingView !== 'undefined' && typeof TradingView.widget === 'function';
+        }
+
+        // 1. Official TradingView Widget with auto-fallback safety
         function initTvWidget(symbol, interval) {
+            currentSymbol = symbol || currentSymbol;
+            currentInterval = interval || currentInterval;
+
             const container = document.getElementById('tradingview_widget');
             container.innerHTML = '';
             showLoading("트레이딩뷰 정식 차트 연결 중...");
 
-            const tvSym = getTvSymbolFormatted(symbol);
+            if (!isTvAvailable()) {
+                if (tvInitRetryCount < 6) {
+                    tvInitRetryCount++;
+                    setTimeout(() => initTvWidget(currentSymbol, currentInterval), 500);
+                    return;
+                }
+                // Fallback to local 100ms Fast Mode if external CDN is blocked/offline
+                console.warn("TradingView widget CDN unavailable. Switching to Fast mode.");
+                hideLoading();
+                showToast("트레이딩뷰 연결 지연: 초고속 캔들 엔진으로 자동 전환되었습니다.", true, "다시 시도", () => {
+                    tvInitRetryCount = 0;
+                    setChartMode("tv");
+                });
+                setChartMode("fast");
+                return;
+            }
+
+            tvInitRetryCount = 0;
+            const tvSym = getTvSymbolFormatted(currentSymbol);
             try {
                 tvWidget = new TradingView.widget({
                     "autosize": true,
                     "symbol": tvSym,
-                    "interval": interval || currentInterval,
+                    "interval": currentInterval,
                     "timezone": "Asia/Seoul",
                     "theme": "dark",
                     "style": "1",
@@ -166,16 +258,27 @@
                 });
             } catch (e) {
                 console.error("TV Init error", e);
+                setChartMode("fast");
             }
-            setTimeout(hideLoading, 1500);
+            setTimeout(hideLoading, 1200);
+        }
+
+        function retryTvWidget() {
+            tvInitRetryCount = 0;
+            setChartMode("tv");
         }
 
         // 2. High-Speed 100ms Canvas Chart
         function initFastChart() {
             const container = document.getElementById('fast_container');
-            if (!container || fastChart) return;
+            if (!container) return;
             const w = container.clientWidth || window.innerWidth;
             const h = container.clientHeight || window.innerHeight;
+
+            if (fastChart) {
+                fastChart.applyOptions({ width: w, height: h });
+                return;
+            }
 
             fastChart = LightweightCharts.createChart(container, {
                 width: w,
@@ -183,8 +286,19 @@
                 layout: { background: { color: '#131722' }, textColor: '#787B86', fontSize: 11 },
                 grid: { vertLines: { color: '#1E222D' }, horzLines: { color: '#1E222D' } },
                 crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                rightPriceScale: { borderColor: '#2A2E39' },
-                timeScale: { borderColor: '#2A2E39', timeVisible: true, secondsVisible: false }
+                rightPriceScale: { borderColor: '#2A2E39', autoScale: true },
+                timeScale: { borderColor: '#2A2E39', timeVisible: true, secondsVisible: false },
+                handleScale: {
+                    axisPressedMouseMove: { time: true, price: true },
+                    mouseWheel: true,
+                    pinch: true,
+                },
+                handleScroll: {
+                    mouseWheel: true,
+                    pressedMouseMove: true,
+                    horzTouchDrag: true,
+                    vertTouchDrag: true,
+                }
             });
 
             fastCandleSeries = fastChart.addSeries(LightweightCharts.CandlestickSeries, {
@@ -203,7 +317,7 @@
 
             window.addEventListener('resize', () => {
                 if (fastChart && container) {
-                    fastChart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+                    fastChart.applyOptions({ width: container.clientWidth || window.innerWidth, height: container.clientHeight || window.innerHeight });
                 }
             });
         }
@@ -217,7 +331,9 @@
                 
                 const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${sym.toUpperCase()}&interval=${binanceInt}&limit=300`;
                 const res = await fetch(url);
+                if (!res.ok) throw new Error("HTTP " + res.status);
                 const raw = await res.json();
+                if (!Array.isArray(raw)) throw new Error("Invalid klines format");
                 
                 fastCandles = [];
                 const vols = [];
@@ -247,6 +363,7 @@
             } catch (e) {
                 console.error("Fast data error", e);
                 hideLoading();
+                showToast("캔들 데이터 수신 실패 (터치하여 재시도)", true, "재시도", () => loadFastData(sym, interval));
             }
         }
 
@@ -254,17 +371,35 @@
         window.updateLiveTick = function(priceFloat) {
             if (!priceFloat || priceFloat <= 0) return;
             if (currentMode === "fast" && fastCandles.length > 0 && fastCandleSeries) {
+                const nowSec = Math.floor(Date.now() / 1000);
+                const intvSec = getIntervalSeconds(currentInterval);
                 const lastIdx = fastCandles.length - 1;
                 const last = fastCandles[lastIdx];
-                const updated = {
-                    time: last.time,
-                    open: last.open,
-                    high: Math.max(last.high, priceFloat),
-                    low: Math.min(last.low, priceFloat),
-                    close: priceFloat
-                };
-                fastCandles[lastIdx] = updated;
-                fastCandleSeries.update(updated);
+
+                if (nowSec >= last.time + intvSec) {
+                    // New candle period started!
+                    const newCandleTime = Math.floor(nowSec / intvSec) * intvSec;
+                    const newCandle = {
+                        time: newCandleTime,
+                        open: priceFloat,
+                        high: priceFloat,
+                        low: priceFloat,
+                        close: priceFloat
+                    };
+                    fastCandles.push(newCandle);
+                    fastCandleSeries.update(newCandle);
+                } else {
+                    // Update current candle
+                    const updated = {
+                        time: last.time,
+                        open: last.open,
+                        high: Math.max(last.high, priceFloat),
+                        low: Math.min(last.low, priceFloat),
+                        close: priceFloat
+                    };
+                    fastCandles[lastIdx] = updated;
+                    fastCandleSeries.update(updated);
+                }
             }
         };
 
@@ -275,6 +410,14 @@
             if (mode === "fast") {
                 tvDiv.style.display = 'none';
                 fastDiv.style.display = 'block';
+                initFastChart();
+                if (fastChart) {
+                    fastChart.applyOptions({
+                        width: fastDiv.clientWidth || window.innerWidth,
+                        height: fastDiv.clientHeight || window.innerHeight
+                    });
+                    fastChart.timeScale().fitContent();
+                }
                 loadFastData(currentSymbol, currentInterval);
             } else {
                 fastDiv.style.display = 'none';

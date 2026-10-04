@@ -41,6 +41,17 @@ class MarketDataRepository(
     private val _isLoadingSymbols = MutableStateFlow(false)
     val isLoadingSymbols: StateFlow<Boolean> = _isLoadingSymbols.asStateFlow()
 
+    private val _ticker24hMap = MutableStateFlow<Map<String, Ticker24h>>(emptyMap())
+    val ticker24hMap: StateFlow<Map<String, Ticker24h>> = _ticker24hMap.asStateFlow()
+
+    // Multi-consumer state
+    private val lock = Any()
+    private val overlaySymbols = mutableSetOf<String>()
+    private var appActiveSymbol: String? = null
+    private var isOverlayRunning = false
+    private var isOverlayPaused = false
+    private var isAppActive = false
+
     init {
         // Collect trade events and update price map with high efficiency
         clientScope.launch {
@@ -62,43 +73,133 @@ class MarketDataRepository(
         }
     }
 
-    fun start(symbols: List<String>) {
-        Log.d(TAG, "Starting market data with symbols: $symbols")
-        for (sym in symbols) {
-            val upper = sym.uppercase()
-            priceCache.putIfAbsent(upper, MarketPrice(symbol = upper, price = null))
+    // --- Coordinated Subscription Management ---
+
+    private fun reconcileSubscriptions() {
+        val neededSymbols: List<String>
+        val shouldBeConnected: Boolean
+
+        synchronized(lock) {
+            val set = mutableSetOf<String>()
+            if (isOverlayRunning && !isOverlayPaused) {
+                set.addAll(overlaySymbols)
+            }
+            if (isAppActive) {
+                set.addAll(overlaySymbols)
+                appActiveSymbol?.let { set.add(it.uppercase()) }
+            }
+            neededSymbols = set.toList()
+            shouldBeConnected = neededSymbols.isNotEmpty()
         }
-        _marketPrices.value = priceCache.toMap()
-        binanceClient.connect(symbols)
+
+        if (!shouldBeConnected) {
+            Log.d(TAG, "No active consumers; pausing WebSocket to conserve 100% battery")
+            binanceClient.pause()
+        } else {
+            for (sym in neededSymbols) {
+                priceCache.putIfAbsent(sym, MarketPrice(symbol = sym, price = null))
+            }
+            _marketPrices.value = priceCache.toMap()
+
+            if (binanceClient.connectionState.value == ConnectionState.DISCONNECTED) {
+                Log.d(TAG, "Connecting WebSocket for symbols: $neededSymbols")
+                binanceClient.connect(neededSymbols)
+            } else {
+                Log.d(TAG, "Updating WebSocket subscriptions for symbols: $neededSymbols")
+                binanceClient.updateSubscriptions(neededSymbols)
+            }
+        }
+    }
+
+    // Called by FloatingOverlayService
+    fun setOverlayRunning(running: Boolean, symbols: List<String>) {
+        synchronized(lock) {
+            isOverlayRunning = running
+            isOverlayPaused = false
+            overlaySymbols.clear()
+            overlaySymbols.addAll(symbols.map { it.uppercase() })
+        }
+        reconcileSubscriptions()
+    }
+
+    fun updateOverlaySymbols(symbols: List<String>) {
+        synchronized(lock) {
+            overlaySymbols.clear()
+            overlaySymbols.addAll(symbols.map { it.uppercase() })
+        }
+        reconcileSubscriptions()
+    }
+
+    fun pauseOverlay() {
+        synchronized(lock) {
+            isOverlayPaused = true
+        }
+        reconcileSubscriptions()
+    }
+
+    fun resumeOverlay() {
+        synchronized(lock) {
+            isOverlayPaused = false
+        }
+        reconcileSubscriptions()
+    }
+
+    // Called by in-app screens (TradingViewChartScreen / SettingsViewModel)
+    fun setAppActive(active: Boolean, currentChartSymbol: String? = null) {
+        synchronized(lock) {
+            isAppActive = active
+            if (currentChartSymbol != null) {
+                appActiveSymbol = currentChartSymbol.uppercase()
+            }
+        }
+        reconcileSubscriptions()
+    }
+
+    fun setAppActiveSymbol(symbol: String) {
+        val changed: Boolean
+        synchronized(lock) {
+            val upper = symbol.uppercase()
+            changed = appActiveSymbol != upper
+            appActiveSymbol = upper
+        }
+        if (changed) {
+            reconcileSubscriptions()
+        }
+    }
+
+    // Legacy / direct methods
+    fun start(symbols: List<String>) {
+        setOverlayRunning(true, symbols)
     }
 
     fun stop() {
-        Log.d(TAG, "Stopping market data")
-        binanceClient.disconnect()
+        setOverlayRunning(false, emptyList())
     }
 
     fun pause() {
-        Log.d(TAG, "Pausing market data (screen off)")
-        binanceClient.pause()
+        pauseOverlay()
     }
 
     fun resume() {
-        Log.d(TAG, "Resuming market data (screen on)")
-        binanceClient.resume()
+        resumeOverlay()
+    }
+
+    fun updateSymbols(symbols: List<String>) {
+        updateOverlaySymbols(symbols)
     }
 
     suspend fun fetchKlines(symbol: String, interval: String = "15m", limit: Int = 30): List<KlineItem> {
         return binanceClient.fetchKlines(symbol, interval, limit)
     }
 
-    fun updateSymbols(symbols: List<String>) {
-        Log.d(TAG, "Updating symbols to: $symbols")
-        for (sym in symbols) {
-            val upper = sym.uppercase()
-            priceCache.putIfAbsent(upper, MarketPrice(symbol = upper, price = null))
+    suspend fun load24hTicker(symbol: String): Ticker24h? {
+        val ticker = binanceClient.fetch24hTicker(symbol)
+        if (ticker != null) {
+            val current = _ticker24hMap.value.toMutableMap()
+            current[symbol.uppercase()] = ticker
+            _ticker24hMap.value = current
         }
-        _marketPrices.value = priceCache.toMap()
-        binanceClient.updateSubscriptions(symbols)
+        return ticker
     }
 
     suspend fun loadExchangeInfoIfNeeded(): Boolean {
