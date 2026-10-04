@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">CoinFloat</string>
+    <string name="channel_name">CoinFloat 시세 감시</string>
+    <string name="channel_description">실시간 암호화폐 시세 오버레이 서비스 상태 및 제어</string>
+    <string name="notification_title">CoinFloat · 시세 감시 중</string>
+    <string name="action_hide">숨기기</string>
+    <string name="action_show">표시</string>
+    <string name="action_settings">설정</string>
+    <string name="action_stop">종료</string>
+</resources>

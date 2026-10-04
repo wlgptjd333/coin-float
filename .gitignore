@@ -1,0 +1,44 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+build/
+app/build/
+.gradle/
+buildOutput/
+
+# Local configuration file (contains local SDK path)
+local.properties
+
+# Log files
+*.log
+
+# Android Studio / IntelliJ IDEA
+*.iml
+.idea/
+captures/
+.navigation/
+
+# Keystore files (do not commit signing keys)
+*.jks
+*.keystore
+
+# Temporary and OS files
+.DS_Store
+Thumbs.db
+
+# Screenshots / test dumps
+*.png
+!app/src/main/**/*.png
