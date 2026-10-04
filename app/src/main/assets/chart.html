@@ -41,6 +41,12 @@
             border-bottom: 1px solid #2A2E39;
             flex-shrink: 0;
             z-index: 50;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        #toolbar::-webkit-scrollbar {
+            display: none;
         }
         .tool-group {
             display: flex;
@@ -144,8 +150,10 @@
         <div id="toolbar">
             <div class="tool-group" id="interval_group">
                 <button class="btn-interval" data-int="1m">1분</button>
+                <button class="btn-interval" data-int="3m">3분</button>
                 <button class="btn-interval" data-int="5m">5분</button>
                 <button class="btn-interval active" data-int="15m">15분</button>
+                <button class="btn-interval" data-int="30m">30분</button>
                 <button class="btn-interval" data-int="1h">1시</button>
                 <button class="btn-interval" data-int="4h">4시</button>
                 <button class="btn-interval" data-int="1d">1일</button>

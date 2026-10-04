@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.coinfloat.app.market.PriceFormatter
+import com.coinfloat.app.settings.ChartSizeProfile
 import com.coinfloat.app.settings.OverlaySettings
 import com.coinfloat.app.settings.SymbolDisplayMode
 
@@ -53,6 +54,8 @@ fun DisplaySettingsContent(
     onPaddingChange: (Int) -> Unit,
     onChartEnabledChange: (Boolean) -> Unit = {},
     onChartIntervalChange: (String) -> Unit = {},
+    onChartSizeProfileChange: (ChartSizeProfile) -> Unit = {},
+    onCustomChartSizeChange: (widthDp: Int, heightDp: Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -369,31 +372,145 @@ fun DisplaySettingsContent(
                 }
 
                 if (settings.isChartEnabled) {
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "기본 차트 주기 (분봉)",
+                        text = "기본 차트 주기 (타임프레임)",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(6.dp))
+
+                    val row1 = listOf(
+                        "1m" to "1분",
+                        "3m" to "3분",
+                        "5m" to "5분",
+                        "15m" to "15분"
+                    )
+                    val row2 = listOf(
+                        "30m" to "30분",
+                        "1h" to "1시간",
+                        "4h" to "4시간",
+                        "1d" to "1일"
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf(
-                            "1m" to "1분",
-                            "5m" to "5분",
-                            "15m" to "15분",
-                            "1h" to "1시간"
-                        ).forEach { (interval, label) ->
+                        row1.forEach { (interval, label) ->
                             val isSelected = settings.defaultChartInterval == interval
                             FilterChip(
                                 selected = isSelected,
                                 onClick = { onChartIntervalChange(interval) },
-                                label = { Text(label) }
+                                label = { Text(label, fontSize = 12.sp) },
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        row2.forEach { (interval, label) ->
+                            val isSelected = settings.defaultChartInterval == interval
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onChartIntervalChange(interval) },
+                                label = { Text(label, fontSize = 12.sp) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "기본 창 사이즈 프로필",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    listOf(
+                        ChartSizeProfile.SMALL to "작은 사이즈 (200 × 135 dp)",
+                        ChartSizeProfile.MEDIUM to "보통 사이즈 (260 × 170 dp) [권장]",
+                        ChartSizeProfile.LARGE to "큰 사이즈 (320 × 220 dp)",
+                        ChartSizeProfile.CUSTOM to "커스텀 프로필 (${settings.customChartWidthDp} × ${settings.customChartHeightDp} dp)"
+                    ).forEach { (profile, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onChartSizeProfileChange(profile) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = settings.chartSizeProfile == profile,
+                                onClick = { onChartSizeProfileChange(profile) }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = label, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+
+                    if (settings.chartSizeProfile == ChartSizeProfile.CUSTOM) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Custom Width Slider
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "커스텀 가로 너비", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                text = "${settings.customChartWidthDp} dp",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Slider(
+                            value = settings.customChartWidthDp.toFloat(),
+                            onValueChange = {
+                                onCustomChartSizeChange(it.toInt(), settings.customChartHeightDp)
+                            },
+                            valueRange = 160f..400f,
+                            steps = 23
+                        )
+
+                        // Custom Height Slider
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "커스텀 세로 높이", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                text = "${settings.customChartHeightDp} dp",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Slider(
+                            value = settings.customChartHeightDp.toFloat(),
+                            onValueChange = {
+                                onCustomChartSizeChange(settings.customChartWidthDp, it.toInt())
+                            },
+                            valueRange = 110f..350f,
+                            steps = 23
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "💡 플로팅 차트 우측 하단의 손잡이(⇲)를 터치 드래그하면 화면에서 바로 실시간 크기 조절이 가능하며 커스텀 프로필에 자동 저장됩니다. 상단 헤더를 드래그하여 차트 창 위치도 자유롭게 이동할 수 있습니다.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

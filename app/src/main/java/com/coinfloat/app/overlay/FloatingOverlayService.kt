@@ -77,6 +77,11 @@ class FloatingOverlayService : Service() {
             klineFetcher = { symbol, interval ->
                 marketDataRepository.fetchKlines(symbol, interval, limit = 30)
             }
+            onMiniChartResizedListener = { wDp, hDp ->
+                serviceScope.launch {
+                    settingsRepository.updateCustomChartSize(wDp, hDp)
+                }
+            }
         }
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 

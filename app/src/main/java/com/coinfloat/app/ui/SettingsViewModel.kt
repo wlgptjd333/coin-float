@@ -14,6 +14,7 @@ import com.coinfloat.app.market.ConnectionState
 import com.coinfloat.app.market.MarketDataRepository
 import com.coinfloat.app.market.SymbolInfo
 import com.coinfloat.app.overlay.FloatingOverlayService
+import com.coinfloat.app.settings.ChartSizeProfile
 import com.coinfloat.app.settings.OverlaySettings
 import com.coinfloat.app.settings.SettingsRepository
 import com.coinfloat.app.settings.SymbolDisplayMode
@@ -248,4 +249,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             settingsRepository.updateChartInterval(interval)
         }
     }
+
+    fun updateChartSizeProfile(profile: ChartSizeProfile) {
+        viewModelScope.launch {
+            settingsRepository.updateChartSizeProfile(profile)
+        }
+    }
+
+    fun updateCustomChartSize(widthDp: Int, heightDp: Int) {
+        viewModelScope.launch {
+            settingsRepository.updateCustomChartSize(widthDp, heightDp)
+        }
+    }
 }
+

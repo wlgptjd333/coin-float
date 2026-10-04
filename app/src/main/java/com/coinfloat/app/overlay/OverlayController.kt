@@ -53,6 +53,7 @@ class OverlayController(private val context: Context) {
     private var isOverlayAttached = false
     private var isDragging = false
     private var onPositionSavedListener: ((Int, Int) -> Unit)? = null
+    var onMiniChartResizedListener: ((Int, Int) -> Unit)? = null
 
     fun isShowing(): Boolean = isOverlayAttached && overlayView != null
 
@@ -197,6 +198,21 @@ class OverlayController(private val context: Context) {
 
             if (!settings.isChartEnabled && isMiniChartShowing) {
                 hideMiniChart()
+            } else if (isMiniChartShowing && miniChartView != null && miniChartParams != null) {
+                val (wDp, hDp) = settings.getChartDimensionsDp()
+                val density = context.resources.displayMetrics.density
+                val targetW = (wDp * density).toInt()
+                val targetH = (hDp * density).toInt()
+                val p = miniChartParams!!
+                if (p.width != targetW || p.height != targetH) {
+                    p.width = targetW
+                    p.height = targetH
+                    try {
+                        windowManager.updateViewLayout(miniChartView, p)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error updating mini chart layout on settings change: ${e.message}")
+                    }
+                }
             }
         }
     }
@@ -322,8 +338,9 @@ class OverlayController(private val context: Context) {
 
             val baseParams = layoutParams ?: return@runOnMainThread
             val density = context.resources.displayMetrics.density
-            val chartWidth = (240 * density).toInt()
-            val chartHeight = (155 * density).toInt()
+            val (wDp, hDp) = latestSettings.getChartDimensionsDp()
+            val chartWidth = (wDp * density).toInt()
+            val chartHeight = (hDp * density).toInt()
             val (screenWidth, screenHeight) = getRealScreenSize()
 
             var chartX = baseParams.x
@@ -340,7 +357,7 @@ class OverlayController(private val context: Context) {
 
             val params = WindowManager.LayoutParams(
                 chartWidth,
-                WindowManager.LayoutParams.WRAP_CONTENT,
+                chartHeight,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
@@ -382,6 +399,73 @@ class OverlayController(private val context: Context) {
                 }
             )
             view.setActiveInterval(currentChartInterval)
+
+            // Setup moving window via header drag
+            var startMoveX = 0
+            var startMoveY = 0
+            view.onMoveStart = {
+                startMoveX = miniChartParams?.x ?: params.x
+                startMoveY = miniChartParams?.y ?: params.y
+            }
+            view.onMoveDelta = { dx, dy ->
+                val p = miniChartParams
+                if (p != null) {
+                    val (sW, sH) = getRealScreenSize()
+                    val maxSafeX = (sW - p.width).coerceAtLeast(0)
+                    val maxSafeY = (sH - p.height).coerceAtLeast(0)
+                    p.x = (startMoveX + dx).coerceIn(0, maxSafeX)
+                    p.y = (startMoveY + dy).coerceIn(0, maxSafeY)
+                    try {
+                        windowManager.updateViewLayout(view, p)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error moving mini chart: ${e.message}")
+                    }
+                }
+            }
+
+            // Setup resizing window via bottom-right grip drag
+            var startResizeW = 0
+            var startResizeH = 0
+            view.onResizeStart = {
+                startResizeW = miniChartParams?.width ?: params.width
+                startResizeH = miniChartParams?.height ?: params.height
+            }
+            view.onResizeDelta = { dx, dy ->
+                val p = miniChartParams
+                if (p != null) {
+                    val (sW, sH) = getRealScreenSize()
+                    val minW = (160 * density).toInt()
+                    val maxW = (sW - (16 * density).toInt()).coerceAtLeast(minW)
+                    val minH = (110 * density).toInt()
+                    val maxH = (sH - (32 * density).toInt()).coerceAtLeast(minH)
+
+                    val newW = (startResizeW + dx).coerceIn(minW, maxW)
+                    val newH = (startResizeH + dy).coerceIn(minH, maxH)
+
+                    if (p.x + newW > sW - (8 * density).toInt()) {
+                        p.x = (sW - (8 * density).toInt() - newW).coerceAtLeast((8 * density).toInt())
+                    }
+                    if (p.y + newH > sH - (16 * density).toInt()) {
+                        p.y = (sH - (16 * density).toInt() - newH).coerceAtLeast((8 * density).toInt())
+                    }
+
+                    p.width = newW
+                    p.height = newH
+                    try {
+                        windowManager.updateViewLayout(view, p)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error resizing mini chart: ${e.message}")
+                    }
+                }
+            }
+            view.onResizeEnd = {
+                val p = miniChartParams
+                if (p != null) {
+                    val finalWidthDp = ((p.width / density) + 0.5f).toInt()
+                    val finalHeightDp = ((p.height / density) + 0.5f).toInt()
+                    onMiniChartResizedListener?.invoke(finalWidthDp, finalHeightDp)
+                }
+            }
 
             try {
                 windowManager.addView(view, params)

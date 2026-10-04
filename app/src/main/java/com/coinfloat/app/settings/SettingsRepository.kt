@@ -43,6 +43,9 @@ class SettingsRepository(
         private val KEY_OVERLAY_VISIBLE = booleanPreferencesKey("overlay_visible")
         private val KEY_CHART_ENABLED = booleanPreferencesKey("chart_enabled")
         private val KEY_CHART_INTERVAL = stringPreferencesKey("chart_interval")
+        private val KEY_CHART_SIZE_PROFILE = stringPreferencesKey("chart_size_profile")
+        private val KEY_CUSTOM_CHART_WIDTH_DP = intPreferencesKey("custom_chart_width_dp")
+        private val KEY_CUSTOM_CHART_HEIGHT_DP = intPreferencesKey("custom_chart_height_dp")
 
         @Volatile
         private var instance: SettingsRepository? = null
@@ -76,6 +79,13 @@ class SettingsRepository(
                 SymbolDisplayMode.SHORT
             }
 
+            val profileStr = preferences[KEY_CHART_SIZE_PROFILE] ?: ChartSizeProfile.MEDIUM.name
+            val profile = try {
+                ChartSizeProfile.valueOf(profileStr)
+            } catch (_: Exception) {
+                ChartSizeProfile.MEDIUM
+            }
+
             OverlaySettings(
                 selectedSymbols = symbols,
                 symbolDisplayMode = mode,
@@ -91,7 +101,10 @@ class SettingsRepository(
                 isServiceEnabled = preferences[KEY_SERVICE_ENABLED] ?: false,
                 isOverlayVisible = preferences[KEY_OVERLAY_VISIBLE] ?: true,
                 isChartEnabled = preferences[KEY_CHART_ENABLED] ?: true,
-                defaultChartInterval = preferences[KEY_CHART_INTERVAL] ?: "15m"
+                defaultChartInterval = preferences[KEY_CHART_INTERVAL] ?: "15m",
+                chartSizeProfile = profile,
+                customChartWidthDp = preferences[KEY_CUSTOM_CHART_WIDTH_DP] ?: 260,
+                customChartHeightDp = preferences[KEY_CUSTOM_CHART_HEIGHT_DP] ?: 170
             )
         }
         .stateIn(
@@ -226,4 +239,19 @@ class SettingsRepository(
             preferences[KEY_CHART_INTERVAL] = interval
         }
     }
+
+    suspend fun updateChartSizeProfile(profile: ChartSizeProfile) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_CHART_SIZE_PROFILE] = profile.name
+        }
+    }
+
+    suspend fun updateCustomChartSize(widthDp: Int, heightDp: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_CHART_SIZE_PROFILE] = ChartSizeProfile.CUSTOM.name
+            preferences[KEY_CUSTOM_CHART_WIDTH_DP] = widthDp.coerceIn(160, 420)
+            preferences[KEY_CUSTOM_CHART_HEIGHT_DP] = heightDp.coerceIn(110, 360)
+        }
+    }
 }
+
