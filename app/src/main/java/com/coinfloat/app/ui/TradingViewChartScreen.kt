@@ -1,8 +1,9 @@
 package com.coinfloat.app.ui
 
 import android.annotation.SuppressLint
-import android.graphics.Bitmap
-import android.view.View
+import android.content.Intent
+import android.net.Uri
+import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -20,23 +21,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,14 +47,14 @@ fun TradingViewChartScreen(
     modifier: Modifier = Modifier
 ) {
     val currentSymbol = if (activeSymbol.isNotBlank()) activeSymbol else selectedSymbols.firstOrNull() ?: "BTCUSDT"
-    var isLoading by remember { mutableStateOf(true) }
+    val context = LocalContext.current
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF131722)) // Authentic TradingView dark canvas
+            .background(Color(0xFF131722)) // TradingView dark canvas
     ) {
-        // 1. Symbol Selection Chips Header
+        // 1. Symbol Selection Chips & Header Bar
         Surface(
             color = Color(0xFF1E222D),
             shadowElevation = 4.dp
@@ -83,7 +78,7 @@ fun TradingViewChartScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Binance Futures (${currentSymbol.uppercase()})",
+                            text = "Binance (${currentSymbol.uppercase()})",
                             color = Color(0xFFD1D4DC),
                             fontSize = 12.sp,
                             fontFamily = FontFamily.Monospace,
@@ -91,18 +86,45 @@ fun TradingViewChartScreen(
                         )
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF2A2E39))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "USDT-M",
-                            color = Color(0xFFF0B90B), // Binance Gold
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF2A2E39))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "USDT-M",
+                                color = Color(0xFFF0B90B), // Binance Gold
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF2962FF))
+                                .clickable {
+                                    val clean = currentSymbol.trim().uppercase()
+                                    val sym = if (clean.endsWith("USDT")) "BINANCE:${clean}.P" else "BINANCE:$clean"
+                                    val intent = Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://kr.tradingview.com/chart/?symbol=$sym")
+                                    )
+                                    context.startActivity(intent)
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "웹 정식차트 ↗",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
 
@@ -143,144 +165,95 @@ fun TradingViewChartScreen(
             }
         }
 
-        // 2. Interactive TradingView Chart WebView
+        // 2. High-Performance TradingView Lightweight Chart WebView
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .weight(1f)
         ) {
             AndroidView(
-                factory = { context ->
-                    WebView(context).apply {
-                        setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        WebView.setWebContentsDebuggingEnabled(true)
                         setBackgroundColor(android.graphics.Color.parseColor("#131722"))
+                        tag = currentSymbol
+
                         settings.apply {
                             javaScriptEnabled = true
                             domStorageEnabled = true
                             databaseEnabled = true
+                            allowFileAccess = true
+                            allowContentAccess = true
+                            allowFileAccessFromFileURLs = true
+                            allowUniversalAccessFromFileURLs = true
+                            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                             loadWithOverviewMode = true
                             useWideViewPort = true
-                            cacheMode = WebSettings.LOAD_DEFAULT
+                            cacheMode = WebSettings.LOAD_NO_CACHE
                             builtInZoomControls = false
                             displayZoomControls = false
                             setSupportZoom(true)
                         }
+
                         webViewClient = object : WebViewClient() {
-                            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                                isLoading = true
+                            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                super.onPageStarted(view, url, favicon)
+                                android.util.Log.e("CoinFloat_TV", "onPageStarted: $url")
                             }
 
                             override fun onPageFinished(view: WebView?, url: String?) {
-                                isLoading = false
+                                super.onPageFinished(view, url)
+                                android.util.Log.e("CoinFloat_TV", "onPageFinished: $url")
+                                view?.evaluateJavascript("window.loadSymbol('$currentSymbol');", null)
+                            }
+
+                            override fun onReceivedError(
+                                view: WebView?,
+                                request: android.webkit.WebResourceRequest?,
+                                error: android.webkit.WebResourceError?
+                            ) {
+                                super.onReceivedError(view, request, error)
+                                android.util.Log.e(
+                                    "CoinFloat_TV",
+                                    "onReceivedError: ${error?.description} (${error?.errorCode}) url: ${request?.url}"
+                                )
+                            }
+
+                            override fun onReceivedHttpError(
+                                view: WebView?,
+                                request: android.webkit.WebResourceRequest?,
+                                errorResponse: android.webkit.WebResourceResponse?
+                            ) {
+                                super.onReceivedHttpError(view, request, errorResponse)
+                                android.util.Log.e(
+                                    "CoinFloat_TV",
+                                    "onReceivedHttpError: ${errorResponse?.statusCode} url: ${request?.url}"
+                                )
                             }
                         }
-                        webChromeClient = WebChromeClient()
-                        loadDataWithBaseURL(
-                            "https://www.tradingview.com",
-                            buildTradingViewHtml(currentSymbol),
-                            "text/html",
-                            "UTF-8",
-                            null
-                        )
+
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                                android.util.Log.e(
+                                    "CoinFloat_TV",
+                                    "[JS] ${consoleMessage?.message()} (line ${consoleMessage?.lineNumber()})"
+                                )
+                                return true
+                            }
+                        }
+
+                        loadUrl("file:///android_asset/chart.html")
                     }
                 },
                 update = { webView ->
                     val tag = webView.tag as? String
                     if (tag != currentSymbol) {
                         webView.tag = currentSymbol
-                        webView.loadDataWithBaseURL(
-                            "https://www.tradingview.com",
-                            buildTradingViewHtml(currentSymbol),
-                            "text/html",
-                            "UTF-8",
-                            null
-                        )
+                        webView.evaluateJavascript("window.loadSymbol('$currentSymbol');", null)
                     }
                 },
                 modifier = Modifier.fillMaxSize()
             )
-
-            // Loading Overlay Indicator
-            if (isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0xFF131722).copy(alpha = 0.7f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            color = Color(0xFF2962FF),
-                            modifier = Modifier.size(36.dp)
-                        )
-                        Text(
-                            text = "트레이딩뷰 차트 로딩 중...",
-                            color = Color(0xFF848E9C),
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
         }
     }
-}
-
-private fun buildTradingViewHtml(symbol: String): String {
-    val clean = symbol.trim().uppercase()
-    val tvSymbol = if (clean.endsWith("USDT")) {
-        "BINANCE:${clean}.P"
-    } else {
-        "BINANCE:$clean"
-    }
-
-    return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-            <style>
-                html, body {
-                    margin: 0;
-                    padding: 0;
-                    width: 100%;
-                    height: 100%;
-                    background-color: #131722;
-                    overflow: hidden;
-                }
-                #tv_chart_container {
-                    width: 100%;
-                    height: 100%;
-                }
-            </style>
-        </head>
-        <body>
-            <div id="tv_chart_container"></div>
-            <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-            <script type="text/javascript">
-                new TradingView.widget({
-                    "autosize": true,
-                    "symbol": "$tvSymbol",
-                    "interval": "15",
-                    "timezone": "Asia/Seoul",
-                    "theme": "dark",
-                    "style": "1",
-                    "locale": "kr",
-                    "toolbar_bg": "#1E222D",
-                    "enable_publishing": false,
-                    "allow_symbol_change": true,
-                    "container_id": "tv_chart_container",
-                    "hide_side_toolbar": false,
-                    "studies": [
-                        "MASimple@tv-basicstudies",
-                        "RSI@tv-basicstudies"
-                    ]
-                });
-            </script>
-        </body>
-        </html>
-    """.trimIndent()
 }

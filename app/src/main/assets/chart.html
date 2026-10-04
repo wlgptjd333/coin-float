@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CoinFloat TradingView Chart</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            background-color: #131722;
+            color: #D1D4DC;
+            font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+            overflow: hidden;
+            position: relative;
+        }
+        #wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        #toolbar {
+            height: 40px;
+            background-color: #1E222D;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 10px;
+            border-bottom: 1px solid #2A2E39;
+            flex-shrink: 0;
+            z-index: 50;
+        }
+        .tool-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .btn-interval, .btn-tool {
+            background: transparent;
+            border: 1px solid transparent;
+            color: #787B86;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-interval:active, .btn-tool:active {
+            transform: scale(0.95);
+        }
+        .btn-interval.active {
+            background-color: #2962FF;
+            color: #FFFFFF;
+            font-weight: bold;
+        }
+        .btn-tool.active {
+            background-color: #2A2E39;
+            color: #2962FF;
+            border-color: #363C4E;
+        }
+        #legend {
+            position: absolute;
+            top: 48px;
+            left: 12px;
+            z-index: 20;
+            pointer-events: none;
+            font-family: 'SF Mono', Consolas, 'Courier New', monospace;
+            font-size: 11px;
+            line-height: 1.5;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        }
+        .legend-symbol {
+            font-weight: bold;
+            color: #FFFFFF;
+            font-size: 13px;
+            margin-right: 6px;
+        }
+        .legend-ohlc {
+            color: #848E9C;
+        }
+        .legend-val {
+            color: #D1D4DC;
+            margin-right: 6px;
+        }
+        .legend-val.up { color: #089981; }
+        .legend-val.down { color: #F23645; }
+        .legend-ma {
+            font-size: 10px;
+            margin-top: 2px;
+        }
+        .ma7-color { color: #F0B90B; }
+        .ma25-color { color: #E040FB; }
+        .ma99-color { color: #00E5FF; }
+
+        #chart_container {
+            flex: 1;
+            width: 100%;
+            height: calc(100% - 40px);
+            position: relative;
+            background-color: #131722;
+        }
+        #loading_spinner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            color: #848E9C;
+            font-size: 12px;
+            z-index: 30;
+        }
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #2A2E39;
+            border-top: 3px solid #2962FF;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    <script src="lightweight-charts.js"></script>
+</head>
+<body>
+    <div id="wrapper">
+        <div id="toolbar">
+            <div class="tool-group" id="interval_group">
+                <button class="btn-interval" data-int="1m">1분</button>
+                <button class="btn-interval" data-int="5m">5분</button>
+                <button class="btn-interval active" data-int="15m">15분</button>
+                <button class="btn-interval" data-int="1h">1시</button>
+                <button class="btn-interval" data-int="4h">4시</button>
+                <button class="btn-interval" data-int="1d">1일</button>
+            </div>
+            <div class="tool-group">
+                <button class="btn-tool active" id="btn_toggle_ma">MA</button>
+                <button class="btn-tool active" id="btn_toggle_vol">VOL</button>
+            </div>
+        </div>
+
+        <div id="legend">
+            <div>
+                <span class="legend-symbol" id="legend_sym">BTCUSDT.P</span>
+                <span class="legend-ohlc">시:</span> <span class="legend-val" id="val_o">-</span>
+                <span class="legend-ohlc">고:</span> <span class="legend-val" id="val_h">-</span>
+                <span class="legend-ohlc">저:</span> <span class="legend-val" id="val_l">-</span>
+                <span class="legend-ohlc">종:</span> <span class="legend-val" id="val_c">-</span>
+            </div>
+            <div class="legend-ma" id="legend_ma_box">
+                <span class="ma7-color">MA(7): <span id="val_ma7">-</span></span> &nbsp;
+                <span class="ma25-color">MA(25): <span id="val_ma25">-</span></span> &nbsp;
+                <span class="ma99-color">MA(99): <span id="val_ma99">-</span></span>
+            </div>
+        </div>
+
+        <div id="chart_container">
+            <div id="loading_spinner">
+                <div class="spinner"></div>
+                <span>차트 로딩 중...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.addEventListener('error', function(e) {
+            console.error('[Chart Error] ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+        });
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('[Unhandled Rejection] ' + (e.reason ? e.reason.message || e.reason : 'unknown'));
+        });
+        console.log('[Chart Init] Script started. LightweightCharts type:', typeof window.LightweightCharts);
+
+        let currentSymbol = "BTCUSDT";
+        let currentInterval = "15m";
+        let ws = null;
+        let chart = null;
+        let candleSeries = null;
+        let volumeSeries = null;
+        let ma7Series = null;
+        let ma25Series = null;
+        let ma99Series = null;
+        let showMA = true;
+        let showVol = true;
+        let candlesData = [];
+
+        function resizeChart() {
+            const container = document.getElementById('chart_container');
+            if (chart && container) {
+                const w = container.clientWidth || window.innerWidth;
+                const h = container.clientHeight || (window.innerHeight - 40);
+                if (w > 0 && h > 0) {
+                    chart.applyOptions({ width: w, height: h });
+                }
+            }
+        }
+
+        function initChart() {
+            if (chart) return;
+            const container = document.getElementById('chart_container');
+            const initW = container.clientWidth || window.innerWidth;
+            const initH = container.clientHeight || (window.innerHeight - 40);
+            console.log('[Chart] Initializing chart with dimensions:', initW, 'x', initH);
+
+            chart = LightweightCharts.createChart(container, {
+                width: initW,
+                height: initH,
+                layout: {
+                    background: { color: '#131722' },
+                    textColor: '#787B86',
+                    fontSize: 11,
+                    fontFamily: "-apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif"
+                },
+                grid: {
+                    vertLines: { color: '#1E222D' },
+                    horzLines: { color: '#1E222D' }
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: {
+                        color: '#758696',
+                        width: 1,
+                        style: 3,
+                        labelBackgroundColor: '#2962FF'
+                    },
+                    horzLine: {
+                        color: '#758696',
+                        width: 1,
+                        style: 3,
+                        labelBackgroundColor: '#2962FF'
+                    }
+                },
+                rightPriceScale: {
+                    borderColor: '#2A2E39',
+                    scaleMargins: {
+                        top: 0.1,
+                        bottom: 0.2
+                    }
+                },
+                timeScale: {
+                    borderColor: '#2A2E39',
+                    timeVisible: true,
+                    secondsVisible: false
+                }
+            });
+
+            // 1. Candlestick Series (v5 API)
+            candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+                upColor: '#089981',
+                downColor: '#F23645',
+                borderVisible: false,
+                wickUpColor: '#089981',
+                wickDownColor: '#F23645'
+            });
+
+            // 2. Volume Series
+            volumeSeries = chart.addSeries(LightweightCharts.HistogramSeries, {
+                color: '#26a69a',
+                priceFormat: { type: 'volume' },
+                priceScaleId: '',
+            });
+            volumeSeries.priceScale().applyOptions({
+                scaleMargins: {
+                    top: 0.8,
+                    bottom: 0
+                }
+            });
+
+            // 3. Moving Averages
+            ma7Series = chart.addSeries(LightweightCharts.LineSeries, {
+                color: '#F0B90B',
+                lineWidth: 1,
+                crosshairMarkerVisible: false,
+                lastValueVisible: false,
+                priceLineVisible: false
+            });
+
+            ma25Series = chart.addSeries(LightweightCharts.LineSeries, {
+                color: '#E040FB',
+                lineWidth: 1,
+                crosshairMarkerVisible: false,
+                lastValueVisible: false,
+                priceLineVisible: false
+            });
+
+            ma99Series = chart.addSeries(LightweightCharts.LineSeries, {
+                color: '#00E5FF',
+                lineWidth: 1,
+                crosshairMarkerVisible: false,
+                lastValueVisible: false,
+                priceLineVisible: false
+            });
+
+            window.addEventListener('resize', resizeChart);
+            setTimeout(resizeChart, 50);
+            setTimeout(resizeChart, 200);
+
+            // Crosshair subscribe
+            chart.subscribeCrosshairMove(param => {
+                if (!param || !param.time || !param.seriesData.get(candleSeries)) {
+                    updateLegendWithLast();
+                    return;
+                }
+                const data = param.seriesData.get(candleSeries);
+                updateLegendValues(data);
+
+                if (showMA) {
+                    const m7 = param.seriesData.get(ma7Series);
+                    const m25 = param.seriesData.get(ma25Series);
+                    const m99 = param.seriesData.get(ma99Series);
+                    document.getElementById('val_ma7').innerText = m7 ? m7.value.toFixed(2) : '-';
+                    document.getElementById('val_ma25').innerText = m25 ? m25.value.toFixed(2) : '-';
+                    document.getElementById('val_ma99').innerText = m99 ? m99.value.toFixed(2) : '-';
+                }
+            });
+        }
+
+        function calculateMA(data, period) {
+            const result = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i < period - 1) continue;
+                let sum = 0;
+                for (let j = 0; j < period; j++) {
+                    sum += data[i - j].close;
+                }
+                result.push({
+                    time: data[i].time,
+                    value: sum / period
+                });
+            }
+            return result;
+        }
+
+        function updateLegendValues(c) {
+            if (!c) return;
+            const isUp = c.close >= c.open;
+            const cls = isUp ? 'legend-val up' : 'legend-val down';
+
+            const o = document.getElementById('val_o');
+            const h = document.getElementById('val_h');
+            const l = document.getElementById('val_l');
+            const cl = document.getElementById('val_c');
+
+            o.className = cls; o.innerText = c.open.toFixed(2);
+            h.className = cls; h.innerText = c.high.toFixed(2);
+            l.className = cls; l.innerText = c.low.toFixed(2);
+            cl.className = cls; cl.innerText = c.close.toFixed(2);
+        }
+
+        function updateLegendWithLast() {
+            if (candlesData.length > 0) {
+                const last = candlesData[candlesData.length - 1];
+                updateLegendValues(last);
+            }
+        }
+
+        async function fetchKlines(symbol, interval) {
+            console.log('[Chart] fetchKlines starting for ' + symbol + ' (' + interval + ')');
+            document.getElementById('loading_spinner').style.display = 'flex';
+            document.getElementById('legend_sym').innerText = symbol.toUpperCase() + '.P';
+
+            try {
+                const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&limit=500`;
+                console.log('[Chart] Fetching url: ' + url);
+                const res = await fetch(url);
+                console.log('[Chart] Fetch status: ' + res.status);
+                const raw = await res.json();
+                console.log('[Chart] Fetched candles count: ' + raw.length);
+
+                candlesData = [];
+                const volumeData = [];
+
+                for (let item of raw) {
+                    const time = Math.floor(item[0] / 1000);
+                    const open = parseFloat(item[1]);
+                    const high = parseFloat(item[2]);
+                    const low = parseFloat(item[3]);
+                    const close = parseFloat(item[4]);
+                    const vol = parseFloat(item[5]);
+
+                    candlesData.push({ time, open, high, low, close });
+                    volumeData.push({
+                        time,
+                        value: vol,
+                        color: close >= open ? 'rgba(8, 153, 129, 0.4)' : 'rgba(242, 54, 69, 0.4)'
+                    });
+                }
+
+                candleSeries.setData(candlesData);
+                volumeSeries.setData(volumeData);
+                console.log('[Chart] candleSeries.setData succeeded');
+
+                if (showMA) {
+                    ma7Series.setData(calculateMA(candlesData, 7));
+                    ma25Series.setData(calculateMA(candlesData, 25));
+                    ma99Series.setData(calculateMA(candlesData, 99));
+                }
+
+                resizeChart();
+                chart.timeScale().fitContent();
+                updateLegendWithLast();
+                document.getElementById('loading_spinner').style.display = 'none';
+                console.log('[Chart] Chart loaded & spinner hidden');
+
+                startWebSocket(symbol, interval);
+            } catch (err) {
+                console.error("[Chart] fetchKlines error: " + err.message + ' stack: ' + err.stack);
+                document.getElementById('loading_spinner').innerHTML = `<span style="color:#F23645">차트 수신 실패: ${err.message}</span>`;
+            }
+        }
+
+        function startWebSocket(symbol, interval) {
+            if (ws) {
+                try { ws.close(); } catch(e) {}
+                ws = null;
+            }
+
+            const streamName = `${symbol.toLowerCase()}@kline_${interval}`;
+            const wsUrl = `wss://fstream.binance.com/ws/${streamName}`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data && data.k) {
+                        const k = data.k;
+                        const time = Math.floor(k.t / 1000);
+                        const open = parseFloat(k.o);
+                        const high = parseFloat(k.h);
+                        const low = parseFloat(k.l);
+                        const close = parseFloat(k.c);
+                        const vol = parseFloat(k.v);
+
+                        const candle = { time, open, high, low, close };
+                        candleSeries.update(candle);
+
+                        volumeSeries.update({
+                            time,
+                            value: vol,
+                            color: close >= open ? 'rgba(8, 153, 129, 0.4)' : 'rgba(242, 54, 69, 0.4)'
+                        });
+
+                        if (candlesData.length > 0) {
+                            if (candlesData[candlesData.length - 1].time === time) {
+                                candlesData[candlesData.length - 1] = candle;
+                            } else {
+                                candlesData.push(candle);
+                            }
+                        }
+                        updateLegendWithLast();
+                    }
+                } catch(e) {
+                    console.error("ws parse error:", e);
+                }
+            };
+        }
+
+        window.loadSymbol = function(symbol, interval) {
+            console.log('[Chart] window.loadSymbol called:', symbol, interval);
+            currentSymbol = symbol;
+            if (interval) currentInterval = interval;
+            if (!chart) {
+                initChart();
+            }
+            fetchKlines(currentSymbol, currentInterval);
+        };
+
+        function startApp() {
+            console.log('[Chart] startApp executing. readyState:', document.readyState);
+            initChart();
+
+            document.querySelectorAll('.btn-interval').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.btn-interval').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentInterval = btn.getAttribute('data-int');
+                    fetchKlines(currentSymbol, currentInterval);
+                });
+            });
+
+            const btnMA = document.getElementById('btn_toggle_ma');
+            btnMA.addEventListener('click', () => {
+                showMA = !showMA;
+                btnMA.classList.toggle('active', showMA);
+                document.getElementById('legend_ma_box').style.display = showMA ? 'block' : 'none';
+                if (showMA) {
+                    ma7Series.setData(calculateMA(candlesData, 7));
+                    ma25Series.setData(calculateMA(candlesData, 25));
+                    ma99Series.setData(calculateMA(candlesData, 99));
+                } else {
+                    ma7Series.setData([]);
+                    ma25Series.setData([]);
+                    ma99Series.setData([]);
+                }
+            });
+
+            const btnVol = document.getElementById('btn_toggle_vol');
+            btnVol.addEventListener('click', () => {
+                showVol = !showVol;
+                btnVol.classList.toggle('active', showVol);
+                volumeSeries.applyOptions({ visible: showVol });
+            });
+
+            fetchKlines(currentSymbol, currentInterval);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startApp);
+        } else {
+            startApp();
+        }
+    </script>
+</body>
+</html>

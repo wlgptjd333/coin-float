@@ -73,7 +73,7 @@ fun SettingsScreen(
 
     val selectedTabIndex by viewModel.selectedTabIndex.collectAsState()
     val activeChartSymbol by viewModel.activeChartSymbol.collectAsState()
-    val tabs = listOf("상태 & 미리보기", "차트", "심볼 관리", "표시 설정", "안내")
+    val tabs = listOf("상태", "차트", "심볼", "설정", "안내")
 
     Scaffold(
         topBar = {
