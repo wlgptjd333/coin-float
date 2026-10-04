@@ -71,8 +71,9 @@ fun SettingsScreen(
     val marketPrices by viewModel.marketPrices.collectAsState()
     val isServiceActive by viewModel.isServiceActive.collectAsState()
 
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("상태 & 미리보기", "심볼 관리", "표시 설정", "안내")
+    val selectedTabIndex by viewModel.selectedTabIndex.collectAsState()
+    val activeChartSymbol by viewModel.activeChartSymbol.collectAsState()
+    val tabs = listOf("상태 & 미리보기", "차트", "심볼 관리", "표시 설정", "안내")
 
     Scaffold(
         topBar = {
@@ -106,21 +107,30 @@ fun SettingsScreen(
                 tabs.forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTabIndex == index,
-                        onClick = { selectedTabIndex = index },
+                        onClick = { viewModel.selectTab(index) },
                         text = { Text(text = title, fontWeight = FontWeight.SemiBold) }
                     )
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                when (selectedTabIndex) {
-                    0 -> {
+            if (selectedTabIndex == 1) {
+                // Interactive TradingView Chart (full viewport without outer vertical scroll)
+                TradingViewChartScreen(
+                    selectedSymbols = settings.selectedSymbols,
+                    activeSymbol = activeChartSymbol,
+                    onSymbolSelected = viewModel::selectChartSymbol,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    when (selectedTabIndex) {
+                        0 -> {
                         // Section 1: Permission Warnings
                         if (!hasOverlayPermission) {
                             Card(
@@ -348,7 +358,7 @@ fun SettingsScreen(
                         OverlayPreviewCard(settings = settings)
                     }
 
-                    1 -> {
+                    2 -> {
                         SymbolManagementContent(
                             selectedSymbols = settings.selectedSymbols,
                             searchQuery = searchQuery,
@@ -362,7 +372,7 @@ fun SettingsScreen(
                         )
                     }
 
-                    2 -> {
+                    3 -> {
                         DisplaySettingsContent(
                             settings = settings,
                             onSymbolDisplayModeChange = viewModel::updateSymbolDisplayMode,
@@ -377,7 +387,7 @@ fun SettingsScreen(
                         )
                     }
 
-                    3 -> {
+                    4 -> {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -419,7 +429,7 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "CoinFloat v1.0.0",
+                                    text = "CoinFloat v1.2.0",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -427,6 +437,7 @@ fun SettingsScreen(
                                 Text(
                                     text = "• 거래소: Binance USDⓈ-M Futures (공개 시장 데이터)\n" +
                                             "• 실시간 스트림: Aggregate Trade Stream (100ms)\n" +
+                                            "• 트레이딩뷰 실시간 차트 & 미니 캔들 팝업 내장\n" +
                                             "• 계정/API 키/로그인 불필요, 주문/거래 기능 없음",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -439,3 +450,5 @@ fun SettingsScreen(
         }
     }
 }
+}
+

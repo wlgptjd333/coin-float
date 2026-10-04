@@ -26,6 +26,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        handleIntent(intent)
         requestNotificationPermissionIfNeeded()
 
         setContent {
@@ -40,9 +41,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
     override fun onResume() {
         super.onResume()
         viewModel.refreshPermissions()
+    }
+
+    private fun handleIntent(intent: android.content.Intent?) {
+        val targetTab = intent?.getIntExtra("TARGET_TAB", -1) ?: -1
+        if (targetTab >= 0) {
+            viewModel.selectTab(targetTab)
+        }
+        val targetSymbol = intent?.getStringExtra("TARGET_SYMBOL")
+        if (!targetSymbol.isNullOrBlank()) {
+            viewModel.selectChartSymbol(targetSymbol)
+        }
     }
 
     private fun requestNotificationPermissionIfNeeded() {

@@ -49,6 +49,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     val isLoadingSymbols: StateFlow<Boolean> = marketDataRepository.isLoadingSymbols
 
+    private val _selectedTabIndex = MutableStateFlow(0)
+    val selectedTabIndex: StateFlow<Int> = _selectedTabIndex.asStateFlow()
+
+    private val _activeChartSymbol = MutableStateFlow("BTCUSDT")
+    val activeChartSymbol: StateFlow<String> = _activeChartSymbol.asStateFlow()
+
+    fun selectTab(index: Int) {
+        _selectedTabIndex.value = index
+    }
+
+    fun selectChartSymbol(symbol: String) {
+        _activeChartSymbol.value = symbol.uppercase()
+    }
+
     fun refreshPermissions() {
         _hasOverlayPermission.value = checkOverlayPermission()
         _hasNotificationPermission.value = checkNotificationPermission()

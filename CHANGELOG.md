@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-10-05
+
+### Added
+- **Full Interactive TradingView Chart (앱 내 트레이딩뷰 전문 차트 탑재)**:
+  - Added dedicated "차트" tab in `MainActivity` with embedded TradingView Advanced Real-Time Chart widget.
+  - Dark-themed hardware-accelerated WebView rendering Binance USDⓈ-M Perpetual pairs (`BINANCE:${symbol}.P`).
+  - Supports all timeframe intervals, interactive crosshair, pinch-to-zoom, pan, technical indicators (RSI, MA), and volume.
+  - Horizontal chip selector allows instant switching between all user-selected symbols.
+- **Deep Linking from Mini Chart to TradingView (미니 차트에서 트레이딩뷰 전체 화면 연동)**:
+  - Added expand button (`⛶`) in the floating mini-chart header.
+  - Tapping `⛶` seamlessly transitions the user to `MainActivity`'s "차트" tab, automatically selecting the active symbol and auto-closing the mini chart popup.
+
+---
+
 ## [1.1.0] - 2026-10-05
 
 ### Added

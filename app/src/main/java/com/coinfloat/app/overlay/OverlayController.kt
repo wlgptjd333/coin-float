@@ -366,6 +366,17 @@ class OverlayController(private val context: Context) {
                         loadChartData()
                     }
                 },
+                onExpandClicked = {
+                    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                        putExtra("TARGET_TAB", 1)
+                        putExtra("TARGET_SYMBOL", currentChartSymbol)
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    }
+                    if (intent != null) {
+                        context.startActivity(intent)
+                        hideMiniChart()
+                    }
+                },
                 onCloseClicked = {
                     hideMiniChart()
                 }

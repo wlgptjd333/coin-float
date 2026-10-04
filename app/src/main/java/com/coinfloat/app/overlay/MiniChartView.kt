@@ -18,6 +18,7 @@ class MiniChartView(
     context: Context,
     private val onIntervalSelected: (String) -> Unit,
     private val onSymbolToggleClicked: () -> Unit,
+    private val onExpandClicked: () -> Unit,
     private val onCloseClicked: () -> Unit
 ) : LinearLayout(context) {
 
@@ -109,6 +110,17 @@ class MiniChartView(
         }
         updateTabStyles()
         headerLayout.addView(tabsLayout)
+
+        // Expand to full TradingView chart button (⛶)
+        val btnExpand = TextView(context).apply {
+            text = "⛶"
+            textSize = 13f
+            setTextColor(Color.parseColor("#848E9C"))
+            gravity = Gravity.CENTER
+            setPadding((6 * density).toInt(), 0, (6 * density).toInt(), 0)
+            setOnClickListener { onExpandClicked() }
+        }
+        headerLayout.addView(btnExpand)
 
         // Close button (✕)
         val btnClose = TextView(context).apply {
