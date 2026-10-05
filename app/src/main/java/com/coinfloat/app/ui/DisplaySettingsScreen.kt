@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.coinfloat.app.market.PriceFormatter
 import com.coinfloat.app.settings.ChartSizeProfile
 import com.coinfloat.app.settings.OverlaySettings
+import com.coinfloat.app.settings.RefreshRateProfile
 import com.coinfloat.app.settings.SymbolDisplayMode
 
 @Composable
@@ -58,6 +59,7 @@ fun DisplaySettingsContent(
     onChartIntervalChange: (String) -> Unit = {},
     onChartSizeProfileChange: (ChartSizeProfile) -> Unit = {},
     onCustomChartSizeChange: (widthDp: Int, heightDp: Int) -> Unit = { _, _ -> },
+    onRefreshRateProfileChange: (RefreshRateProfile) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -537,6 +539,53 @@ fun DisplaySettingsContent(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+        }
+
+        // Floating Window Refresh Rate (FPS & Battery Optimization)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "플로팅 윈도우 갱신 주기 & 프레임 (FPS)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "가격 갱신 빈도를 조절하여 눈의 피로도와 스마트폰 배터리/발열을 최적화합니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                listOf(
+                    RefreshRateProfile.FPS_10,
+                    RefreshRateProfile.FPS_5,
+                    RefreshRateProfile.FPS_2,
+                    RefreshRateProfile.FPS_1
+                ).forEach { profile ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onRefreshRateProfileChange(profile) }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = settings.refreshRateProfile == profile,
+                            onClick = { onRefreshRateProfileChange(profile) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = profile.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (settings.refreshRateProfile == profile) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
                 }
             }
         }

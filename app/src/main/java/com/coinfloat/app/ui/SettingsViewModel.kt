@@ -16,6 +16,7 @@ import com.coinfloat.app.market.SymbolInfo
 import com.coinfloat.app.overlay.FloatingOverlayService
 import com.coinfloat.app.settings.ChartSizeProfile
 import com.coinfloat.app.settings.OverlaySettings
+import com.coinfloat.app.settings.RefreshRateProfile
 import com.coinfloat.app.settings.SettingsRepository
 import com.coinfloat.app.settings.SymbolDisplayMode
 import kotlinx.coroutines.Dispatchers
@@ -303,6 +304,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updateCustomChartSize(widthDp: Int, heightDp: Int) {
         viewModelScope.launch {
             settingsRepository.updateCustomChartSize(widthDp, heightDp)
+        }
+    }
+
+    fun updateRefreshRateProfile(profile: RefreshRateProfile) {
+        viewModelScope.launch {
+            settingsRepository.updateRefreshRateProfile(profile)
         }
     }
 }

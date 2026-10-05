@@ -13,6 +13,13 @@ enum class ChartSizeProfile(val label: String, val widthDp: Int, val heightDp: I
     CUSTOM("커스텀 프로필", 260, 170)
 }
 
+enum class RefreshRateProfile(val label: String, val intervalMs: Long, val fpsText: String) {
+    FPS_10("10 FPS (100ms - 추천 / 실시간)", 100L, "10 FPS"),
+    FPS_5("5 FPS (200ms - 부드러움 & 저발열)", 200L, "5 FPS"),
+    FPS_2("2 FPS (500ms - 배터리 절약)", 500L, "2 FPS"),
+    FPS_1("1 FPS (1000ms - 초절전)", 1000L, "1 FPS")
+}
+
 data class SymbolConfig(
     val symbol: String,
     val customDisplayName: String? = null
@@ -36,7 +43,8 @@ data class OverlaySettings(
     val defaultChartInterval: String = "15m",
     val chartSizeProfile: ChartSizeProfile = ChartSizeProfile.MEDIUM,
     val customChartWidthDp: Int = 260,
-    val customChartHeightDp: Int = 170
+    val customChartHeightDp: Int = 170,
+    val refreshRateProfile: RefreshRateProfile = RefreshRateProfile.FPS_10
 ) {
     fun getChartDimensionsDp(): Pair<Int, Int> = when (chartSizeProfile) {
         ChartSizeProfile.SMALL -> Pair(ChartSizeProfile.SMALL.widthDp, ChartSizeProfile.SMALL.heightDp)

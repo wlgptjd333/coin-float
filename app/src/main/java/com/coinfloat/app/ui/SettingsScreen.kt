@@ -403,7 +403,8 @@ fun SettingsScreen(
                             onChartEnabledChange = viewModel::updateChartEnabled,
                             onChartIntervalChange = viewModel::updateChartInterval,
                             onChartSizeProfileChange = viewModel::updateChartSizeProfile,
-                            onCustomChartSizeChange = viewModel::updateCustomChartSize
+                            onCustomChartSizeChange = viewModel::updateCustomChartSize,
+                            onRefreshRateProfileChange = viewModel::updateRefreshRateProfile
                         )
                     }
 
@@ -449,7 +450,7 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "CoinFloat v1.3.6",
+                                    text = "CoinFloat v1.3.7",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )

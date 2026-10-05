@@ -266,7 +266,8 @@ class FloatingOverlayService : Service() {
                             symbolInfoMap = marketDataRepository.symbolInfoCache.value
                         )
                     }
-                    delay(150L)
+                    val refreshDelay = settingsRepository.settingsFlow.value.refreshRateProfile.intervalMs
+                    delay(refreshDelay)
                 }
         }
     }

@@ -46,6 +46,7 @@ class SettingsRepository(
         private val KEY_CHART_SIZE_PROFILE = stringPreferencesKey("chart_size_profile")
         private val KEY_CUSTOM_CHART_WIDTH_DP = intPreferencesKey("custom_chart_width_dp")
         private val KEY_CUSTOM_CHART_HEIGHT_DP = intPreferencesKey("custom_chart_height_dp")
+        private val KEY_REFRESH_RATE_PROFILE = stringPreferencesKey("refresh_rate_profile")
 
         @Volatile
         private var instance: SettingsRepository? = null
@@ -86,6 +87,13 @@ class SettingsRepository(
                 ChartSizeProfile.MEDIUM
             }
 
+            val rateStr = preferences[KEY_REFRESH_RATE_PROFILE] ?: RefreshRateProfile.FPS_10.name
+            val rate = try {
+                RefreshRateProfile.valueOf(rateStr)
+            } catch (_: Exception) {
+                RefreshRateProfile.FPS_10
+            }
+
             OverlaySettings(
                 selectedSymbols = symbols,
                 symbolDisplayMode = mode,
@@ -104,7 +112,8 @@ class SettingsRepository(
                 defaultChartInterval = preferences[KEY_CHART_INTERVAL] ?: "15m",
                 chartSizeProfile = profile,
                 customChartWidthDp = preferences[KEY_CUSTOM_CHART_WIDTH_DP] ?: 260,
-                customChartHeightDp = preferences[KEY_CUSTOM_CHART_HEIGHT_DP] ?: 170
+                customChartHeightDp = preferences[KEY_CUSTOM_CHART_HEIGHT_DP] ?: 170,
+                refreshRateProfile = rate
             )
         }
         .stateIn(
@@ -251,6 +260,12 @@ class SettingsRepository(
             preferences[KEY_CHART_SIZE_PROFILE] = ChartSizeProfile.CUSTOM.name
             preferences[KEY_CUSTOM_CHART_WIDTH_DP] = widthDp.coerceIn(160, 420)
             preferences[KEY_CUSTOM_CHART_HEIGHT_DP] = heightDp.coerceIn(110, 360)
+        }
+    }
+
+    suspend fun updateRefreshRateProfile(profile: RefreshRateProfile) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_REFRESH_RATE_PROFILE] = profile.name
         }
     }
 }

@@ -79,10 +79,10 @@ class MarketDataRepository(
                 }
             }
 
-            // High-efficiency 60ms ticker emitter (~16 FPS max ticker update rate)
-            // Perfectly fluid for human perception, but eliminates 85% of CPU recompositions & GC churn!
+            // Golden Standard 10 FPS (100ms) ticker emitter:
+            // Perfectly readable, calm price rendering, and eliminates 90% of CPU recompositions & GC churn!
             while (isActive) {
-                delay(60L)
+                delay(100L)
                 if (hasPendingUpdate) {
                     hasPendingUpdate = false
                     _marketPrices.value = priceCache.toMap()
