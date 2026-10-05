@@ -43,7 +43,77 @@
             right: 0;
             bottom: 0;
             touch-action: none;
+            overflow: hidden;
         }
+
+        /* TradingView Container & Non-destructive Toolbar Slide */
+        #tv_container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #tradingview_widget {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: translateX(0);
+            transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        #tradingview_widget.toolbar-hidden {
+            width: calc(100% + 52px);
+            transform: translateX(-52px);
+        }
+
+        /* Left Edge Slide Handle for Drawing Toolbar */
+        #tv_draw_handle {
+            position: absolute;
+            top: 48%;
+            left: 0;
+            transform: translateY(-50%);
+            background: rgba(30, 34, 45, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-left: none;
+            border-radius: 0 8px 8px 0;
+            padding: 8px 5px;
+            z-index: 30;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+            transition: left 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.2s;
+            user-select: none;
+            touch-action: manipulation;
+        }
+        #tv_draw_handle:active {
+            background: #2962FF;
+        }
+        #tv_draw_handle.toolbar-open {
+            left: 52px;
+            background: #2962FF;
+            border-color: #5B8DEF;
+        }
+        #tv_draw_icon {
+            font-size: 13px;
+            line-height: 1;
+        }
+        #tv_draw_label {
+            font-size: 9px;
+            font-weight: bold;
+            color: #D1D4DC;
+            letter-spacing: -0.5px;
+        }
+        #tv_draw_handle.toolbar-open #tv_draw_label {
+            color: #FFFFFF;
+        }
+
+        /* Fast Mode Legend */
         #fast_legend {
             position: absolute;
             top: 8px;
@@ -72,6 +142,55 @@
         .legend-down {
             color: #F6465D;
         }
+
+        /* Fast Mode Drawing Canvas Overlay */
+        #fast_draw_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 15;
+            pointer-events: none;
+        }
+        #fast_draw_canvas.interactive {
+            pointer-events: auto;
+            touch-action: none;
+        }
+
+        /* Fast Mode Drawing Floating Toolbar */
+        #fast_draw_toolbar {
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            z-index: 20;
+            display: none;
+            background: rgba(30, 34, 45, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            padding: 4px 8px;
+            gap: 6px;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .draw-btn {
+            background: #2A2E39;
+            color: #B2B5BE;
+            border: 1px solid transparent;
+            border-radius: 12px;
+            padding: 3px 8px;
+            font-size: 10px;
+            cursor: pointer;
+            outline: none;
+            user-select: none;
+        }
+        .draw-btn.active {
+            background: #2962FF;
+            color: #FFFFFF;
+            border-color: #5B8DEF;
+            font-weight: bold;
+        }
+
         iframe {
             width: 100% !important;
             height: 100% !important;
@@ -143,7 +262,12 @@
     <div id="chart_root">
         <!-- Mode 1: Official TradingView Widget Container -->
         <div id="tv_container" class="container-mode">
-            <div id="tradingview_widget" style="width:100%;height:100%;"></div>
+            <div id="tradingview_widget" class="toolbar-hidden"></div>
+            <!-- Left edge slide handle for TradingView drawing toolbar -->
+            <div id="tv_draw_handle" onclick="toggleDrawingToolbar()" title="드로잉 도구 토글">
+                <span id="tv_draw_icon">✏️</span>
+                <span id="tv_draw_label">도구</span>
+            </div>
         </div>
 
         <!-- Mode 2: Ultra High-Speed 100ms Lightweight Canvas -->
@@ -152,6 +276,15 @@
                 <span id="fast_legend_sym" class="legend-sym">BTCUSDT</span>
                 <span id="fast_legend_ohlc">O: — H: — L: — C: —</span>
                 <span id="fast_legend_chg"></span>
+            </div>
+            <!-- Fast Mode Drawing Canvas Overlay -->
+            <canvas id="fast_draw_canvas"></canvas>
+            <!-- Fast Mode Drawing Toolbar -->
+            <div id="fast_draw_toolbar">
+                <button id="draw_tool_hl" class="draw-btn" onclick="setFastDrawTool('hl')">➖ 수평선</button>
+                <button id="draw_tool_tl" class="draw-btn" onclick="setFastDrawTool('tl')">📈 추세선</button>
+                <button class="draw-btn" onclick="clearFastDrawings()">🗑️ 지우기</button>
+                <button class="draw-btn" onclick="toggleDrawingToolbar()">✕ 닫기</button>
             </div>
         </div>
     </div>
@@ -171,14 +304,34 @@
         let currentSymbol = "BTCUSDT";
         let currentInterval = "15"; // TV: "1", "3", "5", "15", "30", "60", "240", "D"
         let currentStyle = "1"; // "1": Candle, "2": Area, "3": Line, "8": Heikin Ashi
-        let showDrawingToolbar = false; // Hide by default on mobile so chart isn't covered
+        let showDrawingToolbar = false; // By default hidden on mobile, slides cleanly via CSS
         let tvWidget = null;
+        let isDocumentVisible = true;
+
+        // Fast mode LightweightCharts instances
         let fastChart = null;
         let fastCandleSeries = null;
         let fastVolumeSeries = null;
-        let fastMaSeries = null;
+        let fastMa7Series = null;
+        let fastMa25Series = null;
+        let fastMa99Series = null;
+        let fastBollUpperSeries = null;
+        let fastBollLowerSeries = null;
         let fastCandles = [];
         let tvInitRetryCount = 0;
+
+        // Indicator visibility state
+        let indicatorState = {
+            MA: true,
+            EMA: false,
+            BOLL: false,
+            VOL: true
+        };
+
+        // Fast Mode Drawing State
+        let fastDrawTool = null; // 'hl' (Horizontal Line) or 'tl' (Trendline)
+        let fastDrawings = []; // array of { type: 'hl', price: 1234 } or { type: 'tl', p1: {x,y}, p2: {x,y} }
+        let currentTrendlineStart = null;
 
         function showLoading(msg) {
             const cover = document.getElementById('loading_cover');
@@ -239,13 +392,64 @@
             return typeof TradingView !== 'undefined' && typeof TradingView.widget === 'function';
         }
 
-        // 1. Official TradingView Widget with auto-fallback safety
-        function initTvWidget(symbol, interval, showToolbar) {
+        // Apply smooth CSS slide for TradingView drawing toolbar WITHOUT reloading the iframe!
+        function applyToolbarState() {
+            const widgetEl = document.getElementById('tradingview_widget');
+            const handleEl = document.getElementById('tv_draw_handle');
+            const iconEl = document.getElementById('tv_draw_icon');
+            const labelEl = document.getElementById('tv_draw_label');
+            const fastToolbar = document.getElementById('fast_draw_toolbar');
+            const fastCanvas = document.getElementById('fast_draw_canvas');
+
+            if (currentMode === "tv") {
+                if (widgetEl) {
+                    if (showDrawingToolbar) {
+                        widgetEl.classList.remove('toolbar-hidden');
+                        if (handleEl) {
+                            handleEl.classList.add('toolbar-open');
+                            if (iconEl) iconEl.innerText = '✕';
+                            if (labelEl) labelEl.innerText = '닫기';
+                        }
+                    } else {
+                        widgetEl.classList.add('toolbar-hidden');
+                        if (handleEl) {
+                            handleEl.classList.remove('toolbar-open');
+                            if (iconEl) iconEl.innerText = '✏️';
+                            if (labelEl) labelEl.innerText = '도구';
+                        }
+                    }
+                }
+                setTimeout(() => {
+                    window.dispatchEvent(new Event('resize'));
+                }, 260);
+            } else {
+                // Fast Mode drawing toggle
+                if (fastToolbar) {
+                    fastToolbar.style.display = showDrawingToolbar ? 'flex' : 'none';
+                }
+                if (fastCanvas) {
+                    if (showDrawingToolbar) {
+                        fastCanvas.classList.add('interactive');
+                    } else {
+                        fastCanvas.classList.remove('interactive');
+                        fastDrawTool = null;
+                        updateFastDrawBtnStyles();
+                    }
+                }
+            }
+
+            // Notify Android Compose Bridge so header button stays in sync
+            try {
+                if (window.AndroidBridge && typeof window.AndroidBridge.onToolbarVisibilityChanged === 'function') {
+                    window.AndroidBridge.onToolbarVisibilityChanged(showDrawingToolbar);
+                }
+            } catch (e) {}
+        }
+
+        // 1. Official TradingView Widget with permanent drawing toolbar readiness
+        function initTvWidget(symbol, interval) {
             currentSymbol = symbol || currentSymbol;
             currentInterval = interval || currentInterval;
-            if (showToolbar !== undefined) {
-                showDrawingToolbar = showToolbar;
-            }
 
             const container = document.getElementById('tradingview_widget');
             container.innerHTML = '';
@@ -254,7 +458,7 @@
             if (!isTvAvailable()) {
                 if (tvInitRetryCount < 6) {
                     tvInitRetryCount++;
-                    setTimeout(() => initTvWidget(currentSymbol, currentInterval, showDrawingToolbar), 500);
+                    setTimeout(() => initTvWidget(currentSymbol, currentInterval), 500);
                     return;
                 }
                 // Fallback to local 100ms Fast Mode if external CDN is blocked/offline
@@ -271,6 +475,7 @@
             tvInitRetryCount = 0;
             const tvSym = getTvSymbolFormatted(currentSymbol);
             try {
+                // Always load with hide_side_toolbar: false so toolbar is loaded once and smoothly hidden/shown via CSS
                 tvWidget = new TradingView.widget({
                     "autosize": true,
                     "symbol": tvSym,
@@ -283,7 +488,7 @@
                     "enable_publishing": false,
                     "allow_symbol_change": true,
                     "container_id": "tradingview_widget",
-                    "hide_side_toolbar": !showDrawingToolbar,
+                    "hide_side_toolbar": false,
                     "withdateranges": true,
                     "save_image": false,
                     "studies": [
@@ -304,7 +509,8 @@
                 console.error("TV Init error", e);
                 setChartMode("fast");
             }
-            setTimeout(hideLoading, 1200);
+            applyToolbarState();
+            setTimeout(hideLoading, 1000);
         }
 
         function retryTvWidget() {
@@ -366,6 +572,7 @@
 
             if (fastChart) {
                 fastChart.applyOptions({ width: w, height: h });
+                resizeFastCanvas();
                 return;
             }
 
@@ -410,25 +617,80 @@
 
             fastChart.subscribeCrosshairMove(updateFastLegend);
 
+            // Candlesticks
             fastCandleSeries = fastChart.addSeries(LightweightCharts.CandlestickSeries, {
                 upColor: '#089981', downColor: '#F23645', borderVisible: false,
                 wickUpColor: '#089981', wickDownColor: '#F23645'
             });
 
+            // Volume
             fastVolumeSeries = fastChart.addSeries(LightweightCharts.HistogramSeries, {
                 color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: ''
             });
-            fastVolumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+            fastVolumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
 
-            fastMaSeries = fastChart.addSeries(LightweightCharts.LineSeries, {
+            // MA 7 (Yellow)
+            fastMa7Series = fastChart.addSeries(LightweightCharts.LineSeries, {
                 color: '#F0B90B', lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false
             });
+
+            // MA 25 (Purple)
+            fastMa25Series = fastChart.addSeries(LightweightCharts.LineSeries, {
+                color: '#E040FB', lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false
+            });
+
+            // MA 99 (Cyan)
+            fastMa99Series = fastChart.addSeries(LightweightCharts.LineSeries, {
+                color: '#00E5FF', lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false
+            });
+
+            // Bollinger Bands Upper & Lower
+            fastBollUpperSeries = fastChart.addSeries(LightweightCharts.LineSeries, {
+                color: 'rgba(41, 98, 255, 0.8)', lineStyle: LightweightCharts.LineStyle.Dashed, lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false
+            });
+            fastBollLowerSeries = fastChart.addSeries(LightweightCharts.LineSeries, {
+                color: 'rgba(41, 98, 255, 0.8)', lineStyle: LightweightCharts.LineStyle.Dashed, lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false
+            });
+
+            initFastDrawingCanvas();
 
             window.addEventListener('resize', () => {
                 if (fastChart && container) {
                     fastChart.applyOptions({ width: container.clientWidth || window.innerWidth, height: container.clientHeight || window.innerHeight });
+                    resizeFastCanvas();
                 }
             });
+        }
+
+        function calculateMovingAverage(data, period) {
+            const result = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i < period - 1) continue;
+                let sum = 0;
+                for (let j = 0; j < period; j++) sum += data[i - j].close;
+                result.push({ time: data[i].time, value: sum / period });
+            }
+            return result;
+        }
+
+        function calculateBollingerBands(data, period = 20, multiplier = 2) {
+            const upper = [];
+            const lower = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i < period - 1) continue;
+                let sum = 0;
+                for (let j = 0; j < period; j++) sum += data[i - j].close;
+                const mean = sum / period;
+                let sumSqDiff = 0;
+                for (let j = 0; j < period; j++) {
+                    const diff = data[i - j].close - mean;
+                    sumSqDiff += diff * diff;
+                }
+                const stdDev = Math.sqrt(sumSqDiff / period);
+                upper.push({ time: data[i].time, value: mean + multiplier * stdDev });
+                lower.push({ time: data[i].time, value: mean - multiplier * stdDev });
+            }
+            return { upper, lower };
         }
 
         async function loadFastData(sym, interval) {
@@ -459,14 +721,20 @@
                 fastCandleSeries.setData(fastCandles);
                 fastVolumeSeries.setData(vols);
 
-                const maData = [];
-                for (let i = 0; i < fastCandles.length; i++) {
-                    if (i < 19) continue;
-                    let sum = 0;
-                    for (let j = 0; j < 20; j++) sum += fastCandles[i - j].close;
-                    maData.push({ time: fastCandles[i].time, value: sum / 20 });
-                }
-                fastMaSeries.setData(maData);
+                // Calculate & Apply Technical Indicators
+                const ma7 = calculateMovingAverage(fastCandles, 7);
+                const ma25 = calculateMovingAverage(fastCandles, 25);
+                const ma99 = calculateMovingAverage(fastCandles, 99);
+                const bb = calculateBollingerBands(fastCandles, 20, 2);
+
+                if (fastMa7Series) fastMa7Series.setData(ma7);
+                if (fastMa25Series) fastMa25Series.setData(ma25);
+                if (fastMa99Series) fastMa99Series.setData(ma99);
+                if (fastBollUpperSeries) fastBollUpperSeries.setData(bb.upper);
+                if (fastBollLowerSeries) fastBollLowerSeries.setData(bb.lower);
+
+                applyIndicatorVisibility();
+
                 fastChart.timeScale().fitContent();
                 updateFastLegend(null);
                 hideLoading();
@@ -477,9 +745,25 @@
             }
         }
 
-        // Live 100ms Tick Bridge from Android Native App!
+        function applyIndicatorVisibility() {
+            if (fastMa7Series) fastMa7Series.applyOptions({ visible: indicatorState.MA });
+            if (fastMa25Series) fastMa25Series.applyOptions({ visible: indicatorState.MA });
+            if (fastMa99Series) fastMa99Series.applyOptions({ visible: indicatorState.MA });
+            if (fastBollUpperSeries) fastBollUpperSeries.applyOptions({ visible: indicatorState.BOLL });
+            if (fastBollLowerSeries) fastBollLowerSeries.applyOptions({ visible: indicatorState.BOLL });
+            if (fastVolumeSeries) fastVolumeSeries.applyOptions({ visible: indicatorState.VOL });
+        }
+
+        window.toggleIndicator = function(name, enabled) {
+            const isVisible = enabled !== undefined ? !!enabled : !indicatorState[name];
+            indicatorState[name] = isVisible;
+            applyIndicatorVisibility();
+            return isVisible;
+        };
+
+        // Live 100ms Tick Bridge from Android Native App (Throttled for zero battery waste)
         window.updateLiveTick = function(priceFloat) {
-            if (!priceFloat || priceFloat <= 0) return;
+            if (!priceFloat || priceFloat <= 0 || !isDocumentVisible) return;
             if (currentMode === "fast" && fastCandles.length > 0 && fastCandleSeries) {
                 const nowSec = Math.floor(Date.now() / 1000);
                 const intvSec = getIntervalSeconds(currentInterval);
@@ -487,7 +771,7 @@
                 const last = fastCandles[lastIdx];
 
                 if (nowSec >= last.time + intvSec) {
-                    // New candle period started!
+                    // New candle period started
                     const newCandleTime = Math.floor(nowSec / intvSec) * intvSec;
                     const newCandle = {
                         time: newCandleTime,
@@ -499,21 +783,143 @@
                     fastCandles.push(newCandle);
                     fastCandleSeries.update(newCandle);
                 } else {
-                    // Update current candle
-                    const updated = {
-                        time: last.time,
-                        open: last.open,
-                        high: Math.max(last.high, priceFloat),
-                        low: Math.min(last.low, priceFloat),
-                        close: priceFloat
-                    };
-                    fastCandles[lastIdx] = updated;
-                    fastCandleSeries.update(updated);
+                    // Update current candle only if high/low/close changed
+                    if (priceFloat !== last.close) {
+                        const updated = {
+                            time: last.time,
+                            open: last.open,
+                            high: Math.max(last.high, priceFloat),
+                            low: Math.min(last.low, priceFloat),
+                            close: priceFloat
+                        };
+                        fastCandles[lastIdx] = updated;
+                        fastCandleSeries.update(updated);
+                    }
                 }
                 updateFastLegend(null);
             }
         };
 
+        // --- Fast Mode Drawing Canvas Implementation ---
+        function initFastDrawingCanvas() {
+            const canvas = document.getElementById('fast_draw_canvas');
+            if (!canvas) return;
+            resizeFastCanvas();
+
+            canvas.addEventListener('pointerdown', (e) => {
+                if (!fastDrawTool) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                if (fastDrawTool === 'hl') {
+                    // Horizontal Line at Y
+                    fastDrawings.push({ type: 'hl', y: y });
+                    redrawFastCanvas();
+                } else if (fastDrawTool === 'tl') {
+                    currentTrendlineStart = { x, y };
+                }
+            });
+
+            canvas.addEventListener('pointermove', (e) => {
+                if (fastDrawTool === 'tl' && currentTrendlineStart) {
+                    const rect = canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    redrawFastCanvas();
+                    const ctx = canvas.getContext('2d');
+                    ctx.save();
+                    ctx.strokeStyle = '#F0B90B';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(currentTrendlineStart.x, currentTrendlineStart.y);
+                    ctx.lineTo(x, y);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            });
+
+            canvas.addEventListener('pointerup', (e) => {
+                if (fastDrawTool === 'tl' && currentTrendlineStart) {
+                    const rect = canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    fastDrawings.push({
+                        type: 'tl',
+                        x1: currentTrendlineStart.x,
+                        y1: currentTrendlineStart.y,
+                        x2: x,
+                        y2: y
+                    });
+                    currentTrendlineStart = null;
+                    redrawFastCanvas();
+                }
+            });
+        }
+
+        function resizeFastCanvas() {
+            const canvas = document.getElementById('fast_draw_canvas');
+            const container = document.getElementById('fast_container');
+            if (!canvas || !container) return;
+            canvas.width = container.clientWidth || window.innerWidth;
+            canvas.height = container.clientHeight || window.innerHeight;
+            redrawFastCanvas();
+        }
+
+        function redrawFastCanvas() {
+            const canvas = document.getElementById('fast_draw_canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (const d of fastDrawings) {
+                ctx.save();
+                if (d.type === 'hl') {
+                    ctx.strokeStyle = '#F0B90B';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(0, d.y);
+                    ctx.lineTo(canvas.width, d.y);
+                    ctx.stroke();
+
+                    // Price tag badge on right
+                    ctx.fillStyle = '#2A2E39';
+                    ctx.fillRect(canvas.width - 55, d.y - 8, 55, 16);
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.font = '10px monospace';
+                    ctx.fillText('Line', canvas.width - 45, d.y + 4);
+                } else if (d.type === 'tl') {
+                    ctx.strokeStyle = '#2962FF';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(d.x1, d.y1);
+                    ctx.lineTo(d.x2, d.y2);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+        }
+
+        function setFastDrawTool(tool) {
+            fastDrawTool = fastDrawTool === tool ? null : tool;
+            updateFastDrawBtnStyles();
+        }
+
+        function updateFastDrawBtnStyles() {
+            const btnHl = document.getElementById('draw_tool_hl');
+            const btnTl = document.getElementById('draw_tool_tl');
+            if (btnHl) btnHl.className = fastDrawTool === 'hl' ? 'draw-btn active' : 'draw-btn';
+            if (btnTl) btnTl.className = fastDrawTool === 'tl' ? 'draw-btn active' : 'draw-btn';
+        }
+
+        function clearFastDrawings() {
+            fastDrawings = [];
+            currentTrendlineStart = null;
+            redrawFastCanvas();
+        }
+
+        // --- Window Controls Bridge ---
         window.setChartMode = function(mode) {
             currentMode = mode;
             const tvDiv = document.getElementById('tv_container');
@@ -528,6 +934,7 @@
                         height: fastDiv.clientHeight || window.innerHeight
                     });
                     fastChart.timeScale().fitContent();
+                    resizeFastCanvas();
                 }
                 loadFastData(currentSymbol, currentInterval);
             } else {
@@ -535,6 +942,7 @@
                 tvDiv.style.display = 'block';
                 initTvWidget(currentSymbol, currentInterval);
             }
+            applyToolbarState();
         };
 
         window.setInterval = function(interval) {
@@ -557,25 +965,23 @@
             }
         };
 
+        // Smooth instant drawing toolbar toggle: 0ms, preserves all user drawings & zoom!
         window.setDrawingToolbar = function(visible) {
             showDrawingToolbar = !!visible;
-            if (currentMode === "tv") {
-                initTvWidget(currentSymbol, currentInterval, showDrawingToolbar);
-            }
+            applyToolbarState();
+            return showDrawingToolbar;
         };
 
         window.toggleDrawingToolbar = function() {
             showDrawingToolbar = !showDrawingToolbar;
-            if (currentMode === "tv") {
-                initTvWidget(currentSymbol, currentInterval, showDrawingToolbar);
-            }
+            applyToolbarState();
             return showDrawingToolbar;
         };
 
         window.setChartStyle = function(style) {
             currentStyle = style || "1";
             if (currentMode === "tv") {
-                initTvWidget(currentSymbol, currentInterval, showDrawingToolbar);
+                initTvWidget(currentSymbol, currentInterval);
             }
         };
 
@@ -583,12 +989,23 @@
             if (currentMode === "fast" && fastChart) {
                 fastChart.timeScale().fitContent();
             } else if (currentMode === "tv") {
-                initTvWidget(currentSymbol, currentInterval, showDrawingToolbar);
+                window.dispatchEvent(new Event('resize'));
             }
         };
 
+        // Battery conservation: freeze rendering when document is hidden
+        document.addEventListener('visibilitychange', () => {
+            isDocumentVisible = !document.hidden;
+            if (isDocumentVisible && currentMode === "fast" && fastChart) {
+                fastChart.applyOptions({
+                    width: document.getElementById('fast_container').clientWidth || window.innerWidth,
+                    height: document.getElementById('fast_container').clientHeight || window.innerHeight
+                });
+            }
+        });
+
         window.addEventListener('DOMContentLoaded', () => {
-            initTvWidget(currentSymbol, currentInterval, showDrawingToolbar);
+            initTvWidget(currentSymbol, currentInterval);
         });
     </script>
 </body>

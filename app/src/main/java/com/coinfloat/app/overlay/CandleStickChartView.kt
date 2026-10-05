@@ -94,6 +94,8 @@ class CandleStickChartView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
 
+    private val badgeRect = RectF()
+
     private var klines: List<KlineItem> = emptyList()
     private var isLoading = false
     private var errorMessage: String? = null
@@ -295,7 +297,7 @@ class CandleStickChartView @JvmOverloads constructor(
             val badgeHeight = 14f * density
             val badgeLeft = paddingLeft + chartWidth + (2f * density)
             val badgeTop = candleCloseY - (badgeHeight / 2f)
-            val badgeRect = RectF(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + badgeHeight)
+            badgeRect.set(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + badgeHeight)
             canvas.drawRoundRect(badgeRect, 3f * density, 3f * density, crosshairBadgePaint)
             canvas.drawText(badgeText, badgeLeft + (3f * density), candleCloseY + (3.5f * density), badgeTextPaint)
         } else {
@@ -314,7 +316,7 @@ class CandleStickChartView @JvmOverloads constructor(
                 val badgeHeight = 14f * density
                 val badgeLeft = paddingLeft + chartWidth + (2f * density)
                 val badgeTop = liveY - (badgeHeight / 2f)
-                val badgeRect = RectF(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + badgeHeight)
+                badgeRect.set(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + badgeHeight)
                 canvas.drawRoundRect(badgeRect, 3f * density, 3f * density, priceBadgePaint)
 
                 // Badge text centered vertically

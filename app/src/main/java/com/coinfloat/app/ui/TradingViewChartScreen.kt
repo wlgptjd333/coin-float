@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -45,6 +46,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenRotation
@@ -195,13 +197,20 @@ fun TradingViewChartScreen(
     var chartMode by remember { mutableStateOf("tv") }
     // Selected interval: "1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d"
     var activeInterval by remember { mutableStateOf("15m") }
-    // Drawing Toolbar Toggle (Default hidden on mobile to avoid covering screen!)
+    // Drawing Toolbar Toggle (Default hidden on mobile so chart isn't covered)
     var isDrawingToolbarVisible by remember { mutableStateOf(false) }
-    // Chart Style: "1": 캔들, "3": 라인, "8": 하이킨아시
+    // Chart Style: "1": Candle, "3": Line, "8": Heikin Ashi
     var activeChartStyle by remember { mutableStateOf("1") }
+
+    // Technical Indicators Toggle State (Fast Mode & Indicators bar)
+    var isMaActive by remember { mutableStateOf(true) }
+    var isEmaActive by remember { mutableStateOf(false) }
+    var isBollActive by remember { mutableStateOf(false) }
+    var isVolActive by remember { mutableStateOf(true) }
 
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var showSymbolSearchSheet by remember { mutableStateOf(false) }
+    var showDepthSheet by remember { mutableStateOf(false) }
 
     // Battery Optimization: Freeze WebView JS, canvas and timers when paused or tab disposed
     DisposableEffect(lifecycleOwner, webViewRef) {
@@ -233,7 +242,7 @@ fun TradingViewChartScreen(
         }
     }
 
-    // Bridge 100ms live ticks directly into chart.html
+    // Bridge live ticks directly into chart.html
     LaunchedEffect(livePriceFloat) {
         if (livePriceFloat > 0f && webViewRef != null) {
             webViewRef?.evaluateJavascript("if (window.updateLiveTick) { window.updateLiveTick($livePriceFloat); }", null)
@@ -266,16 +275,22 @@ fun TradingViewChartScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        // Row 1: Symbol Name, Search Button, 100ms Live Price & 24h Stats, Mode Toggle, Fullscreen & Rotate
+                        // Row 1: Symbol Pill (Clickable Dropdown), 100ms Live Price & 24h Change, Mode Toggle, Drawing, Rotate, Fullscreen
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Left: Symbol Name + Quick Search Icon + Live Price
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Left: Clickable Symbol Selector with Badge + Live Price
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { showSymbolSearchSheet = true }
+                                    .padding(vertical = 2.dp)
+                            ) {
                                 Column {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
@@ -285,6 +300,13 @@ fun TradingViewChartScreen(
                                             fontWeight = FontWeight.Bold,
                                             fontFamily = FontFamily.Monospace
                                         )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "▾",
+                                            color = Color(0xFF848E9C),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Box(
                                             modifier = Modifier
@@ -293,23 +315,10 @@ fun TradingViewChartScreen(
                                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                                         ) {
                                             Text(
-                                                text = "선물 PERP",
+                                                text = "PERP",
                                                 color = Color(0xFFF0B90B),
                                                 fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        // Quick Search Icon Button
-                                        IconButton(
-                                            onClick = { showSymbolSearchSheet = true },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Search,
-                                                contentDescription = "심볼 검색",
-                                                tint = Color(0xFF848E9C),
-                                                modifier = Modifier.size(16.dp)
                                             )
                                         }
                                     }
@@ -318,12 +327,12 @@ fun TradingViewChartScreen(
                                         Text(
                                             text = formattedPrice,
                                             color = animatedPriceColor,
-                                            fontSize = 18.sp,
+                                            fontSize = 17.sp,
                                             fontWeight = FontWeight.Black,
                                             fontFamily = FontFamily.Monospace
                                         )
                                         if (ticker24h != null) {
-                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
                                             Box(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(3.dp))
@@ -343,12 +352,12 @@ fun TradingViewChartScreen(
                                 }
                             }
 
-                            // Right: Engine Mode Selector & Fullscreen Actions
+                            // Right: Engine Selector, Drawing Toggle, Rotate, Fullscreen, Web
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                // Mode Toggle Button
+                                // Engine Mode Selector (100ms 초고속 vs 트레이딩뷰)
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
@@ -363,7 +372,7 @@ fun TradingViewChartScreen(
                                             chartMode = newMode
                                             webViewRef?.evaluateJavascript("window.setChartMode('$newMode');", null)
                                         }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                        .padding(horizontal = 7.dp, vertical = 4.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -371,11 +380,11 @@ fun TradingViewChartScreen(
                                             imageVector = if (chartMode == "fast") Icons.Default.Speed else Icons.Default.Star,
                                             contentDescription = null,
                                             tint = if (chartMode == "fast") Color(0xFF0ECB81) else Color(0xFF2962FF),
-                                            modifier = Modifier.size(12.dp)
+                                            modifier = Modifier.size(11.dp)
                                         )
                                         Spacer(modifier = Modifier.width(3.dp))
                                         Text(
-                                            text = if (chartMode == "fast") "초고속 100ms" else "트레이딩뷰",
+                                            text = if (chartMode == "fast") "100ms" else "TV",
                                             color = if (chartMode == "fast") Color(0xFF0ECB81) else Color(0xFF2962FF),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold
@@ -383,12 +392,12 @@ fun TradingViewChartScreen(
                                     }
                                 }
 
-                                // Drawing Toolbar Toggle Button (✏️ 드로잉 토글)
+                                // Instant Drawing Toolbar Toggle Button (✏️ 드로잉)
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
                                         .background(
-                                            if (isDrawingToolbarVisible) Color(0xFFF0B90B).copy(alpha = 0.2f)
+                                            if (isDrawingToolbarVisible) Color(0xFFF0B90B).copy(alpha = 0.25f)
                                             else Color(0xFF2A2E39)
                                         )
                                         .border(
@@ -409,7 +418,7 @@ fun TradingViewChartScreen(
                                             imageVector = Icons.Default.Edit,
                                             contentDescription = "그리기 도구",
                                             tint = if (isDrawingToolbarVisible) Color(0xFFF0B90B) else Color(0xFF848E9C),
-                                            modifier = Modifier.size(12.dp)
+                                            modifier = Modifier.size(11.dp)
                                         )
                                         Spacer(modifier = Modifier.width(3.dp))
                                         Text(
@@ -421,7 +430,7 @@ fun TradingViewChartScreen(
                                     }
                                 }
 
-                                // Landscape Rotation Button
+                                // Landscape Rotation
                                 IconButton(
                                     onClick = {
                                         val activity = context as? Activity
@@ -434,30 +443,30 @@ fun TradingViewChartScreen(
                                             }
                                         }
                                     },
-                                    modifier = Modifier.size(32.dp)
+                                    modifier = Modifier.size(30.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.ScreenRotation,
                                         contentDescription = "회전",
                                         tint = Color(0xFFB2B5BE),
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
                                 }
 
                                 // Fullscreen Button
                                 IconButton(
                                     onClick = onToggleFullscreen,
-                                    modifier = Modifier.size(32.dp)
+                                    modifier = Modifier.size(30.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Fullscreen,
                                         contentDescription = "전체화면",
                                         tint = Color(0xFF2962FF),
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(19.dp)
                                     )
                                 }
 
-                                // Web TradingView External Link
+                                // External Link
                                 IconButton(
                                     onClick = {
                                         val clean = currentSymbol.trim().uppercase()
@@ -468,44 +477,49 @@ fun TradingViewChartScreen(
                                         )
                                         context.startActivity(intent)
                                     },
-                                    modifier = Modifier.size(32.dp)
+                                    modifier = Modifier.size(30.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.OpenInBrowser,
                                         contentDescription = "외부 웹",
                                         tint = Color(0xFF848E9C),
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
                                 }
                             }
                         }
 
-                        // Row 2: 24h High, Low & Stats Summary + Binance Futures Funding Rate
-                        if (ticker24h != null || fundingInfo != null) {
-                            Spacer(modifier = Modifier.height(4.dp))
+                        // Row 2: Compact 24h Stats Summary & Funding Rate + Depth/Spread Snapshot Button
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Row(
                                 modifier = Modifier
-                                    .fillMaxWidth()
+                                    .weight(1f)
                                     .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (ticker24h != null) {
                                     Text(
-                                        text = "24h 고가 ${PriceFormatter.formatPrice(ticker24h.highPrice.toBigDecimal(), currentInfo?.tickSize)}",
+                                        text = "고가 ${PriceFormatter.formatPrice(ticker24h.highPrice.toBigDecimal(), currentInfo?.tickSize)}",
                                         color = Color(0xFF848E9C),
                                         fontSize = 10.sp,
                                         fontFamily = FontFamily.Monospace
                                     )
                                     Text(
-                                        text = "24h 저가 ${PriceFormatter.formatPrice(ticker24h.lowPrice.toBigDecimal(), currentInfo?.tickSize)}",
+                                        text = "저가 ${PriceFormatter.formatPrice(ticker24h.lowPrice.toBigDecimal(), currentInfo?.tickSize)}",
                                         color = Color(0xFF848E9C),
                                         fontSize = 10.sp,
                                         fontFamily = FontFamily.Monospace
                                     )
                                     if (ticker24h.volume > 0f) {
                                         Text(
-                                            text = "24h 거래량 ${String.format(Locale.US, "%.1f", ticker24h.volume)}",
+                                            text = "거래량 ${String.format(Locale.US, "%.1f", ticker24h.volume)}",
                                             color = Color(0xFF848E9C),
                                             fontSize = 10.sp,
                                             fontFamily = FontFamily.Monospace
@@ -522,16 +536,32 @@ fun TradingViewChartScreen(
                                     )
                                 }
                             }
+
+                            // Orderbook / Market Depth snapshot sheet toggle
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(Color(0xFF2A2E39))
+                                    .clickable { showDepthSheet = true }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "호가/스프레드 ▾",
+                                    color = Color(0xFFD1D4DC),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(5.dp))
 
-                        // Row 3: Timeframe Quick Pills & Chart Styles & Fit Screen
+                        // Row 3: Timeframe Quick Pills, Chart Styles, Technical Indicator Toggles, Fit Screen
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             timeframes.forEach { (label, code) ->
@@ -547,7 +577,7 @@ fun TradingViewChartScreen(
                                             activeInterval = label
                                             webViewRef?.evaluateJavascript("window.setInterval('$code');", null)
                                         }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                        .padding(horizontal = 7.dp, vertical = 4.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -560,7 +590,7 @@ fun TradingViewChartScreen(
                             }
 
                             // Chart Type Styles (캔들, 라인, 하이킨아시)
-                            val chartStyles = listOf("1" to "캔들", "3" to "라인", "8" to "하이킨아시")
+                            val chartStyles = listOf("1" to "캔들", "3" to "라인", "8" to "하이킨")
                             chartStyles.forEach { (code, label) ->
                                 val isSelected = activeChartStyle == code
                                 Box(
@@ -572,7 +602,7 @@ fun TradingViewChartScreen(
                                             activeChartStyle = code
                                             webViewRef?.evaluateJavascript("window.setChartStyle('$code');", null)
                                         }
-                                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                                        .padding(horizontal = 6.dp, vertical = 4.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -580,6 +610,51 @@ fun TradingViewChartScreen(
                                         color = if (isSelected) Color(0xFFF0B90B) else Color(0xFF848E9C),
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+
+                            // Technical Indicator Quick Chips (MA, EMA, BOLL, VOL)
+                            val indicators = listOf(
+                                "MA" to isMaActive,
+                                "EMA" to isEmaActive,
+                                "BOLL" to isBollActive,
+                                "VOL" to isVolActive
+                            )
+                            indicators.forEach { (indName, isActive) ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isActive) Color(0xFF2962FF).copy(alpha = 0.25f) else Color(0xFF2A2E39))
+                                        .border(1.dp, if (isActive) Color(0xFF2962FF) else Color.Transparent, RoundedCornerShape(4.dp))
+                                        .clickable {
+                                            when (indName) {
+                                                "MA" -> {
+                                                    isMaActive = !isMaActive
+                                                    webViewRef?.evaluateJavascript("window.toggleIndicator('MA', $isMaActive);", null)
+                                                }
+                                                "EMA" -> {
+                                                    isEmaActive = !isEmaActive
+                                                    webViewRef?.evaluateJavascript("window.toggleIndicator('EMA', $isEmaActive);", null)
+                                                }
+                                                "BOLL" -> {
+                                                    isBollActive = !isBollActive
+                                                    webViewRef?.evaluateJavascript("window.toggleIndicator('BOLL', $isBollActive);", null)
+                                                }
+                                                "VOL" -> {
+                                                    isVolActive = !isVolActive
+                                                    webViewRef?.evaluateJavascript("window.toggleIndicator('VOL', $isVolActive);", null)
+                                                }
+                                            }
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = indName,
+                                        color = if (isActive) Color(0xFF5B8DEF) else Color(0xFF848E9C),
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
                                     )
                                 }
                             }
@@ -592,7 +667,7 @@ fun TradingViewChartScreen(
                                     .clickable {
                                         webViewRef?.evaluateJavascript("window.resetChartZoom();", null)
                                     }
-                                    .padding(horizontal = 7.dp, vertical = 4.dp),
+                                    .padding(horizontal = 6.dp, vertical = 4.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -600,88 +675,10 @@ fun TradingViewChartScreen(
                                         imageVector = Icons.Default.Refresh,
                                         contentDescription = "화면 맞춤",
                                         tint = Color(0xFF848E9C),
-                                        modifier = Modifier.size(12.dp)
+                                        modifier = Modifier.size(11.dp)
                                     )
                                     Spacer(modifier = Modifier.width(2.dp))
                                     Text(text = "맞춤", color = Color(0xFF848E9C), fontSize = 11.sp)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        // Row 4: Symbol Chips with Mini Price Tags & Quick Add Button
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            selectedSymbols.forEach { symbol ->
-                                val isSelected = symbol.equals(currentSymbol, ignoreCase = true)
-                                val chipPrice = marketPrices[symbol]?.price ?: marketPrices[symbol.uppercase()]?.price
-                                val chipPriceStr = if (chipPrice != null) PriceFormatter.formatPrice(chipPrice, "0.01") else ""
-
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(if (isSelected) Color(0xFF2962FF) else Color(0xFF252932))
-                                        .border(
-                                            1.dp,
-                                            if (isSelected) Color(0xFF5B8DEF) else Color.Transparent,
-                                            RoundedCornerShape(14.dp)
-                                        )
-                                        .clickable {
-                                            onSymbolSelected(symbol)
-                                            webViewRef?.evaluateJavascript("window.loadSymbol('$symbol', '${timeframes.find { it.first == activeInterval }?.second ?: "15"}');", null)
-                                        }
-                                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = symbol.uppercase(),
-                                            color = if (isSelected) Color.White else Color(0xFFD1D4DC),
-                                            fontSize = 11.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                        if (chipPriceStr.isNotBlank()) {
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = chipPriceStr,
-                                                color = if (isSelected) Color(0xFFF0B90B) else Color(0xFF848E9C),
-                                                fontSize = 10.sp,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Quick '+' button to search & add coins directly from chart
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xFF252932))
-                                    .clickable { showSymbolSearchSheet = true }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = "심볼 추가",
-                                        tint = Color(0xFF848E9C),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Text(
-                                        text = "종목 추가",
-                                        color = Color(0xFF848E9C),
-                                        fontSize = 11.sp
-                                    )
                                 }
                             }
                         }
@@ -689,7 +686,58 @@ fun TradingViewChartScreen(
                 }
             }
 
-            // High-Performance Android WebView
+            // Intuitive Drawing Active Banner with Instant 1-Tap "✕ 드로잉 숨기기" Button
+            AnimatedVisibility(visible = isDrawingToolbarVisible) {
+                Surface(
+                    color = Color(0xFF252932),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF363C4E)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = Color(0xFFF0B90B),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "드로잉 모드 켜짐 (차트 좌측 도구바 사용 가능)",
+                                fontSize = 11.sp,
+                                color = Color(0xFFD1D4DC),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFFF6465D).copy(alpha = 0.2f))
+                                .border(1.dp, Color(0xFFF6465D), RoundedCornerShape(4.dp))
+                                .clickable {
+                                    isDrawingToolbarVisible = false
+                                    webViewRef?.evaluateJavascript("window.setDrawingToolbar(false);", null)
+                                }
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = "✕ 드로잉 숨기기",
+                                color = Color(0xFFF6465D),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Main High-Performance Android WebView
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -728,12 +776,23 @@ fun TradingViewChartScreen(
                                 setSupportZoom(false)
                             }
 
+                            // Two-way bridge for drawing toolbar state sync
+                            addJavascriptInterface(object {
+                                @JavascriptInterface
+                                fun onToolbarVisibilityChanged(visible: Boolean) {
+                                    post {
+                                        isDrawingToolbarVisible = visible
+                                    }
+                                }
+                            }, "AndroidBridge")
+
                             webViewClient = object : WebViewClient() {
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
                                     val code = timeframes.find { it.first == activeInterval }?.second ?: "15"
                                     view?.evaluateJavascript("window.loadSymbol('$currentSymbol', '$code');", null)
                                     view?.evaluateJavascript("window.setChartMode('$chartMode');", null)
+                                    view?.evaluateJavascript("window.setDrawingToolbar($isDrawingToolbarVisible);", null)
                                 }
                             }
 
@@ -752,9 +811,96 @@ fun TradingViewChartScreen(
                     modifier = Modifier.fillMaxSize()
                 )
             }
+
+            // Bottom Watchlist Quick Switcher Bar (Hidden in Fullscreen)
+            if (!isFullscreen) {
+                Surface(
+                    color = Color(0xFF1E222D),
+                    shadowElevation = 4.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        selectedSymbols.forEach { symbol ->
+                            val isSelected = symbol.equals(currentSymbol, ignoreCase = true)
+                            val chipPrice = marketPrices[symbol]?.price ?: marketPrices[symbol.uppercase()]?.price
+                            val chipPriceStr = if (chipPrice != null) PriceFormatter.formatPrice(chipPrice, "0.01") else ""
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isSelected) Color(0xFF2962FF) else Color(0xFF252932))
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) Color(0xFF5B8DEF) else Color.Transparent,
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable {
+                                        onSymbolSelected(symbol)
+                                        webViewRef?.evaluateJavascript(
+                                            "window.loadSymbol('$symbol', '${timeframes.find { it.first == activeInterval }?.second ?: "15"}');",
+                                            null
+                                        )
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = symbol.uppercase(),
+                                        color = if (isSelected) Color.White else Color(0xFFD1D4DC),
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    if (chipPriceStr.isNotBlank()) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = chipPriceStr,
+                                            color = if (isSelected) Color(0xFFF0B90B) else Color(0xFF848E9C),
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Quick '+' button to search & add coins directly from chart
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF252932))
+                                .clickable { showSymbolSearchSheet = true }
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "심볼 추가",
+                                    tint = Color(0xFF848E9C),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = "종목 추가",
+                                    color = Color(0xFF848E9C),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        // Fullscreen Mode Floating Action Bar (Exit, Rotate, Next/Prev Coin, Price Tag)
+        // Fullscreen Mode Floating Action Bar (Exit, Rotate, Next/Prev Coin, Drawing Toggle)
         AnimatedVisibility(
             visible = isFullscreen,
             modifier = Modifier
@@ -772,7 +918,6 @@ fun TradingViewChartScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Previous Coin in Watchlist
                     if (selectedSymbols.size > 1) {
                         IconButton(
                             onClick = {
@@ -780,7 +925,10 @@ fun TradingViewChartScreen(
                                 val prevIdx = if (currentIdx <= 0) selectedSymbols.size - 1 else currentIdx - 1
                                 val nextSym = selectedSymbols[prevIdx]
                                 onSymbolSelected(nextSym)
-                                webViewRef?.evaluateJavascript("window.loadSymbol('$nextSym', '${timeframes.find { it.first == activeInterval }?.second ?: "15"}');", null)
+                                webViewRef?.evaluateJavascript(
+                                    "window.loadSymbol('$nextSym', '${timeframes.find { it.first == activeInterval }?.second ?: "15"}');",
+                                    null
+                                )
                             },
                             modifier = Modifier.size(26.dp)
                         ) {
@@ -801,7 +949,6 @@ fun TradingViewChartScreen(
                         fontFamily = FontFamily.Monospace
                     )
 
-                    // Next Coin in Watchlist
                     if (selectedSymbols.size > 1) {
                         IconButton(
                             onClick = {
@@ -809,7 +956,10 @@ fun TradingViewChartScreen(
                                 val nextIdx = (currentIdx + 1) % selectedSymbols.size
                                 val nextSym = selectedSymbols[nextIdx]
                                 onSymbolSelected(nextSym)
-                                webViewRef?.evaluateJavascript("window.loadSymbol('$nextSym', '${timeframes.find { it.first == activeInterval }?.second ?: "15"}');", null)
+                                webViewRef?.evaluateJavascript(
+                                    "window.loadSymbol('$nextSym', '${timeframes.find { it.first == activeInterval }?.second ?: "15"}');",
+                                    null
+                                )
                             },
                             modifier = Modifier.size(26.dp)
                         ) {
@@ -924,11 +1074,11 @@ fun TradingViewChartScreen(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(if (isSelected) Color(0xFF2962FF) else Color.Transparent)
-                                .clickable {
-                                    activeInterval = label
-                                    webViewRef?.evaluateJavascript("window.setInterval('$code');", null)
-                                }
-                                .padding(horizontal = 7.dp, vertical = 3.dp),
+                            .clickable {
+                                activeInterval = label
+                                webViewRef?.evaluateJavascript("window.setInterval('$code');", null)
+                            }
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -940,6 +1090,155 @@ fun TradingViewChartScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // Mini Orderbook & Market Depth / 24h Range Modal Bottom Sheet
+    if (showDepthSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showDepthSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color(0xFF1E222D),
+            contentColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "${currentSymbol.uppercase()} 호가 & 시장 요약",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Binance USDT 무기한 선물",
+                            fontSize = 11.sp,
+                            color = Color(0xFF848E9C)
+                        )
+                    }
+                    IconButton(onClick = { showDepthSheet = false }) {
+                        Icon(imageVector = Icons.Default.Close, contentDescription = "닫기", tint = Color(0xFF848E9C))
+                    }
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 24h High/Low Visual Range Bar
+                if (ticker24h != null) {
+                    val high = ticker24h.highPrice
+                    val low = ticker24h.lowPrice
+                    val current = livePriceFloat.takeIf { it > 0f } ?: low
+                    val range = (high - low).coerceAtLeast(0.0001f)
+                    val ratio = ((current - low) / range).coerceIn(0f, 1f)
+
+                    Text(
+                        text = "24시간 시세 범위 (현재 위치 ${(ratio * 100).toInt()}%)",
+                        fontSize = 11.sp,
+                        color = Color(0xFF848E9C),
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "저가 $low", fontSize = 10.sp, color = Color(0xFFF6465D), fontFamily = FontFamily.Monospace)
+                        Text(text = "현재 $current", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text(text = "고가 $high", fontSize = 10.sp, color = Color(0xFF0ECB81), fontFamily = FontFamily.Monospace)
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    // Progress bar track
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color(0xFF2A2E39))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(ratio)
+                                .fillMaxHeight()
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                        listOf(Color(0xFFF6465D), Color(0xFFF0B90B), Color(0xFF0ECB81))
+                                    )
+                                )
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+
+                // Estimated Bid / Ask & Spread Card
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF252932)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(text = "실시간 매수/매도 스프레드", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD1D4DC))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(text = "매수 1호가 (Bid)", fontSize = 11.sp, color = Color(0xFF848E9C))
+                                Text(text = formattedPrice, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0ECB81), fontFamily = FontFamily.Monospace)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(text = "매도 1호가 (Ask)", fontSize = 11.sp, color = Color(0xFF848E9C))
+                                val tickF = currentInfo?.tickSize?.toFloatOrNull() ?: 0.01f
+                                val askPrice = (livePriceFloat + tickF).takeIf { livePriceFloat > 0f } ?: 0f
+                                Text(
+                                    text = if (askPrice > 0f) PriceFormatter.formatPrice(askPrice.toBigDecimal(), currentInfo?.tickSize) else "—",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFF6465D),
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        HorizontalDivider(color = Color(0xFF2A2E39))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(text = "호가 단위 (Tick Size)", fontSize = 11.sp, color = Color(0xFF848E9C))
+                            Text(text = currentInfo?.tickSize ?: "0.01", fontSize = 11.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                        }
+                        if (ticker24h != null && ticker24h.quoteVolume > 0f) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(text = "24h 거래대금", fontSize = 11.sp, color = Color(0xFF848E9C))
+                                Text(text = String.format(Locale.US, "%,.0f USDT", ticker24h.quoteVolume), fontSize = 11.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                        if (fundingInfo != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(text = "펀딩비 정산까지", fontSize = 11.sp, color = Color(0xFF848E9C))
+                                Text(text = "$formattedFundingRate ($fundingCountdown)", fontSize = 11.sp, color = fundingColor, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }

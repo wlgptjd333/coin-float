@@ -81,7 +81,7 @@ fun SettingsScreen(
 
     Scaffold(
         topBar = {
-            if (!(selectedTabIndex == 1 && isChartFullscreen)) {
+            if (selectedTabIndex != 1) {
                 TopAppBar(
                     title = {
                         Column {
@@ -107,7 +107,7 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(if (selectedTabIndex == 1 && isChartFullscreen) androidx.compose.foundation.layout.PaddingValues(0.dp) else innerPadding)
+                .padding(if (selectedTabIndex == 1) androidx.compose.foundation.layout.PaddingValues(0.dp) else innerPadding)
         ) {
             if (!(selectedTabIndex == 1 && isChartFullscreen)) {
                 PrimaryTabRow(selectedTabIndex = selectedTabIndex) {
