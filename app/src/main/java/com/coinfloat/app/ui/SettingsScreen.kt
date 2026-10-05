@@ -131,6 +131,7 @@ fun SettingsScreen(
                     ticker24hMap = ticker24hMap,
                     onSearchSymbols = viewModel::searchSymbols,
                     onAddSymbolToWatchlist = viewModel::addSymbol,
+                    onRefreshTicker = viewModel::load24hTicker,
                     isFullscreen = isChartFullscreen,
                     onToggleFullscreen = { isChartFullscreen = !isChartFullscreen },
                     modifier = Modifier.fillMaxSize()
@@ -445,7 +446,7 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "CoinFloat v1.3.4",
+                                    text = "CoinFloat v1.3.5",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )

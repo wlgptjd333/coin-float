@@ -10,6 +10,7 @@ import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -100,13 +101,28 @@ fun TradingViewChartScreen(
     ticker24hMap: Map<String, Ticker24h> = emptyMap(),
     onSearchSymbols: (String) -> List<SymbolInfo> = { emptyList() },
     onAddSymbolToWatchlist: (String) -> Unit = {},
+    onRefreshTicker: (String) -> Unit = {},
     isFullscreen: Boolean = false,
     onToggleFullscreen: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    // Intercept back button when fullscreen: exit fullscreen instead of leaving app
+    BackHandler(enabled = isFullscreen) {
+        onToggleFullscreen()
+    }
+
     val currentSymbol = if (activeSymbol.isNotBlank()) activeSymbol else selectedSymbols.firstOrNull() ?: "BTCUSDT"
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Periodically refresh 24h ticker every 30s while chart screen is actively displayed
+    LaunchedEffect(currentSymbol) {
+        onRefreshTicker(currentSymbol)
+        while (true) {
+            kotlinx.coroutines.delay(30_000L)
+            onRefreshTicker(currentSymbol)
+        }
+    }
 
     // Live Price state (100ms native WebSocket)
     val currentMarketPrice = marketPrices[currentSymbol] ?: marketPrices[currentSymbol.uppercase()]
@@ -574,7 +590,7 @@ fun TradingViewChartScreen(
                                 cacheMode = WebSettings.LOAD_DEFAULT
                                 builtInZoomControls = false
                                 displayZoomControls = false
-                                setSupportZoom(true)
+                                setSupportZoom(false)
                             }
 
                             webViewClient = object : WebViewClient() {

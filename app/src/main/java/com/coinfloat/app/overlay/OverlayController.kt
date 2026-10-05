@@ -528,9 +528,9 @@ class OverlayController(private val context: Context) {
                 mainHandler.post {
                     miniChartView?.setChartData(klines)
                     val currentPrice = latestPriceMap[currentChartSymbol] ?: latestPriceMap[currentChartSymbol.uppercase()]
-                    val livePrice = currentPrice?.price?.toFloat()
-                    if (livePrice != null && livePrice > 0f) {
-                        miniChartView?.updateLivePrice(livePrice)
+                    val latestLivePrice = currentPrice?.price?.toFloat()
+                    if (latestLivePrice != null && latestLivePrice > 0f) {
+                        miniChartView?.updateLivePrice(latestLivePrice)
                     }
                 }
             } catch (e: Exception) {
@@ -542,17 +542,33 @@ class OverlayController(private val context: Context) {
         }
     }
 
+    private var isScreenOn = true
+
+    fun onScreenStateChanged(screenOn: Boolean) {
+        runOnMainThread {
+            isScreenOn = screenOn
+            if (!screenOn) {
+                stopChartRefreshLoop()
+            } else {
+                if (isMiniChartShowing) {
+                    loadChartData()
+                    startChartRefreshLoop()
+                }
+            }
+        }
+    }
+
     private fun startChartRefreshLoop() {
         chartRefreshJob?.cancel()
         chartRefreshJob = coroutineScope?.launch(Dispatchers.IO) {
-            while (isMiniChartShowing) {
+            while (isMiniChartShowing && isScreenOn) {
                 delay(15_000L)
-                if (!isMiniChartShowing) break
+                if (!isMiniChartShowing || !isScreenOn) break
                 try {
                     val klines = klineFetcher?.invoke(currentChartSymbol, currentChartInterval) ?: emptyList()
                     if (klines.isNotEmpty()) {
                         mainHandler.post {
-                            if (isMiniChartShowing) {
+                            if (isMiniChartShowing && isScreenOn) {
                                 miniChartView?.setChartData(klines)
                                 val currentPrice = latestPriceMap[currentChartSymbol] ?: latestPriceMap[currentChartSymbol.uppercase()]
                                 val livePrice = currentPrice?.price?.toFloat()

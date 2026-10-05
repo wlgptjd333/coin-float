@@ -14,6 +14,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.coinfloat.app.market.KlineItem
+import java.util.Locale
 import kotlin.math.abs
 
 @SuppressLint("ViewConstructor")
@@ -34,8 +35,13 @@ class MiniChartView(
     private val intervalButtons = mutableMapOf<String, TextView>()
     private val chartView: CandleStickChartView
     val resizeGripView: TextView
+    private val bgDrawable: GradientDrawable
 
     private var currentInterval = "15m"
+    private var lastPriceStr: String? = null
+    private var lastPriceFloat: Float? = null
+    private var lastColor: Int = Color.parseColor("#0ECB81")
+    private var isScrubbing = false
 
     // Moving window callbacks
     var onMoveStart: (() -> Unit)? = null
@@ -50,10 +56,10 @@ class MiniChartView(
     init {
         // Rounded semi-transparent container background
         val cornerPx = 8f * density
-        val bgDrawable = GradientDrawable().apply {
+        bgDrawable = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = cornerPx
-            setColor(Color.argb(240, 0x1E, 0x20, 0x24)) // 94% dark slate
+            setColor(Color.argb(242, 0x1E, 0x20, 0x24)) // 95% dark slate
             setStroke((1 * density).toInt().coerceAtLeast(1), Color.argb(180, 0x43, 0x4A, 0x54))
         }
         background = bgDrawable
@@ -67,7 +73,7 @@ class MiniChartView(
             setPadding(padH, padV, padH, padV)
         }
 
-        // 1. Top Header Row: Symbol, Price, Interval Tabs, Close Button
+        // 1. Top Header Row: Symbol, Price, Interval Tabs, Expand/Close Buttons
         val headerLayout = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -99,7 +105,7 @@ class MiniChartView(
 
         tvPrice = TextView(context).apply {
             textSize = 10f
-            setTextColor(Color.parseColor("#65D69A"))
+            setTextColor(Color.parseColor("#0ECB81"))
             typeface = Typeface.MONOSPACE
             text = "—"
         }
@@ -179,6 +185,20 @@ class MiniChartView(
                 0,
                 1f
             )
+            // Connect touch inspection callback
+            onCandleTouched = { candle ->
+                if (candle != null) {
+                    isScrubbing = true
+                    val isUp = candle.close >= candle.open
+                    val col = if (isUp) Color.parseColor("#0ECB81") else Color.parseColor("#F6465D")
+                    tvPrice.setTextColor(col)
+                    tvPrice.text = "C:${formatPriceShort(candle.close)} H:${formatPriceShort(candle.high)} L:${formatPriceShort(candle.low)}"
+                } else {
+                    isScrubbing = false
+                    tvPrice.setTextColor(lastColor)
+                    tvPrice.text = lastPriceStr ?: "—"
+                }
+            }
         }
         contentLayout.addView(chartView)
 
@@ -187,14 +207,14 @@ class MiniChartView(
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         )
 
-        // 3. Touch Resize Grip Handle in bottom-right corner
-        val gripSize = (34 * density).toInt()
+        // 3. Touch Resize Grip Handle in bottom-right corner (Enlarged 46dp touch area)
+        val gripSize = (46 * density).toInt()
         resizeGripView = TextView(context).apply {
             text = "⇲"
-            textSize = 13f
-            setTextColor(Color.argb(160, 240, 185, 11)) // Binance Gold accent
+            textSize = 14f
+            setTextColor(Color.parseColor("#F0B90B")) // Binance Gold accent
             gravity = Gravity.BOTTOM or Gravity.END
-            setPadding(0, 0, (4 * density).toInt(), (2 * density).toInt())
+            setPadding(0, 0, (6 * density).toInt(), (4 * density).toInt())
         }
 
         val gripParams = LayoutParams(gripSize, gripSize).apply {
@@ -261,6 +281,8 @@ class MiniChartView(
                 MotionEvent.ACTION_DOWN -> {
                     startX = event.rawX
                     startY = event.rawY
+                    // Visual feedback: gold highlight border during resize
+                    bgDrawable.setStroke((2 * density).toInt().coerceAtLeast(2), Color.parseColor("#F0B90B"))
                     onResizeStart?.invoke()
                     true
                 }
@@ -271,6 +293,8 @@ class MiniChartView(
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    // Restore normal border
+                    bgDrawable.setStroke((1 * density).toInt().coerceAtLeast(1), Color.argb(180, 0x43, 0x4A, 0x54))
                     onResizeEnd?.invoke()
                     true
                 }
@@ -279,21 +303,25 @@ class MiniChartView(
         }
     }
 
-    private var lastPrice: Float? = null
-
     fun updateHeader(symbol: String, priceStr: String?, currentPrice: Float? = null) {
         tvSymbol.text = symbol
-        tvPrice.text = priceStr ?: "—"
+        lastPriceStr = priceStr
+        if (!isScrubbing) {
+            tvPrice.text = priceStr ?: "—"
+        }
         if (currentPrice != null) {
-            val prev = lastPrice
+            val prev = lastPriceFloat
             if (prev != null) {
                 if (currentPrice > prev) {
-                    tvPrice.setTextColor(Color.parseColor("#0ECB81"))
+                    lastColor = Color.parseColor("#0ECB81")
                 } else if (currentPrice < prev) {
-                    tvPrice.setTextColor(Color.parseColor("#F6465D"))
+                    lastColor = Color.parseColor("#F6465D")
+                }
+                if (!isScrubbing) {
+                    tvPrice.setTextColor(lastColor)
                 }
             }
-            lastPrice = currentPrice
+            lastPriceFloat = currentPrice
         }
     }
 
@@ -342,5 +370,15 @@ class MiniChartView(
 
     fun updateLivePrice(price: Float) {
         chartView.updateLastPrice(price)
+    }
+
+    private fun formatPriceShort(price: Float): String {
+        return if (price >= 1000f) {
+            String.format(Locale.US, "%.1f", price)
+        } else if (price >= 1f) {
+            String.format(Locale.US, "%.2f", price)
+        } else {
+            String.format(Locale.US, "%.4f", price)
+        }
     }
 }

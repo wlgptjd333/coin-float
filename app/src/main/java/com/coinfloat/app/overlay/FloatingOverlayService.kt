@@ -55,9 +55,11 @@ class FloatingOverlayService : Service() {
                 Intent.ACTION_SCREEN_OFF -> {
                     Log.d(TAG, "Screen OFF detected: pausing market data to conserve battery")
                     marketDataRepository.pause()
+                    overlayController.onScreenStateChanged(false)
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     Log.d(TAG, "Screen ON detected: resuming market data")
+                    overlayController.onScreenStateChanged(true)
                     if (isServiceRunning && settingsRepository.settingsFlow.value.isOverlayVisible) {
                         marketDataRepository.resume()
                     }

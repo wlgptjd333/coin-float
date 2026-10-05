@@ -1,5 +1,6 @@
 package com.coinfloat.app.overlay
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -7,11 +8,10 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
-import android.util.TypedValue
+import android.view.MotionEvent
 import android.view.View
 import com.coinfloat.app.market.KlineItem
 import java.util.Locale
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -82,11 +82,27 @@ class CandleStickChartView @JvmOverloads constructor(
         typeface = android.graphics.Typeface.DEFAULT_BOLD
     }
 
+    private val crosshairPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#848E9C")
+        strokeWidth = 1f * density
+        pathEffect = DashPathEffect(floatArrayOf(3f * density, 3f * density), 0f)
+        style = Paint.Style.STROKE
+    }
+
+    private val crosshairBadgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#2A2E39")
+        style = Paint.Style.FILL
+    }
+
     private var klines: List<KlineItem> = emptyList()
     private var isLoading = false
     private var errorMessage: String? = null
     private var currentLivePrice: Float? = null
     private var isPriceUp: Boolean = true
+
+    // Touch scrubbing inspection state
+    private var touchedCandleIndex: Int? = null
+    var onCandleTouched: ((KlineItem?) -> Unit)? = null
 
     fun setData(items: List<KlineItem>) {
         this.klines = items
@@ -133,6 +149,38 @@ class CandleStickChartView @JvmOverloads constructor(
         updated[lastIndex] = last.copy(close = price, high = newHigh, low = newLow)
         this.klines = updated
         invalidate()
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (klines.isEmpty() || isLoading || errorMessage != null) return super.onTouchEvent(event)
+
+        val paddingLeft = 4f * density
+        val paddingRight = 44f * density
+        val chartWidth = width - paddingLeft - paddingRight
+        if (chartWidth <= 0) return super.onTouchEvent(event)
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                val count = klines.size
+                val slotWidth = chartWidth / count
+                val touchX = event.x - paddingLeft
+                val index = (touchX / slotWidth).toInt().coerceIn(0, count - 1)
+                touchedCandleIndex = index
+                onCandleTouched?.invoke(klines[index])
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                parent?.requestDisallowInterceptTouchEvent(false)
+                touchedCandleIndex = null
+                onCandleTouched?.invoke(null)
+                invalidate()
+                return true
+            }
+        }
+        return super.onTouchEvent(event)
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -229,26 +277,49 @@ class CandleStickChartView @JvmOverloads constructor(
             canvas.drawRect(left, topBodyY, right, finalBottomY, bodyPaint)
         }
 
-        // Draw Current Live Price Line & Badge (TradingView style)
-        val livePrice = currentLivePrice ?: klines.lastOrNull()?.close
-        if (livePrice != null && adjustedRange > 0f) {
-            val liveY = (paddingTop + (1f - (livePrice - adjustedMin) / adjustedRange) * chartHeight)
-                .coerceIn(paddingTop, paddingTop + chartHeight)
+        // Draw Touch Crosshair (when finger is touching / scrubbing)
+        val touchIdx = touchedCandleIndex
+        if (touchIdx != null && touchIdx in 0 until count) {
+            val candle = klines[touchIdx]
+            val slotCenterX = paddingLeft + (touchIdx + 0.5f) * slotWidth
+            val candleCloseY = paddingTop + (1f - (candle.close - adjustedMin) / adjustedRange) * chartHeight
 
-            // Dotted horizontal line across the entire chart
-            canvas.drawLine(paddingLeft, liveY, paddingLeft + chartWidth, liveY, currentPriceLinePaint)
+            // Vertical crosshair line
+            canvas.drawLine(slotCenterX, paddingTop, slotCenterX, paddingTop + chartHeight, crosshairPaint)
+            // Horizontal crosshair line
+            canvas.drawLine(paddingLeft, candleCloseY, paddingLeft + chartWidth, candleCloseY, crosshairPaint)
 
-            // Live price badge on the right axis
-            val badgeText = formatLabelPrice(livePrice)
+            // Crosshair price badge on right axis
+            val badgeText = formatLabelPrice(candle.close)
             val badgeWidth = paddingRight - (4f * density)
             val badgeHeight = 14f * density
             val badgeLeft = paddingLeft + chartWidth + (2f * density)
-            val badgeTop = liveY - (badgeHeight / 2f)
+            val badgeTop = candleCloseY - (badgeHeight / 2f)
             val badgeRect = RectF(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + badgeHeight)
-            canvas.drawRoundRect(badgeRect, 3f * density, 3f * density, priceBadgePaint)
+            canvas.drawRoundRect(badgeRect, 3f * density, 3f * density, crosshairBadgePaint)
+            canvas.drawText(badgeText, badgeLeft + (3f * density), candleCloseY + (3.5f * density), badgeTextPaint)
+        } else {
+            // Draw Current Live Price Line & Badge (TradingView style)
+            val livePrice = currentLivePrice ?: klines.lastOrNull()?.close
+            if (livePrice != null && adjustedRange > 0f) {
+                val liveY = (paddingTop + (1f - (livePrice - adjustedMin) / adjustedRange) * chartHeight)
+                    .coerceIn(paddingTop, paddingTop + chartHeight)
 
-            // Badge text centered vertically
-            canvas.drawText(badgeText, badgeLeft + (3f * density), liveY + (3.5f * density), badgeTextPaint)
+                // Dotted horizontal line across the entire chart
+                canvas.drawLine(paddingLeft, liveY, paddingLeft + chartWidth, liveY, currentPriceLinePaint)
+
+                // Live price badge on the right axis
+                val badgeText = formatLabelPrice(livePrice)
+                val badgeWidth = paddingRight - (4f * density)
+                val badgeHeight = 14f * density
+                val badgeLeft = paddingLeft + chartWidth + (2f * density)
+                val badgeTop = liveY - (badgeHeight / 2f)
+                val badgeRect = RectF(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + badgeHeight)
+                canvas.drawRoundRect(badgeRect, 3f * density, 3f * density, priceBadgePaint)
+
+                // Badge text centered vertically
+                canvas.drawText(badgeText, badgeLeft + (3f * density), liveY + (3.5f * density), badgeTextPaint)
+            }
         }
     }
 
