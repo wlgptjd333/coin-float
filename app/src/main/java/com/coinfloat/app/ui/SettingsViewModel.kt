@@ -58,12 +58,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val activeChartSymbol: StateFlow<String> = _activeChartSymbol.asStateFlow()
 
     val ticker24hMap: StateFlow<Map<String, com.coinfloat.app.market.Ticker24h>> = marketDataRepository.ticker24hMap
+    val fundingInfoMap: StateFlow<Map<String, com.coinfloat.app.market.FundingInfo>> = marketDataRepository.fundingInfoMap
 
     fun selectTab(index: Int) {
         _selectedTabIndex.value = index
         if (index == 1) {
             marketDataRepository.setAppActive(true, _activeChartSymbol.value)
             load24hTicker(_activeChartSymbol.value)
+            loadFundingInfo(_activeChartSymbol.value)
         }
     }
 
@@ -72,18 +74,26 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _activeChartSymbol.value = upper
         marketDataRepository.setAppActiveSymbol(upper)
         load24hTicker(upper)
+        loadFundingInfo(upper)
     }
 
     fun setAppForegroundActive(active: Boolean) {
         marketDataRepository.setAppActive(active, _activeChartSymbol.value)
         if (active) {
             load24hTicker(_activeChartSymbol.value)
+            loadFundingInfo(_activeChartSymbol.value)
         }
     }
 
     fun load24hTicker(symbol: String) {
         viewModelScope.launch {
             marketDataRepository.load24hTicker(symbol)
+        }
+    }
+
+    fun loadFundingInfo(symbol: String) {
+        viewModelScope.launch {
+            marketDataRepository.loadFundingInfo(symbol)
         }
     }
 

@@ -202,6 +202,7 @@ class OverlayController(private val context: Context) {
             if (!settings.isChartEnabled && isMiniChartShowing) {
                 hideMiniChart()
             } else if (isMiniChartShowing && miniChartView != null && miniChartParams != null) {
+                miniChartView?.applyBackgroundStyle(settings.backgroundColorHex, settings.backgroundOpacity)
                 val (wDp, hDp) = settings.getChartDimensionsDp()
                 val density = context.resources.displayMetrics.density
                 val targetW = (wDp * density).toInt()
@@ -408,6 +409,7 @@ class OverlayController(private val context: Context) {
                 }
             )
             view.setActiveInterval(currentChartInterval)
+            view.applyBackgroundStyle(latestSettings.backgroundColorHex, latestSettings.backgroundOpacity)
 
             // Setup moving window via header drag
             var startMoveX = 0

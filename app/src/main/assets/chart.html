@@ -170,6 +170,8 @@
         let currentMode = "tv"; // "tv" or "fast"
         let currentSymbol = "BTCUSDT";
         let currentInterval = "15"; // TV: "1", "3", "5", "15", "30", "60", "240", "D"
+        let currentStyle = "1"; // "1": Candle, "2": Area, "3": Line, "8": Heikin Ashi
+        let showDrawingToolbar = false; // Hide by default on mobile so chart isn't covered
         let tvWidget = null;
         let fastChart = null;
         let fastCandleSeries = null;
@@ -238,9 +240,12 @@
         }
 
         // 1. Official TradingView Widget with auto-fallback safety
-        function initTvWidget(symbol, interval) {
+        function initTvWidget(symbol, interval, showToolbar) {
             currentSymbol = symbol || currentSymbol;
             currentInterval = interval || currentInterval;
+            if (showToolbar !== undefined) {
+                showDrawingToolbar = showToolbar;
+            }
 
             const container = document.getElementById('tradingview_widget');
             container.innerHTML = '';
@@ -249,7 +254,7 @@
             if (!isTvAvailable()) {
                 if (tvInitRetryCount < 6) {
                     tvInitRetryCount++;
-                    setTimeout(() => initTvWidget(currentSymbol, currentInterval), 500);
+                    setTimeout(() => initTvWidget(currentSymbol, currentInterval, showDrawingToolbar), 500);
                     return;
                 }
                 // Fallback to local 100ms Fast Mode if external CDN is blocked/offline
@@ -272,13 +277,13 @@
                     "interval": currentInterval,
                     "timezone": "Asia/Seoul",
                     "theme": "dark",
-                    "style": "1",
+                    "style": currentStyle,
                     "locale": "kr",
                     "toolbar_bg": "#131722",
                     "enable_publishing": false,
                     "allow_symbol_change": true,
                     "container_id": "tradingview_widget",
-                    "hide_side_toolbar": false,
+                    "hide_side_toolbar": !showDrawingToolbar,
                     "withdateranges": true,
                     "save_image": false,
                     "studies": [
@@ -552,8 +557,38 @@
             }
         };
 
+        window.setDrawingToolbar = function(visible) {
+            showDrawingToolbar = !!visible;
+            if (currentMode === "tv") {
+                initTvWidget(currentSymbol, currentInterval, showDrawingToolbar);
+            }
+        };
+
+        window.toggleDrawingToolbar = function() {
+            showDrawingToolbar = !showDrawingToolbar;
+            if (currentMode === "tv") {
+                initTvWidget(currentSymbol, currentInterval, showDrawingToolbar);
+            }
+            return showDrawingToolbar;
+        };
+
+        window.setChartStyle = function(style) {
+            currentStyle = style || "1";
+            if (currentMode === "tv") {
+                initTvWidget(currentSymbol, currentInterval, showDrawingToolbar);
+            }
+        };
+
+        window.resetChartZoom = function() {
+            if (currentMode === "fast" && fastChart) {
+                fastChart.timeScale().fitContent();
+            } else if (currentMode === "tv") {
+                initTvWidget(currentSymbol, currentInterval, showDrawingToolbar);
+            }
+        };
+
         window.addEventListener('DOMContentLoaded', () => {
-            initTvWidget(currentSymbol, currentInterval);
+            initTvWidget(currentSymbol, currentInterval, showDrawingToolbar);
         });
     </script>
 </body>

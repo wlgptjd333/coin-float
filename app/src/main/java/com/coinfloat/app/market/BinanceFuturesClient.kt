@@ -409,4 +409,39 @@ class BinanceFuturesClient(
             null
         }
     }
+
+    suspend fun fetchFundingInfo(symbol: String): FundingInfo? = withContext(Dispatchers.IO) {
+        val url = "https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol.uppercase()}"
+        val request = Request.Builder().url(url).get().build()
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string() ?: return@withContext null
+                parseFundingInfo(body)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch funding info for $symbol: ${e.message}")
+            null
+        }
+    }
+
+    fun parseFundingInfo(jsonStr: String): FundingInfo? {
+        return try {
+            val obj = JSONObject(jsonStr)
+            val symbol = obj.getString("symbol")
+            val fundingRate = obj.optString("lastFundingRate", "0").toFloatOrNull() ?: 0f
+            val nextFundingTime = obj.optLong("nextFundingTime", 0L)
+            val markPrice = obj.optString("markPrice", "0").toFloatOrNull() ?: 0f
+            val indexPrice = obj.optString("indexPrice", "0").toFloatOrNull() ?: 0f
+            FundingInfo(
+                symbol = symbol,
+                fundingRate = fundingRate,
+                nextFundingTime = nextFundingTime,
+                markPrice = markPrice,
+                indexPrice = indexPrice
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
 }

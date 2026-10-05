@@ -44,6 +44,9 @@ class MarketDataRepository(
     private val _ticker24hMap = MutableStateFlow<Map<String, Ticker24h>>(emptyMap())
     val ticker24hMap: StateFlow<Map<String, Ticker24h>> = _ticker24hMap.asStateFlow()
 
+    private val _fundingInfoMap = MutableStateFlow<Map<String, FundingInfo>>(emptyMap())
+    val fundingInfoMap: StateFlow<Map<String, FundingInfo>> = _fundingInfoMap.asStateFlow()
+
     // Multi-consumer state
     private val lock = Any()
     private val overlaySymbols = mutableSetOf<String>()
@@ -200,6 +203,16 @@ class MarketDataRepository(
             _ticker24hMap.value = current
         }
         return ticker
+    }
+
+    suspend fun loadFundingInfo(symbol: String): FundingInfo? {
+        val info = binanceClient.fetchFundingInfo(symbol)
+        if (info != null) {
+            val current = _fundingInfoMap.value.toMutableMap()
+            current[symbol.uppercase()] = info
+            _fundingInfoMap.value = current
+        }
+        return info
     }
 
     suspend fun loadExchangeInfoIfNeeded(): Boolean {

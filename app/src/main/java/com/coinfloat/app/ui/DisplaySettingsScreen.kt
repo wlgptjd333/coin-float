@@ -3,6 +3,8 @@ package com.coinfloat.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -242,15 +244,21 @@ fun DisplaySettingsContent(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 val bgColors = listOf(
-                    "#EDEFF2" to "라이트 그레이",
-                    "#121316" to "다크 그레이",
-                    "#000000" to "블랙",
-                    "#1E293B" to "슬레이트"
+                    "#1E2024" to "슬레이트",
+                    "#0B0E11" to "바이낸스",
+                    "#131722" to "트레이딩뷰",
+                    "#000000" to "트루블랙",
+                    "#181A20" to "차콜",
+                    "#1E293B" to "네이비",
+                    "#1A1D24" to "매트",
+                    "#EDEFF2" to "라이트"
                 )
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     bgColors.forEach { (hex, _) ->
                         val parsedColor = try {
@@ -274,6 +282,24 @@ fun DisplaySettingsContent(
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                var bgHexInput by remember(settings.backgroundColorHex) { mutableStateOf(settings.backgroundColorHex) }
+                OutlinedTextField(
+                    value = bgHexInput,
+                    onValueChange = {
+                        bgHexInput = it
+                        if (it.startsWith("#") && (it.length == 7 || it.length == 9)) {
+                            try {
+                                android.graphics.Color.parseColor(it)
+                                onBackgroundColorChange(it)
+                            } catch (_: Exception) {}
+                        }
+                    },
+                    label = { Text("배경 HEX 색상 코드 (예: #1E2024, #000000)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(

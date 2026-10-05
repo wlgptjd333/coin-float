@@ -372,6 +372,22 @@ class MiniChartView(
         chartView.updateLastPrice(price)
     }
 
+    fun applyBackgroundStyle(colorHex: String?, opacity: Float) {
+        val baseColor = try {
+            Color.parseColor(colorHex ?: "#1E2024")
+        } catch (_: Exception) {
+            Color.parseColor("#1E2024")
+        }
+        val alpha = (opacity.coerceIn(0.1f, 1.0f) * 255).toInt().coerceIn(0, 255)
+        val bgWithAlpha = Color.argb(
+            alpha,
+            Color.red(baseColor),
+            Color.green(baseColor),
+            Color.blue(baseColor)
+        )
+        bgDrawable.setColor(bgWithAlpha)
+    }
+
     private fun formatPriceShort(price: Float): String {
         return if (price >= 1000f) {
             String.format(Locale.US, "%.1f", price)

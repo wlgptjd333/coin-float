@@ -43,8 +43,10 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Speed
@@ -67,6 +69,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -83,6 +86,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.coinfloat.app.market.FundingInfo
 import com.coinfloat.app.market.MarketPrice
 import com.coinfloat.app.market.PriceFormatter
 import com.coinfloat.app.market.SymbolInfo
@@ -99,9 +103,11 @@ fun TradingViewChartScreen(
     marketPrices: Map<String, MarketPrice> = emptyMap(),
     symbolInfoMap: Map<String, SymbolInfo> = emptyMap(),
     ticker24hMap: Map<String, Ticker24h> = emptyMap(),
+    fundingInfoMap: Map<String, FundingInfo> = emptyMap(),
     onSearchSymbols: (String) -> List<SymbolInfo> = { emptyList() },
     onAddSymbolToWatchlist: (String) -> Unit = {},
     onRefreshTicker: (String) -> Unit = {},
+    onRefreshFunding: (String) -> Unit = {},
     isFullscreen: Boolean = false,
     onToggleFullscreen: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -115,12 +121,23 @@ fun TradingViewChartScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Periodically refresh 24h ticker every 30s while chart screen is actively displayed
+    // Periodically refresh 24h ticker & funding info every 30s while chart screen is actively displayed
     LaunchedEffect(currentSymbol) {
         onRefreshTicker(currentSymbol)
+        onRefreshFunding(currentSymbol)
         while (true) {
             kotlinx.coroutines.delay(30_000L)
             onRefreshTicker(currentSymbol)
+            onRefreshFunding(currentSymbol)
+        }
+    }
+
+    // 1-second countdown ticker for next funding fee time
+    var countdownTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1000L)
+            countdownTick = System.currentTimeMillis()
         }
     }
 
@@ -136,6 +153,20 @@ fun TradingViewChartScreen(
     val isPositiveChange = changePercent >= 0f
     val changeColor = if (isPositiveChange) Color(0xFF0ECB81) else Color(0xFFF6465D)
     val formattedChange = String.format(Locale.US, "%s%.2f%%", if (isPositiveChange) "+" else "", changePercent)
+
+    // Funding Rate & Countdown
+    val fundingInfo = fundingInfoMap[currentSymbol] ?: fundingInfoMap[currentSymbol.uppercase()]
+    val fundingRatePct = (fundingInfo?.fundingRate ?: 0f) * 100f
+    val isFundingPositive = fundingRatePct >= 0f
+    val fundingColor = if (isFundingPositive) Color(0xFF0ECB81) else Color(0xFFF6465D)
+    val formattedFundingRate = String.format(Locale.US, "%s%.4f%%", if (isFundingPositive) "+" else "", fundingRatePct)
+    val fundingCountdown = fundingInfo?.let {
+        val diff = (it.nextFundingTime - countdownTick).coerceAtLeast(0L)
+        val h = diff / 3600000L
+        val m = (diff % 3600000L) / 60000L
+        val s = (diff % 60000L) / 1000L
+        String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
+    } ?: ""
 
     // Price uptick / downtick flashing animation
     var prevPrice by remember { mutableFloatStateOf(0f) }
@@ -164,6 +195,10 @@ fun TradingViewChartScreen(
     var chartMode by remember { mutableStateOf("tv") }
     // Selected interval: "1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d"
     var activeInterval by remember { mutableStateOf("15m") }
+    // Drawing Toolbar Toggle (Default hidden on mobile to avoid covering screen!)
+    var isDrawingToolbarVisible by remember { mutableStateOf(false) }
+    // Chart Style: "1": 캔들, "3": 라인, "8": 하이킨아시
+    var activeChartStyle by remember { mutableStateOf("1") }
 
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var showSymbolSearchSheet by remember { mutableStateOf(false) }
@@ -348,6 +383,44 @@ fun TradingViewChartScreen(
                                     }
                                 }
 
+                                // Drawing Toolbar Toggle Button (✏️ 드로잉 토글)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(
+                                            if (isDrawingToolbarVisible) Color(0xFFF0B90B).copy(alpha = 0.2f)
+                                            else Color(0xFF2A2E39)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (isDrawingToolbarVisible) Color(0xFFF0B90B)
+                                            else Color(0xFF363C4E),
+                                            RoundedCornerShape(6.dp)
+                                        )
+                                        .clickable {
+                                            isDrawingToolbarVisible = !isDrawingToolbarVisible
+                                            webViewRef?.evaluateJavascript("window.setDrawingToolbar($isDrawingToolbarVisible);", null)
+                                        }
+                                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "그리기 도구",
+                                            tint = if (isDrawingToolbarVisible) Color(0xFFF0B90B) else Color(0xFF848E9C),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = if (isDrawingToolbarVisible) "드로잉 ON" else "드로잉",
+                                            color = if (isDrawingToolbarVisible) Color(0xFFF0B90B) else Color(0xFF848E9C),
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isDrawingToolbarVisible) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                    }
+                                }
+
                                 // Landscape Rotation Button
                                 IconButton(
                                     onClick = {
@@ -407,31 +480,44 @@ fun TradingViewChartScreen(
                             }
                         }
 
-                        // Row 2: 24h High, Low & Stats Summary (Pro exchange style)
-                        if (ticker24h != null) {
+                        // Row 2: 24h High, Low & Stats Summary + Binance Futures Funding Rate
+                        if (ticker24h != null || fundingInfo != null) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "24h 고가 ${PriceFormatter.formatPrice(ticker24h.highPrice.toBigDecimal(), currentInfo?.tickSize)}",
-                                    color = Color(0xFF848E9C),
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Text(
-                                    text = "24h 저가 ${PriceFormatter.formatPrice(ticker24h.lowPrice.toBigDecimal(), currentInfo?.tickSize)}",
-                                    color = Color(0xFF848E9C),
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                if (ticker24h.volume > 0f) {
+                                if (ticker24h != null) {
                                     Text(
-                                        text = "24h 거래량 ${String.format(Locale.US, "%.1f", ticker24h.volume)}",
+                                        text = "24h 고가 ${PriceFormatter.formatPrice(ticker24h.highPrice.toBigDecimal(), currentInfo?.tickSize)}",
                                         color = Color(0xFF848E9C),
                                         fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Text(
+                                        text = "24h 저가 ${PriceFormatter.formatPrice(ticker24h.lowPrice.toBigDecimal(), currentInfo?.tickSize)}",
+                                        color = Color(0xFF848E9C),
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    if (ticker24h.volume > 0f) {
+                                        Text(
+                                            text = "24h 거래량 ${String.format(Locale.US, "%.1f", ticker24h.volume)}",
+                                            color = Color(0xFF848E9C),
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
+                                if (fundingInfo != null && fundingInfo.fundingRate != 0f) {
+                                    Text(
+                                        text = "펀딩 $formattedFundingRate ($fundingCountdown)",
+                                        color = fundingColor,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
                                         fontFamily = FontFamily.Monospace
                                     )
                                 }
@@ -440,12 +526,13 @@ fun TradingViewChartScreen(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        // Row 3: Timeframe Quick Pills (1m, 3m, 5m, 15m, 30m, 1h, 4h, 1d)
+                        // Row 3: Timeframe Quick Pills & Chart Styles & Fit Screen
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             timeframes.forEach { (label, code) ->
                                 val isSelected = activeInterval == label
@@ -460,7 +547,7 @@ fun TradingViewChartScreen(
                                             activeInterval = label
                                             webViewRef?.evaluateJavascript("window.setInterval('$code');", null)
                                         }
-                                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -469,6 +556,54 @@ fun TradingViewChartScreen(
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                     )
+                                }
+                            }
+
+                            // Chart Type Styles (캔들, 라인, 하이킨아시)
+                            val chartStyles = listOf("1" to "캔들", "3" to "라인", "8" to "하이킨아시")
+                            chartStyles.forEach { (code, label) ->
+                                val isSelected = activeChartStyle == code
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isSelected) Color(0xFFF0B90B).copy(alpha = 0.2f) else Color(0xFF2A2E39))
+                                        .border(1.dp, if (isSelected) Color(0xFFF0B90B) else Color.Transparent, RoundedCornerShape(4.dp))
+                                        .clickable {
+                                            activeChartStyle = code
+                                            webViewRef?.evaluateJavascript("window.setChartStyle('$code');", null)
+                                        }
+                                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSelected) Color(0xFFF0B90B) else Color(0xFF848E9C),
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+
+                            // Reset Zoom / Fit Screen Button
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xFF2A2E39))
+                                    .clickable {
+                                        webViewRef?.evaluateJavascript("window.resetChartZoom();", null)
+                                    }
+                                    .padding(horizontal = 7.dp, vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "화면 맞춤",
+                                        tint = Color(0xFF848E9C),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text(text = "맞춤", color = Color(0xFF848E9C), fontSize = 11.sp)
                                 }
                             }
                         }
@@ -707,6 +842,43 @@ fun TradingViewChartScreen(
                             contentDescription = "회전",
                             tint = Color.White,
                             modifier = Modifier.size(15.dp)
+                        )
+                    }
+
+                    // Drawing Toolbar Toggle in Fullscreen
+                    IconButton(
+                        onClick = {
+                            isDrawingToolbarVisible = !isDrawingToolbarVisible
+                            webViewRef?.evaluateJavascript("window.setDrawingToolbar($isDrawingToolbarVisible);", null)
+                        },
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(if (isDrawingToolbarVisible) Color(0xFFF0B90B) else Color(0xFF2A2E39))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "그리기 도구",
+                            tint = if (isDrawingToolbarVisible) Color.Black else Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+
+                    // Fit Screen in Fullscreen
+                    IconButton(
+                        onClick = {
+                            webViewRef?.evaluateJavascript("window.resetChartZoom();", null)
+                        },
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF2A2E39))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "화면 맞춤",
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
                         )
                     }
 

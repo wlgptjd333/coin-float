@@ -52,3 +52,11 @@ data class Ticker24h(
     val quoteVolume: Float = 0f
 )
 
+data class FundingInfo(
+    val symbol: String,
+    val fundingRate: Float = 0f,
+    val nextFundingTime: Long = 0L,
+    val markPrice: Float = 0f,
+    val indexPrice: Float = 0f
+)
+
