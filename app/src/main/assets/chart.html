@@ -21,6 +21,7 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             user-select: none;
             -webkit-user-select: none;
+            -webkit-touch-callout: none;
             touch-action: none;
         }
         #chart_root {
@@ -33,6 +34,7 @@
             height: 100%;
             background-color: #131722;
             touch-action: none;
+            -webkit-touch-callout: none;
         }
         .container-mode {
             width: 100%;
@@ -43,6 +45,7 @@
             right: 0;
             bottom: 0;
             touch-action: none;
+            -webkit-touch-callout: none;
             overflow: hidden;
         }
 
@@ -497,7 +500,9 @@
                     ],
                     "disabled_features": [
                         "header_screenshot",
-                        "header_compare"
+                        "header_compare",
+                        "horz_touch_drag_scroll",
+                        "vert_touch_drag_scroll"
                     ],
                     "enabled_features": [
                         "side_toolbar_in_fullscreen_mode",
@@ -584,17 +589,20 @@
                 crosshair: {
                     mode: LightweightCharts.CrosshairMode.Normal,
                     vertLine: {
-                        color: 'rgba(240, 185, 11, 0.5)',
+                        color: 'rgba(240, 185, 11, 0.65)',
                         width: 1,
                         style: LightweightCharts.LineStyle.Dashed,
                         labelBackgroundColor: '#2A2E39'
                     },
                     horzLine: {
-                        color: 'rgba(240, 185, 11, 0.5)',
+                        color: 'rgba(240, 185, 11, 0.65)',
                         width: 1,
                         style: LightweightCharts.LineStyle.Dashed,
                         labelBackgroundColor: '#2A2E39'
                     }
+                },
+                trackingMode: {
+                    exitMode: LightweightCharts.TrackingModeExitMode.OnTouchEnd,
                 },
                 rightPriceScale: { borderColor: '#2A2E39', autoScale: true },
                 timeScale: { borderColor: '#2A2E39', timeVisible: true, secondsVisible: false },
@@ -653,6 +661,7 @@
             });
 
             initFastDrawingCanvas();
+            initFastTouchTracking();
 
             window.addEventListener('resize', () => {
                 if (fastChart && container) {
@@ -856,6 +865,131 @@
                     redrawFastCanvas();
                 }
             });
+        }
+
+        // --- Fast Mode Touch-and-Hold Real-time Crosshair Tracking ---
+        let fastTouchTrackingActive = false;
+        let fastTouchHoldTimer = null;
+        let fastTouchStartPos = { x: 0, y: 0 };
+        let fastTouchMovedBeyondSlop = false;
+        let fastTouchTrackingInitialized = false;
+
+        function initFastTouchTracking() {
+            if (fastTouchTrackingInitialized) return;
+            const container = document.getElementById('fast_container');
+            if (!container) return;
+            fastTouchTrackingInitialized = true;
+
+            function getTouchCoords(e) {
+                const touch = e.touches[0] || e.changedTouches[0];
+                const rect = container.getBoundingClientRect();
+                return {
+                    x: Math.max(0, Math.min(rect.width, touch.clientX - rect.left)),
+                    y: Math.max(0, Math.min(rect.height, touch.clientY - rect.top))
+                };
+            }
+
+            function updateCrosshairAt(coords) {
+                if (!fastChart || !fastCandleSeries || fastCandles.length === 0) return;
+                const price = fastCandleSeries.coordinateToPrice(coords.y);
+                const logical = fastChart.timeScale().coordinateToLogical(coords.x);
+                if (price === null || isNaN(price)) return;
+
+                let targetTime = null;
+                let targetCandle = null;
+                if (logical !== null && !isNaN(logical)) {
+                    const idx = Math.round(logical);
+                    if (idx >= 0 && idx < fastCandles.length) {
+                        targetCandle = fastCandles[idx];
+                        targetTime = targetCandle.time;
+                    } else if (idx < 0) {
+                        targetCandle = fastCandles[0];
+                        targetTime = targetCandle.time;
+                    } else {
+                        targetCandle = fastCandles[fastCandles.length - 1];
+                        targetTime = targetCandle.time;
+                    }
+                }
+
+                try {
+                    fastChart.setCrosshairPosition(price, targetTime, fastCandleSeries);
+                } catch (err) {}
+
+                if (targetCandle) {
+                    updateFastLegend({
+                        time: targetCandle.time,
+                        point: coords,
+                        seriesPrices: new Map([[fastCandleSeries, targetCandle]])
+                    });
+                }
+            }
+
+            container.addEventListener('touchstart', (e) => {
+                if (fastDrawTool) return;
+                if (e.touches.length !== 1) {
+                    if (fastTouchHoldTimer) clearTimeout(fastTouchHoldTimer);
+                    if (fastTouchTrackingActive) {
+                        fastTouchTrackingActive = false;
+                        fastChart?.clearCrosshairPosition();
+                        updateFastLegend(null);
+                    }
+                    return;
+                }
+
+                const coords = getTouchCoords(e);
+                fastTouchStartPos = coords;
+                fastTouchMovedBeyondSlop = false;
+                if (fastTouchHoldTimer) clearTimeout(fastTouchHoldTimer);
+
+                // 120ms hold activates crosshair smoothly
+                fastTouchHoldTimer = setTimeout(() => {
+                    if (!fastTouchMovedBeyondSlop) {
+                        fastTouchTrackingActive = true;
+                        updateCrosshairAt(fastTouchStartPos);
+                        try {
+                            if (window.AndroidBridge && typeof window.AndroidBridge.performHapticFeedback === 'function') {
+                                window.AndroidBridge.performHapticFeedback();
+                            }
+                        } catch (err) {}
+                    }
+                }, 120);
+            }, { passive: true, capture: true });
+
+            container.addEventListener('touchmove', (e) => {
+                if (fastDrawTool) return;
+                if (e.touches.length !== 1) return;
+
+                const coords = getTouchCoords(e);
+                const dx = Math.abs(coords.x - fastTouchStartPos.x);
+                const dy = Math.abs(coords.y - fastTouchStartPos.y);
+
+                if (fastTouchTrackingActive) {
+                    // Prevent chart pan/scroll while crosshair is actively tracking
+                    if (e.cancelable) e.preventDefault();
+                    e.stopPropagation();
+                    updateCrosshairAt(coords);
+                } else {
+                    // Finger moved before hold timer finished: user is panning/scrolling
+                    if (dx > 8 || dy > 8) {
+                        fastTouchMovedBeyondSlop = true;
+                        if (fastTouchHoldTimer) clearTimeout(fastTouchHoldTimer);
+                    }
+                }
+            }, { passive: false, capture: true });
+
+            function endTouch() {
+                if (fastTouchHoldTimer) clearTimeout(fastTouchHoldTimer);
+                if (fastTouchTrackingActive) {
+                    fastTouchTrackingActive = false;
+                    try {
+                        fastChart?.clearCrosshairPosition();
+                    } catch (err) {}
+                    updateFastLegend(null);
+                }
+            }
+
+            container.addEventListener('touchend', endTouch, { passive: true, capture: true });
+            container.addEventListener('touchcancel', endTouch, { passive: true, capture: true });
         }
 
         function resizeFastCanvas() {

@@ -5,6 +5,8 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -755,6 +757,22 @@ fun TradingViewChartScreen(
                             setBackgroundColor(android.graphics.Color.parseColor("#131722"))
                             tag = currentSymbol
 
+                            // Prevent Android from intercepting long-press and touch movements on the chart
+                            isLongClickable = false
+                            setOnLongClickListener { true }
+                            isHapticFeedbackEnabled = false
+                            setOnTouchListener { v, event ->
+                                when (event.actionMasked) {
+                                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                                    }
+                                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                        v.parent?.requestDisallowInterceptTouchEvent(false)
+                                    }
+                                }
+                                false
+                            }
+
                             val cookieManager = CookieManager.getInstance()
                             cookieManager.setAcceptCookie(true)
                             cookieManager.setAcceptThirdPartyCookies(this, true)
@@ -776,12 +794,19 @@ fun TradingViewChartScreen(
                                 setSupportZoom(false)
                             }
 
-                            // Two-way bridge for drawing toolbar state sync
+                            // Two-way bridge for drawing toolbar state sync and tactile haptic feedback
                             addJavascriptInterface(object {
                                 @JavascriptInterface
                                 fun onToolbarVisibilityChanged(visible: Boolean) {
                                     post {
                                         isDrawingToolbarVisible = visible
+                                    }
+                                }
+
+                                @JavascriptInterface
+                                fun performHapticFeedback() {
+                                    post {
+                                        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                                     }
                                 }
                             }, "AndroidBridge")
