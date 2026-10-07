@@ -119,14 +119,54 @@ class FloatingOverlayService : Service() {
         val action = intent?.action ?: ACTION_START
         Log.d(TAG, "onStartCommand with action: $action")
 
+        if (action == ACTION_STOP) {
+            handleStop()
+            return START_NOT_STICKY
+        }
+
+        // CRITICAL FIX: Ensure startForeground() is called immediately (within <5ms)
+        // to satisfy Android's 5.0-second startForegroundService() contract and prevent
+        // ForegroundServiceDidNotStartInTimeException / OS crash loop.
+        val promoted = ensureForegroundNotification()
+        if (!promoted) {
+            Log.e(TAG, "Failed to promote to foreground service. Stopping immediately to avoid OS crash.")
+            handleStop()
+            return START_NOT_STICKY
+        }
+
         when (action) {
             ACTION_START -> handleStart()
             ACTION_HIDE -> handleHide()
             ACTION_SHOW -> handleShow()
-            ACTION_STOP -> handleStop()
         }
 
-        return START_STICKY
+        return START_NOT_STICKY
+    }
+
+    private fun ensureForegroundNotification(): Boolean {
+        return try {
+            val currentSettings = settingsRepository.settingsFlow.value
+            val initialNotification = CoinFloatNotification.buildNotification(
+                context = this,
+                symbols = currentSettings.selectedSymbols,
+                connectionState = marketDataRepository.connectionState.value,
+                isOverlayVisible = currentSettings.isOverlayVisible
+            )
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    CoinFloatNotification.NOTIFICATION_ID,
+                    initialNotification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(CoinFloatNotification.NOTIFICATION_ID, initialNotification)
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to startForeground: ${e.message}", e)
+            false
+        }
     }
 
     private fun handleStart() {
@@ -143,31 +183,8 @@ class FloatingOverlayService : Service() {
             isServiceEnabled = true,
             isOverlayVisible = true
         )
-        val initialNotification = CoinFloatNotification.buildNotification(
-            context = this,
-            symbols = currentSettings.selectedSymbols,
-            connectionState = marketDataRepository.connectionState.value,
-            isOverlayVisible = true
-        )
 
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    startForeground(
-                        CoinFloatNotification.NOTIFICATION_ID,
-                        initialNotification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                    )
-                } else {
-                    startForeground(CoinFloatNotification.NOTIFICATION_ID, initialNotification)
-                }
-            } else {
-                startForeground(CoinFloatNotification.NOTIFICATION_ID, initialNotification)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to startForeground: ${e.message}", e)
-        }
-
+        updateNotification(marketDataRepository.connectionState.value)
         marketDataRepository.start(currentSettings.selectedSymbols)
         showOverlay(currentSettings)
         startPriceObserving()

@@ -36,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -171,22 +172,65 @@ fun SettingsScreen(
                                     }
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "시세창 오버레이를 다른 앱 위에 작게 띄우려면 시스템 오버레이 권한이 필요합니다.",
+                                        text = "시세창 오버레이를 다른 앱 화면 위에 항상 작게 띄우려면 시스템 오버레이 권한이 필요합니다.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onErrorContainer
                                     )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Button(
-                                        onClick = {
-                                            val intent = Intent(
-                                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                                Uri.parse("package:${context.packageName}")
-                                            )
-                                            context.startActivity(intent)
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text("권한 허용하기")
+                                        Button(
+                                            onClick = {
+                                                val intent = Intent(
+                                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                                    Uri.parse("package:${context.packageName}")
+                                                )
+                                                context.startActivity(intent)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("권한 허용하기")
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                val intent = Intent(
+                                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                                    Uri.parse("package:${context.packageName}")
+                                                )
+                                                context.startActivity(intent)
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("앱 정보 설정")
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Surface(
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Text(
+                                                text = "💡 권한 스위치가 꺼지거나 비활성화(회색)되어 있나요?",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onErrorContainer
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "안드로이드 13·14(One UI) 보안 정책으로 인해 직접 설치한 APK는 '제한된 설정' 해제가 필요합니다:\n" +
+                                                        "1. 위 [앱 정보 설정] 버튼 터치\n" +
+                                                        "2. 화면 우측 상단 점 3개(⋮) > '제한된 설정 허용' 선택 (화면 잠금 인증)\n" +
+                                                        "3. 다시 [권한 허용하기]로 '다른 앱 위에 표시' 켜기\n" +
+                                                        "4. 앱 정보 > 배터리 > '제한 없음' 선택 시 백그라운드 꺼짐 방지",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onErrorContainer
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -422,25 +466,39 @@ fun SettingsScreen(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "삼성 Galaxy / One UI 안내",
+                                        text = "삼성 Galaxy / One UI 및 권한 안내",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Text(
-                                    text = "삼성 Galaxy 기기에서는 백그라운드 절전 정책으로 인해 다른 앱 사용 중 시세 서비스가 일시 중단될 수 있습니다.",
+                                    text = "삼성 Galaxy 및 안드로이드 13·14 기기에서는 백그라운드 절전 정책이나 보안 설정으로 인해 서비스가 중단되거나 권한이 초기화될 수 있습니다.",
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "안정적인 장시간 시세 유지를 위해:\n" +
-                                            "1. 디바이스 케어 > 배터리 > 백그라운드 사용 제한\n" +
-                                            "2. '절전 예외 앱'에 CoinFloat을 추가해 주세요.\n" +
-                                            "3. 앱 설정 > 배터리 > '제한 없음'으로 설정해 주세요.",
+                                    text = "안정적인 시세창 유지를 위한 필수 권장 설정:\n" +
+                                            "1. [제한된 설정 허용]: 앱 정보 > 우측 상단 점 3개(⋮) > '제한된 설정 허용'\n" +
+                                            "2. [배터리 최적화 예외]: 앱 정보 > 배터리 > '제한 없음' 선택\n" +
+                                            "3. [권한 자동 삭제 방지]: 앱 정보 > '사용하지 않는 앱 권한 삭제' 해제\n" +
+                                            "4. 디바이스 케어 > 배터리 > 백그라운드 사용 제한 > '절전 예외 앱'에 CoinFloat 등록",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        val intent = Intent(
+                                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                            Uri.parse("package:${context.packageName}")
+                                        )
+                                        context.startActivity(intent)
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("CoinFloat 앱 정보 설정 열기")
+                                }
                             }
                         }
 
@@ -450,7 +508,7 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "CoinFloat v1.3.7",
+                                    text = "CoinFloat v1.3.9",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -459,6 +517,7 @@ fun SettingsScreen(
                                     text = "• 거래소: Binance USDⓈ-M Futures (공개 시장 데이터)\n" +
                                             "• 실시간 스트림: Aggregate Trade Stream (100ms)\n" +
                                             "• 트레이딩뷰 실시간 차트 & 미니 캔들 팝업 내장\n" +
+                                            "• 서비스 안정성: 포그라운드 즉시 승격 및 5초 크래시 방지 보장\n" +
                                             "• 계정/API 키/로그인 불필요, 주문/거래 기능 없음",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant

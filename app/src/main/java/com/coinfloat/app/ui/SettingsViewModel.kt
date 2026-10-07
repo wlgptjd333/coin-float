@@ -122,25 +122,45 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private var isStartingService = false
+
     fun startService() {
         val context: Context = getApplication()
         if (!checkOverlayPermission()) {
-            android.widget.Toast.makeText(context, "다른 앱 위에 표시 권한을 먼저 허용해주세요.", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(
+                context,
+                "다른 앱 위에 표시 권한을 먼저 허용해주세요. (권한이 꺼질 경우 앱 정보 > 점 3개 > 제한된 설정 허용 필요)",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
             return
         }
+        if (FloatingOverlayService.isServiceActive.value || isStartingService) {
+            return
+        }
+        isStartingService = true
         val intent = Intent(context, FloatingOverlayService::class.java).apply {
             action = FloatingOverlayService.ACTION_START
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
-            context.startService(intent)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+            viewModelScope.launch {
+                settingsRepository.updateServiceEnabled(true)
+                settingsRepository.updateOverlayVisible(true)
+            }
+            android.widget.Toast.makeText(context, "CoinFloat 시세창을 시작합니다.", android.widget.Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Failed to start service: ${e.message}", e)
+            android.widget.Toast.makeText(context, "시세창 시작 실패: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+        } finally {
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(1000L)
+                isStartingService = false
+            }
         }
-        viewModelScope.launch {
-            settingsRepository.updateServiceEnabled(true)
-            settingsRepository.updateOverlayVisible(true)
-        }
-        android.widget.Toast.makeText(context, "CoinFloat 시세창을 시작합니다.", android.widget.Toast.LENGTH_SHORT).show()
     }
 
     fun stopService() {
@@ -148,7 +168,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val intent = Intent(context, FloatingOverlayService::class.java).apply {
             action = FloatingOverlayService.ACTION_STOP
         }
-        context.startService(intent)
+        try {
+            context.startService(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Failed to stop service: ${e.message}", e)
+        }
         viewModelScope.launch {
             settingsRepository.updateServiceEnabled(false)
         }
@@ -160,7 +184,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val intent = Intent(context, FloatingOverlayService::class.java).apply {
             action = FloatingOverlayService.ACTION_HIDE
         }
-        context.startService(intent)
+        try {
+            context.startService(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Failed to hide overlay: ${e.message}", e)
+        }
         viewModelScope.launch {
             settingsRepository.updateOverlayVisible(false)
         }
@@ -170,16 +198,26 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun showOverlay() {
         val context: Context = getApplication()
         if (!checkOverlayPermission()) {
-            android.widget.Toast.makeText(context, "다른 앱 위에 표시 권한을 먼저 허용해주세요.", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(
+                context,
+                "다른 앱 위에 표시 권한을 먼저 허용해주세요. (권한이 꺼질 경우 앱 정보 > 점 3개 > 제한된 설정 허용 필요)",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
             return
         }
+
+        if (!FloatingOverlayService.isServiceActive.value) {
+            startService()
+            return
+        }
+
         val intent = Intent(context, FloatingOverlayService::class.java).apply {
             action = FloatingOverlayService.ACTION_SHOW
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
+        try {
             context.startService(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Failed to show overlay: ${e.message}", e)
         }
         viewModelScope.launch {
             settingsRepository.updateOverlayVisible(true)
@@ -246,7 +284,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             settings.collectLatest { s ->
-                if (s.isServiceEnabled && !FloatingOverlayService.isServiceActive.value && checkOverlayPermission()) {
+                if (s.isServiceEnabled && !FloatingOverlayService.isServiceActive.value && !isStartingService && checkOverlayPermission()) {
                     startService()
                 }
             }
