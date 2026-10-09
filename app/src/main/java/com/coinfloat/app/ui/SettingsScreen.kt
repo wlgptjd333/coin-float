@@ -1,6 +1,7 @@
 package com.coinfloat.app.ui
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.background
@@ -45,11 +46,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -62,6 +66,9 @@ fun SettingsScreen(
     onRequestNotificationPermission: () -> Unit
 ) {
     val context = LocalContext.current
+    val appVersion = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
+    }
     val settings by viewModel.settings.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val hasOverlayPermission by viewModel.hasOverlayPermission.collectAsState()
@@ -77,7 +84,10 @@ fun SettingsScreen(
 
     val selectedTabIndex by viewModel.selectedTabIndex.collectAsState()
     val activeChartSymbol by viewModel.activeChartSymbol.collectAsState()
-    var isChartFullscreen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var isChartFullscreen by rememberSaveable { mutableStateOf(false) }
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // Fullscreen and landscape both give the chart the whole window (no top bar, no tab row).
+    val isChartImmersive = selectedTabIndex == 1 && (isChartFullscreen || isLandscape)
     val tabs = listOf("상태", "차트", "심볼", "설정", "안내")
 
     Scaffold(
@@ -110,7 +120,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(if (selectedTabIndex == 1) androidx.compose.foundation.layout.PaddingValues(0.dp) else innerPadding)
         ) {
-            if (!(selectedTabIndex == 1 && isChartFullscreen)) {
+            if (!isChartImmersive) {
                 PrimaryTabRow(selectedTabIndex = selectedTabIndex) {
                     tabs.forEachIndexed { index, title ->
                         Tab(
@@ -132,6 +142,7 @@ fun SettingsScreen(
                     symbolInfoMap = symbolInfoMap,
                     ticker24hMap = ticker24hMap,
                     fundingInfoMap = fundingInfoMap,
+                    defaultInterval = settings.defaultChartInterval,
                     onSearchSymbols = viewModel::searchSymbols,
                     onAddSymbolToWatchlist = viewModel::addSymbol,
                     onRefreshTicker = viewModel::load24hTicker,
@@ -350,7 +361,8 @@ fun SettingsScreen(
                                             Spacer(modifier = Modifier.height(4.dp))
                                             settings.selectedSymbols.forEach { sym ->
                                                 val p = marketPrices[sym]?.price ?: marketPrices[sym.uppercase()]?.price
-                                                val pStr = if (p != null) "$sym: ${com.coinfloat.app.market.PriceFormatter.formatPrice(p, "0.01")} USDT" else "$sym: 시세 수신 대기 중..."
+                                                val tick = symbolInfoMap[sym.uppercase()]?.tickSize
+                                                val pStr = if (p != null) "$sym: ${com.coinfloat.app.market.PriceFormatter.formatPrice(p, tick)} USDT" else "$sym: 시세 수신 대기 중..."
                                                 Text(
                                                     text = pStr,
                                                     style = MaterialTheme.typography.bodySmall,
@@ -508,7 +520,7 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "CoinFloat v1.3.9",
+                                    text = "CoinFloat v$appVersion",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )

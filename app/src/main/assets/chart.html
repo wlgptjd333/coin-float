@@ -1,1146 +1,152 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CoinFloat Pro Chart</title>
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            -webkit-tap-highlight-color: transparent;
-        }
-        html, body {
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            background-color: #131722;
-            overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            user-select: none;
-            -webkit-user-select: none;
-            -webkit-touch-callout: none;
-            touch-action: none;
-        }
-        #chart_root {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            width: 100%;
-            height: 100%;
-            background-color: #131722;
-            touch-action: none;
-            -webkit-touch-callout: none;
-        }
-        .container-mode {
-            width: 100%;
-            height: 100%;
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            touch-action: none;
-            -webkit-touch-callout: none;
-            overflow: hidden;
-        }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>CoinFloat Chart</title>
+<style>
+:root {
+    --bg: #131722;
+    --panel: #1E222D;
+    --line: #2A2E39;
+    --text: #D1D4DC;
+    --muted: #848E9C;
+    --accent: #2962FF;
+    --gold: #F0B90B;
+    --up: #0ECB81;
+    --down: #F6465D;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body {
+    width: 100%; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+button { font: inherit; color: inherit; background: none; border: 0; outline: none; cursor: pointer; }
+svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+#app { position: fixed; inset: 0; display: flex; flex-direction: column; }
 
-        /* TradingView Container & Non-destructive Toolbar Slide */
-        #tv_container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-        }
-        #tradingview_widget {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            transform: translateX(0);
-            transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-        #tradingview_widget.toolbar-hidden {
-            width: calc(100% + 52px);
-            transform: translateX(-52px);
-        }
+/* ---- top bar ---------------------------------------------------------------------------------- */
+#topbar {
+    flex: 0 0 36px; display: flex; align-items: center; gap: 2px; padding: 0 4px;
+    background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.imm { display: none !important; }
+#app.immersive .imm { display: flex !important; }
+#sym_btn { align-items: center; gap: 3px; padding: 0 8px; height: 30px; border-radius: 6px; font-weight: 700; font-size: 13px; color: #fff; flex: 0 0 auto; }
+#sym_btn .caret { color: var(--muted); font-size: 10px; }
+#top_price { font-weight: 700; font-size: 13px; padding: 0 8px 0 0; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+#intervals { flex: 1 1 auto; min-width: 0; display: flex; gap: 1px; overflow-x: auto; scrollbar-width: none; }
+#intervals::-webkit-scrollbar { display: none; }
+.chip { flex: 0 0 auto; height: 30px; padding: 0 9px; border-radius: 6px; font-size: 12.5px; color: var(--muted); }
+.chip.active { color: #fff; background: var(--line); font-weight: 600; }
+.tb-btn { flex: 0 0 auto; height: 30px; min-width: 30px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; color: var(--text); display: flex; align-items: center; justify-content: center; gap: 4px; }
+.tb-btn:active, .chip:active, .tool:active { background: var(--line); }
+.tb-btn svg { width: 18px; height: 18px; }
+#ind_btn.on { color: var(--gold); }
 
-        /* Left Edge Slide Handle for Drawing Toolbar */
-        #tv_draw_handle {
-            position: absolute;
-            top: 48%;
-            left: 0;
-            transform: translateY(-50%);
-            background: rgba(30, 34, 45, 0.92);
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            border-left: none;
-            border-radius: 0 8px 8px 0;
-            padding: 8px 5px;
-            z-index: 30;
-            cursor: pointer;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 3px;
-            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
-            transition: left 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.2s;
-            user-select: none;
-            touch-action: manipulation;
-        }
-        #tv_draw_handle:active {
-            background: #2962FF;
-        }
-        #tv_draw_handle.toolbar-open {
-            left: 52px;
-            background: #2962FF;
-            border-color: #5B8DEF;
-        }
-        #tv_draw_icon {
-            font-size: 13px;
-            line-height: 1;
-        }
-        #tv_draw_label {
-            font-size: 9px;
-            font-weight: bold;
-            color: #D1D4DC;
-            letter-spacing: -0.5px;
-        }
-        #tv_draw_handle.toolbar-open #tv_draw_label {
-            color: #FFFFFF;
-        }
+/* ---- main area ----------------------------------------------------------------------------------- */
+#main { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
+#rail {
+    flex: 0 0 46px; width: 46px; overflow: hidden; background: var(--bg); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; align-items: center; padding: 4px 0; gap: 1px;
+    transition: flex-basis .16s ease, width .16s ease;
+}
+#app.rail-closed #rail { flex-basis: 0; width: 0; border-right-width: 0; padding: 0; }
+.tool { flex: 0 0 auto; width: 42px; height: 44px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--muted); font-size: 9.5px; }
+.tool svg { width: 20px; height: 20px; }
+.tool.active { color: #fff; background: var(--accent); }
+.tool.danger.armed { color: #fff; background: var(--down); }
+.rail-sep { flex: 0 0 1px; width: 28px; background: var(--line); margin: 3px 0; }
+#rail_toggle {
+    position: absolute; top: 42%; left: 46px; z-index: 12; width: 16px; height: 46px;
+    background: rgba(30, 34, 45, .92); border: 1px solid var(--line); border-left: 0; border-radius: 0 8px 8px 0;
+    color: var(--muted); display: flex; align-items: center; justify-content: center;
+    transition: left .16s ease;
+}
+#rail_toggle svg { width: 12px; height: 12px; stroke-width: 2.2; transition: transform .16s ease; }
+#app.rail-closed #rail_toggle { left: 0; }
+#app.rail-closed #rail_toggle svg { transform: rotate(180deg); }
+#chart_wrap { position: relative; flex: 1 1 auto; min-width: 0; touch-action: none; }
+#chart { position: absolute; inset: 0; }
 
-        /* Fast Mode Legend */
-        #fast_legend {
-            position: absolute;
-            top: 8px;
-            left: 10px;
-            z-index: 10;
-            pointer-events: none;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
-            font-size: 11px;
-            color: #848E9C;
-            background: rgba(19, 23, 34, 0.85);
-            padding: 4px 8px;
-            border-radius: 4px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-        .legend-sym {
-            color: #FFFFFF;
-            font-weight: bold;
-        }
-        .legend-up {
-            color: #0ECB81;
-        }
-        .legend-down {
-            color: #F6465D;
-        }
+#legend {
+    position: absolute; top: 4px; left: 8px; right: 6px; z-index: 5; pointer-events: none;
+    font-size: 10.5px; line-height: 1.45; color: var(--muted); font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg);
+}
+#legend .row { white-space: normal; word-break: keep-all; }
+#legend b { color: var(--text); font-weight: 600; }
+.up { color: var(--up); } .down { color: var(--down); }
+#to_latest {
+    position: absolute; right: 64px; bottom: 34px; z-index: 8; width: 34px; height: 34px; border-radius: 17px;
+    background: rgba(30, 34, 45, .95); border: 1px solid var(--line); display: none; align-items: center; justify-content: center; color: var(--text);
+}
+#to_latest.show { display: flex; }
+#to_latest svg { width: 16px; height: 16px; stroke-width: 2.2; }
+#hint {
+    position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 9; padding: 6px 12px; border-radius: 14px;
+    background: rgba(41, 98, 255, .92); color: #fff; font-size: 12px; display: none; pointer-events: none; white-space: nowrap;
+}
+#hint.show { display: block; }
+#loading { position: absolute; inset: 0; z-index: 20; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; gap: 10px; transition: opacity .2s; pointer-events: none; }
+#loading.hide { opacity: 0; }
+.spinner { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#toast { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); z-index: 30; max-width: 90%; padding: 7px 12px; border-radius: 14px; background: rgba(30, 34, 45, .97); border: 1px solid var(--line); font-size: 12px; display: none; align-items: center; gap: 8px; }
+#toast.show { display: flex; }
+#toast button { background: var(--accent); color: #fff; border-radius: 10px; padding: 3px 9px; font-size: 11.5px; }
 
-        /* Fast Mode Drawing Canvas Overlay */
-        #fast_draw_canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 15;
-            pointer-events: none;
-        }
-        #fast_draw_canvas.interactive {
-            pointer-events: auto;
-            touch-action: none;
-        }
-
-        /* Fast Mode Drawing Floating Toolbar */
-        #fast_draw_toolbar {
-            position: absolute;
-            top: 8px;
-            right: 10px;
-            z-index: 20;
-            display: none;
-            background: rgba(30, 34, 45, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 20px;
-            padding: 4px 8px;
-            gap: 6px;
-            align-items: center;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-        }
-        .draw-btn {
-            background: #2A2E39;
-            color: #B2B5BE;
-            border: 1px solid transparent;
-            border-radius: 12px;
-            padding: 3px 8px;
-            font-size: 10px;
-            cursor: pointer;
-            outline: none;
-            user-select: none;
-        }
-        .draw-btn.active {
-            background: #2962FF;
-            color: #FFFFFF;
-            border-color: #5B8DEF;
-            font-weight: bold;
-        }
-
-        iframe {
-            width: 100% !important;
-            height: 100% !important;
-            border: 0 !important;
-        }
-        #loading_cover {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #131722;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            color: #848E9C;
-            font-size: 13px;
-            z-index: 99;
-            transition: opacity 0.25s ease;
-            pointer-events: none;
-        }
-        .spinner {
-            width: 32px;
-            height: 32px;
-            border: 3px solid #2A2E39;
-            border-top: 3px solid #2962FF;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        #toast_banner {
-            position: fixed;
-            bottom: 16px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(30, 34, 45, 0.95);
-            border: 1px solid #363C4E;
-            color: #D1D4DC;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 11px;
-            z-index: 100;
-            display: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-            align-items: center;
-            gap: 8px;
-        }
-        #toast_btn {
-            background: #2962FF;
-            color: #FFF;
-            border: none;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 10px;
-            cursor: pointer;
-        }
-    </style>
-    <!-- Bundled offline high-speed canvas engine (Always loads 100% reliably in 0ms) -->
-    <script type="text/javascript" src="lightweight-charts.js"></script>
-    <!-- Official TradingView Widget script from CDN -->
-    <script type="text/javascript" src="https://s3.tradingview.com/tv.js" async></script>
+/* ---- bottom sheet -------------------------------------------------------------------------------- */
+#sheet_bg { position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, .45); display: none; align-items: flex-end; justify-content: center; }
+#sheet_bg.show { display: flex; }
+#sheet { width: 100%; max-width: 440px; max-height: 88%; overflow-y: auto; background: var(--panel); border-radius: 14px 14px 0 0; padding: 6px 0 12px; }
+#sheet h3 { font-size: 14px; padding: 10px 16px 6px; color: #fff; }
+.row-opt { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 16px; font-size: 13.5px; text-align: left; }
+.row-opt small { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+.row-opt:active { background: var(--line); }
+.switch { flex: 0 0 38px; width: 38px; height: 22px; border-radius: 11px; background: #3A3F4B; position: relative; transition: background .15s; }
+.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 9px; background: #fff; transition: transform .15s; }
+.switch.on { background: var(--accent); }
+.switch.on::after { transform: translateX(16px); }
+.check { width: 18px; color: var(--accent); }
+.sec { padding: 14px 16px 4px; font-size: 11.5px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+.note { padding: 8px 16px 4px; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.gear { color: var(--muted); font-size: 16px; padding: 4px 10px; border-radius: 6px; }
+.gear:active { background: var(--line); }
+.ma-row { padding-top: 7px; padding-bottom: 7px; }
+.ma-row .dot { width: 12px; height: 12px; border-radius: 6px; flex: 0 0 12px; }
+.ma-row input { width: 72px; background: #131722; border: 1px solid var(--line); border-radius: 6px; color: #fff; font-size: 14px; padding: 6px 8px; text-align: right; -webkit-user-select: text; user-select: text; }
+.sheet-link { color: var(--muted); font-size: 12px; padding: 10px 16px 2px; display: block; }
+</style>
+<script src="lightweight-charts.js"></script>
 </head>
 <body>
-    <div id="chart_root">
-        <!-- Mode 1: Official TradingView Widget Container -->
-        <div id="tv_container" class="container-mode">
-            <div id="tradingview_widget" class="toolbar-hidden"></div>
-            <!-- Left edge slide handle for TradingView drawing toolbar -->
-            <div id="tv_draw_handle" onclick="toggleDrawingToolbar()" title="드로잉 도구 토글">
-                <span id="tv_draw_icon">✏️</span>
-                <span id="tv_draw_label">도구</span>
-            </div>
-        </div>
-
-        <!-- Mode 2: Ultra High-Speed 100ms Lightweight Canvas -->
-        <div id="fast_container" class="container-mode" style="display:none;">
-            <div id="fast_legend">
-                <span id="fast_legend_sym" class="legend-sym">BTCUSDT</span>
-                <span id="fast_legend_ohlc">O: — H: — L: — C: —</span>
-                <span id="fast_legend_chg"></span>
-            </div>
-            <!-- Fast Mode Drawing Canvas Overlay -->
-            <canvas id="fast_draw_canvas"></canvas>
-            <!-- Fast Mode Drawing Toolbar -->
-            <div id="fast_draw_toolbar">
-                <button id="draw_tool_hl" class="draw-btn" onclick="setFastDrawTool('hl')">➖ 수평선</button>
-                <button id="draw_tool_tl" class="draw-btn" onclick="setFastDrawTool('tl')">📈 추세선</button>
-                <button class="draw-btn" onclick="clearFastDrawings()">🗑️ 지우기</button>
-                <button class="draw-btn" onclick="toggleDrawingToolbar()">✕ 닫기</button>
-            </div>
+<div id="app" class="rail-closed">
+    <div id="topbar">
+        <button id="sym_btn" class="imm"><span id="sym_name">BTCUSDT</span><span class="caret">▾</span></button>
+        <span id="top_price" class="imm"></span>
+        <div id="intervals"></div>
+        <button id="type_btn" class="tb-btn" aria-label="차트 종류"></button>
+        <button id="ind_btn" class="tb-btn" aria-label="지표">지표</button>
+        <button id="exit_btn" class="tb-btn imm" aria-label="닫기"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div id="main">
+        <div id="rail"></div>
+        <button id="rail_toggle" aria-label="그리기 도구 접기/펼치기"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <div id="chart_wrap">
+            <div id="chart"></div>
+            <div id="legend"></div>
+            <button id="to_latest" aria-label="최신 봉으로"><svg viewBox="0 0 24 24"><path d="M6 6l6 6-6 6M13 6l6 6-6 6"/></svg></button>
+            <div id="hint"></div>
+            <div id="loading"><div class="spinner"></div><span>차트 불러오는 중...</span></div>
+            <div id="toast"><span id="toast_msg"></span><button id="toast_btn">다시 시도</button></div>
         </div>
     </div>
-
-    <div id="loading_cover">
-        <div class="spinner"></div>
-        <span id="loading_text">차트 로딩 중...</span>
-    </div>
-
-    <div id="toast_banner">
-        <span id="toast_msg">안내 메시지</span>
-        <button id="toast_btn" onclick="retryTvWidget()">재시도</button>
-    </div>
-
-    <script type="text/javascript">
-        let currentMode = "tv"; // "tv" or "fast"
-        let currentSymbol = "BTCUSDT";
-        let currentInterval = "15"; // TV: "1", "3", "5", "15", "30", "60", "240", "D"
-        let currentStyle = "1"; // "1": Candle, "2": Area, "3": Line, "8": Heikin Ashi
-        let showDrawingToolbar = false; // By default hidden on mobile, slides cleanly via CSS
-        let tvWidget = null;
-        let isDocumentVisible = true;
-
-        // Fast mode LightweightCharts instances
-        let fastChart = null;
-        let fastCandleSeries = null;
-        let fastVolumeSeries = null;
-        let fastMa7Series = null;
-        let fastMa25Series = null;
-        let fastMa99Series = null;
-        let fastBollUpperSeries = null;
-        let fastBollLowerSeries = null;
-        let fastCandles = [];
-        let tvInitRetryCount = 0;
-
-        // Indicator visibility state
-        let indicatorState = {
-            MA: true,
-            EMA: false,
-            BOLL: false,
-            VOL: true
-        };
-
-        // Fast Mode Drawing State
-        let fastDrawTool = null; // 'hl' (Horizontal Line) or 'tl' (Trendline)
-        let fastDrawings = []; // array of { type: 'hl', price: 1234 } or { type: 'tl', p1: {x,y}, p2: {x,y} }
-        let currentTrendlineStart = null;
-
-        function showLoading(msg) {
-            const cover = document.getElementById('loading_cover');
-            const txt = document.getElementById('loading_text');
-            if (cover) {
-                if (txt && msg) txt.innerText = msg;
-                cover.style.display = 'flex';
-                cover.style.opacity = '1';
-            }
-        }
-
-        function hideLoading() {
-            const cover = document.getElementById('loading_cover');
-            if (cover) {
-                cover.style.opacity = '0';
-                setTimeout(() => { cover.style.display = 'none'; }, 200);
-            }
-        }
-
-        function showToast(msg, showBtn = false, btnText = "재시도", btnAction = null) {
-            const banner = document.getElementById('toast_banner');
-            const txt = document.getElementById('toast_msg');
-            const btn = document.getElementById('toast_btn');
-            if (banner && txt) {
-                txt.innerText = msg;
-                if (showBtn && btn) {
-                    btn.style.display = 'inline-block';
-                    btn.innerText = btnText;
-                    if (btnAction) btn.onclick = btnAction;
-                } else if (btn) {
-                    btn.style.display = 'none';
-                }
-                banner.style.display = 'flex';
-                setTimeout(() => {
-                    banner.style.display = 'none';
-                }, 5000);
-            }
-        }
-
-        function getTvSymbolFormatted(sym) {
-            const clean = sym.trim().toUpperCase();
-            return clean.endsWith("USDT") ? `BINANCE:${clean}.P` : `BINANCE:${clean}`;
-        }
-
-        function getIntervalSeconds(intv) {
-            if (intv === "1" || intv === "1m") return 60;
-            if (intv === "3" || intv === "3m") return 180;
-            if (intv === "5" || intv === "5m") return 300;
-            if (intv === "15" || intv === "15m") return 900;
-            if (intv === "30" || intv === "30m") return 1800;
-            if (intv === "60" || intv === "1h") return 3600;
-            if (intv === "240" || intv === "4h") return 14400;
-            if (intv === "D" || intv === "1d") return 86400;
-            return 900;
-        }
-
-        function isTvAvailable() {
-            return typeof TradingView !== 'undefined' && typeof TradingView.widget === 'function';
-        }
-
-        // Apply smooth CSS slide for TradingView drawing toolbar WITHOUT reloading the iframe!
-        function applyToolbarState() {
-            const widgetEl = document.getElementById('tradingview_widget');
-            const handleEl = document.getElementById('tv_draw_handle');
-            const iconEl = document.getElementById('tv_draw_icon');
-            const labelEl = document.getElementById('tv_draw_label');
-            const fastToolbar = document.getElementById('fast_draw_toolbar');
-            const fastCanvas = document.getElementById('fast_draw_canvas');
-
-            if (currentMode === "tv") {
-                if (widgetEl) {
-                    if (showDrawingToolbar) {
-                        widgetEl.classList.remove('toolbar-hidden');
-                        if (handleEl) {
-                            handleEl.classList.add('toolbar-open');
-                            if (iconEl) iconEl.innerText = '✕';
-                            if (labelEl) labelEl.innerText = '닫기';
-                        }
-                    } else {
-                        widgetEl.classList.add('toolbar-hidden');
-                        if (handleEl) {
-                            handleEl.classList.remove('toolbar-open');
-                            if (iconEl) iconEl.innerText = '✏️';
-                            if (labelEl) labelEl.innerText = '도구';
-                        }
-                    }
-                }
-                setTimeout(() => {
-                    window.dispatchEvent(new Event('resize'));
-                }, 260);
-            } else {
-                // Fast Mode drawing toggle
-                if (fastToolbar) {
-                    fastToolbar.style.display = showDrawingToolbar ? 'flex' : 'none';
-                }
-                if (fastCanvas) {
-                    if (showDrawingToolbar) {
-                        fastCanvas.classList.add('interactive');
-                    } else {
-                        fastCanvas.classList.remove('interactive');
-                        fastDrawTool = null;
-                        updateFastDrawBtnStyles();
-                    }
-                }
-            }
-
-            // Notify Android Compose Bridge so header button stays in sync
-            try {
-                if (window.AndroidBridge && typeof window.AndroidBridge.onToolbarVisibilityChanged === 'function') {
-                    window.AndroidBridge.onToolbarVisibilityChanged(showDrawingToolbar);
-                }
-            } catch (e) {}
-        }
-
-        // 1. Official TradingView Widget with permanent drawing toolbar readiness
-        function initTvWidget(symbol, interval) {
-            currentSymbol = symbol || currentSymbol;
-            currentInterval = interval || currentInterval;
-
-            const container = document.getElementById('tradingview_widget');
-            container.innerHTML = '';
-            showLoading("트레이딩뷰 정식 차트 연결 중...");
-
-            if (!isTvAvailable()) {
-                if (tvInitRetryCount < 6) {
-                    tvInitRetryCount++;
-                    setTimeout(() => initTvWidget(currentSymbol, currentInterval), 500);
-                    return;
-                }
-                // Fallback to local 100ms Fast Mode if external CDN is blocked/offline
-                console.warn("TradingView widget CDN unavailable. Switching to Fast mode.");
-                hideLoading();
-                showToast("트레이딩뷰 연결 지연: 초고속 캔들 엔진으로 자동 전환되었습니다.", true, "다시 시도", () => {
-                    tvInitRetryCount = 0;
-                    setChartMode("tv");
-                });
-                setChartMode("fast");
-                return;
-            }
-
-            tvInitRetryCount = 0;
-            const tvSym = getTvSymbolFormatted(currentSymbol);
-            try {
-                // Always load with hide_side_toolbar: false so toolbar is loaded once and smoothly hidden/shown via CSS
-                tvWidget = new TradingView.widget({
-                    "autosize": true,
-                    "symbol": tvSym,
-                    "interval": currentInterval,
-                    "timezone": "Asia/Seoul",
-                    "theme": "dark",
-                    "style": currentStyle,
-                    "locale": "kr",
-                    "toolbar_bg": "#131722",
-                    "enable_publishing": false,
-                    "allow_symbol_change": true,
-                    "container_id": "tradingview_widget",
-                    "hide_side_toolbar": false,
-                    "withdateranges": true,
-                    "save_image": false,
-                    "studies": [
-                        "STD;SMA",
-                        "Volume@tv-basicstudies"
-                    ],
-                    "disabled_features": [
-                        "header_screenshot",
-                        "header_compare",
-                        "horz_touch_drag_scroll",
-                        "vert_touch_drag_scroll"
-                    ],
-                    "enabled_features": [
-                        "side_toolbar_in_fullscreen_mode",
-                        "save_chart_properties_to_local_storage",
-                        "use_localstorage_for_settings"
-                    ]
-                });
-            } catch (e) {
-                console.error("TV Init error", e);
-                setChartMode("fast");
-            }
-            applyToolbarState();
-            setTimeout(hideLoading, 1000);
-        }
-
-        function retryTvWidget() {
-            tvInitRetryCount = 0;
-            setChartMode("tv");
-        }
-
-        function formatLegendNumber(num) {
-            if (num === undefined || num === null || isNaN(num)) return "—";
-            if (num >= 1000) return num.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
-            if (num >= 1) return num.toFixed(2);
-            return num.toFixed(4);
-        }
-
-        function updateFastLegend(param) {
-            const symEl = document.getElementById('fast_legend_sym');
-            const ohlcEl = document.getElementById('fast_legend_ohlc');
-            const chgEl = document.getElementById('fast_legend_chg');
-            if (!ohlcEl) return;
-            if (symEl) symEl.innerText = currentSymbol;
-
-            let data = null;
-            if (param && param.time && param.point) {
-                if (param.seriesData && fastCandleSeries && param.seriesData.get(fastCandleSeries)) {
-                    data = param.seriesData.get(fastCandleSeries);
-                } else if (param.seriesPrices && fastCandleSeries && param.seriesPrices.get(fastCandleSeries)) {
-                    data = param.seriesPrices.get(fastCandleSeries);
-                }
-            }
-
-            if (!data && fastCandles.length > 0) {
-                data = fastCandles[fastCandles.length - 1];
-            }
-
-            if (data && data.close !== undefined) {
-                const isUp = data.close >= data.open;
-                const colorCls = isUp ? 'legend-up' : 'legend-down';
-                ohlcEl.innerHTML = `O:<span class="${colorCls}">${formatLegendNumber(data.open)}</span> ` +
-                                  `H:<span class="${colorCls}">${formatLegendNumber(data.high)}</span> ` +
-                                  `L:<span class="${colorCls}">${formatLegendNumber(data.low)}</span> ` +
-                                  `C:<span class="${colorCls}">${formatLegendNumber(data.close)}</span>`;
-                if (data.open > 0) {
-                    const pct = ((data.close - data.open) / data.open) * 100;
-                    const sign = pct >= 0 ? '+' : '';
-                    if (chgEl) {
-                        chgEl.className = colorCls;
-                        chgEl.innerText = `${sign}${pct.toFixed(2)}%`;
-                    }
-                }
-            }
-        }
-
-        // 2. High-Speed 100ms Canvas Chart
-        function initFastChart() {
-            const container = document.getElementById('fast_container');
-            if (!container) return;
-            const w = container.clientWidth || window.innerWidth;
-            const h = container.clientHeight || window.innerHeight;
-
-            if (fastChart) {
-                fastChart.applyOptions({ width: w, height: h });
-                resizeFastCanvas();
-                return;
-            }
-
-            fastChart = LightweightCharts.createChart(container, {
-                width: w,
-                height: h,
-                layout: { background: { color: '#131722' }, textColor: '#787B86', fontSize: 11 },
-                grid: { vertLines: { color: '#1E222D' }, horzLines: { color: '#1E222D' } },
-                crosshair: {
-                    mode: LightweightCharts.CrosshairMode.Normal,
-                    vertLine: {
-                        color: 'rgba(240, 185, 11, 0.65)',
-                        width: 1,
-                        style: LightweightCharts.LineStyle.Dashed,
-                        labelBackgroundColor: '#2A2E39'
-                    },
-                    horzLine: {
-                        color: 'rgba(240, 185, 11, 0.65)',
-                        width: 1,
-                        style: LightweightCharts.LineStyle.Dashed,
-                        labelBackgroundColor: '#2A2E39'
-                    }
-                },
-                trackingMode: {
-                    exitMode: LightweightCharts.TrackingModeExitMode.OnTouchEnd,
-                },
-                rightPriceScale: { borderColor: '#2A2E39', autoScale: true },
-                timeScale: { borderColor: '#2A2E39', timeVisible: true, secondsVisible: false },
-                kineticScroll: {
-                    touch: true,
-                    mouse: true
-                },
-                handleScale: {
-                    axisPressedMouseMove: { time: true, price: true },
-                    mouseWheel: true,
-                    pinch: true,
-                },
-                handleScroll: {
-                    mouseWheel: true,
-                    pressedMouseMove: true,
-                    horzTouchDrag: true,
-                    vertTouchDrag: true,
-                }
-            });
-
-            fastChart.subscribeCrosshairMove(updateFastLegend);
-
-            // Candlesticks
-            fastCandleSeries = fastChart.addSeries(LightweightCharts.CandlestickSeries, {
-                upColor: '#089981', downColor: '#F23645', borderVisible: false,
-                wickUpColor: '#089981', wickDownColor: '#F23645'
-            });
-
-            // Volume
-            fastVolumeSeries = fastChart.addSeries(LightweightCharts.HistogramSeries, {
-                color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: ''
-            });
-            fastVolumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-
-            // MA 7 (Yellow)
-            fastMa7Series = fastChart.addSeries(LightweightCharts.LineSeries, {
-                color: '#F0B90B', lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false
-            });
-
-            // MA 25 (Purple)
-            fastMa25Series = fastChart.addSeries(LightweightCharts.LineSeries, {
-                color: '#E040FB', lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false
-            });
-
-            // MA 99 (Cyan)
-            fastMa99Series = fastChart.addSeries(LightweightCharts.LineSeries, {
-                color: '#00E5FF', lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false
-            });
-
-            // Bollinger Bands Upper & Lower
-            fastBollUpperSeries = fastChart.addSeries(LightweightCharts.LineSeries, {
-                color: 'rgba(41, 98, 255, 0.8)', lineStyle: LightweightCharts.LineStyle.Dashed, lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false
-            });
-            fastBollLowerSeries = fastChart.addSeries(LightweightCharts.LineSeries, {
-                color: 'rgba(41, 98, 255, 0.8)', lineStyle: LightweightCharts.LineStyle.Dashed, lineWidth: 1, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false
-            });
-
-            initFastDrawingCanvas();
-            initFastTouchTracking();
-
-            window.addEventListener('resize', () => {
-                if (fastChart && container) {
-                    fastChart.applyOptions({ width: container.clientWidth || window.innerWidth, height: container.clientHeight || window.innerHeight });
-                    resizeFastCanvas();
-                }
-            });
-        }
-
-        function calculateMovingAverage(data, period) {
-            const result = [];
-            for (let i = 0; i < data.length; i++) {
-                if (i < period - 1) continue;
-                let sum = 0;
-                for (let j = 0; j < period; j++) sum += data[i - j].close;
-                result.push({ time: data[i].time, value: sum / period });
-            }
-            return result;
-        }
-
-        function calculateBollingerBands(data, period = 20, multiplier = 2) {
-            const upper = [];
-            const lower = [];
-            for (let i = 0; i < data.length; i++) {
-                if (i < period - 1) continue;
-                let sum = 0;
-                for (let j = 0; j < period; j++) sum += data[i - j].close;
-                const mean = sum / period;
-                let sumSqDiff = 0;
-                for (let j = 0; j < period; j++) {
-                    const diff = data[i - j].close - mean;
-                    sumSqDiff += diff * diff;
-                }
-                const stdDev = Math.sqrt(sumSqDiff / period);
-                upper.push({ time: data[i].time, value: mean + multiplier * stdDev });
-                lower.push({ time: data[i].time, value: mean - multiplier * stdDev });
-            }
-            return { upper, lower };
-        }
-
-        async function loadFastData(sym, interval) {
-            initFastChart();
-            showLoading("초고속 캔들 데이터 수신 중...");
-            try {
-                const intMap = { "1": "1m", "3": "3m", "5": "5m", "15": "15m", "30": "30m", "60": "1h", "240": "4h", "D": "1d" };
-                const binanceInt = intMap[interval] || (interval.endsWith("m") || interval.endsWith("h") || interval.endsWith("d") ? interval : "15m");
-                
-                const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${sym.toUpperCase()}&interval=${binanceInt}&limit=300`;
-                const res = await fetch(url);
-                if (!res.ok) throw new Error("HTTP " + res.status);
-                const raw = await res.json();
-                if (!Array.isArray(raw)) throw new Error("Invalid klines format");
-                
-                fastCandles = [];
-                const vols = [];
-                for (let item of raw) {
-                    const time = Math.floor(item[0] / 1000);
-                    const open = parseFloat(item[1]);
-                    const high = parseFloat(item[2]);
-                    const low = parseFloat(item[3]);
-                    const close = parseFloat(item[4]);
-                    const vol = parseFloat(item[5]);
-                    fastCandles.push({ time, open, high, low, close });
-                    vols.push({ time, value: vol, color: close >= open ? 'rgba(8, 153, 129, 0.4)' : 'rgba(242, 54, 69, 0.4)' });
-                }
-                fastCandleSeries.setData(fastCandles);
-                fastVolumeSeries.setData(vols);
-
-                // Calculate & Apply Technical Indicators
-                const ma7 = calculateMovingAverage(fastCandles, 7);
-                const ma25 = calculateMovingAverage(fastCandles, 25);
-                const ma99 = calculateMovingAverage(fastCandles, 99);
-                const bb = calculateBollingerBands(fastCandles, 20, 2);
-
-                if (fastMa7Series) fastMa7Series.setData(ma7);
-                if (fastMa25Series) fastMa25Series.setData(ma25);
-                if (fastMa99Series) fastMa99Series.setData(ma99);
-                if (fastBollUpperSeries) fastBollUpperSeries.setData(bb.upper);
-                if (fastBollLowerSeries) fastBollLowerSeries.setData(bb.lower);
-
-                applyIndicatorVisibility();
-
-                fastChart.timeScale().fitContent();
-                updateFastLegend(null);
-                hideLoading();
-            } catch (e) {
-                console.error("Fast data error", e);
-                hideLoading();
-                showToast("캔들 데이터 수신 실패 (터치하여 재시도)", true, "재시도", () => loadFastData(sym, interval));
-            }
-        }
-
-        function applyIndicatorVisibility() {
-            if (fastMa7Series) fastMa7Series.applyOptions({ visible: indicatorState.MA });
-            if (fastMa25Series) fastMa25Series.applyOptions({ visible: indicatorState.MA });
-            if (fastMa99Series) fastMa99Series.applyOptions({ visible: indicatorState.MA });
-            if (fastBollUpperSeries) fastBollUpperSeries.applyOptions({ visible: indicatorState.BOLL });
-            if (fastBollLowerSeries) fastBollLowerSeries.applyOptions({ visible: indicatorState.BOLL });
-            if (fastVolumeSeries) fastVolumeSeries.applyOptions({ visible: indicatorState.VOL });
-        }
-
-        window.toggleIndicator = function(name, enabled) {
-            const isVisible = enabled !== undefined ? !!enabled : !indicatorState[name];
-            indicatorState[name] = isVisible;
-            applyIndicatorVisibility();
-            return isVisible;
-        };
-
-        // Live 100ms Tick Bridge from Android Native App (Throttled for zero battery waste)
-        window.updateLiveTick = function(priceFloat) {
-            if (!priceFloat || priceFloat <= 0 || !isDocumentVisible) return;
-            if (currentMode === "fast" && fastCandles.length > 0 && fastCandleSeries) {
-                const nowSec = Math.floor(Date.now() / 1000);
-                const intvSec = getIntervalSeconds(currentInterval);
-                const lastIdx = fastCandles.length - 1;
-                const last = fastCandles[lastIdx];
-
-                if (nowSec >= last.time + intvSec) {
-                    // New candle period started
-                    const newCandleTime = Math.floor(nowSec / intvSec) * intvSec;
-                    const newCandle = {
-                        time: newCandleTime,
-                        open: priceFloat,
-                        high: priceFloat,
-                        low: priceFloat,
-                        close: priceFloat
-                    };
-                    fastCandles.push(newCandle);
-                    fastCandleSeries.update(newCandle);
-                } else {
-                    // Update current candle only if high/low/close changed
-                    if (priceFloat !== last.close) {
-                        const updated = {
-                            time: last.time,
-                            open: last.open,
-                            high: Math.max(last.high, priceFloat),
-                            low: Math.min(last.low, priceFloat),
-                            close: priceFloat
-                        };
-                        fastCandles[lastIdx] = updated;
-                        fastCandleSeries.update(updated);
-                    }
-                }
-                updateFastLegend(null);
-            }
-        };
-
-        // --- Fast Mode Drawing Canvas Implementation ---
-        function initFastDrawingCanvas() {
-            const canvas = document.getElementById('fast_draw_canvas');
-            if (!canvas) return;
-            resizeFastCanvas();
-
-            canvas.addEventListener('pointerdown', (e) => {
-                if (!fastDrawTool) return;
-                const rect = canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-
-                if (fastDrawTool === 'hl') {
-                    // Horizontal Line at Y
-                    fastDrawings.push({ type: 'hl', y: y });
-                    redrawFastCanvas();
-                } else if (fastDrawTool === 'tl') {
-                    currentTrendlineStart = { x, y };
-                }
-            });
-
-            canvas.addEventListener('pointermove', (e) => {
-                if (fastDrawTool === 'tl' && currentTrendlineStart) {
-                    const rect = canvas.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    redrawFastCanvas();
-                    const ctx = canvas.getContext('2d');
-                    ctx.save();
-                    ctx.strokeStyle = '#F0B90B';
-                    ctx.lineWidth = 2;
-                    ctx.setLineDash([4, 4]);
-                    ctx.beginPath();
-                    ctx.moveTo(currentTrendlineStart.x, currentTrendlineStart.y);
-                    ctx.lineTo(x, y);
-                    ctx.stroke();
-                    ctx.restore();
-                }
-            });
-
-            canvas.addEventListener('pointerup', (e) => {
-                if (fastDrawTool === 'tl' && currentTrendlineStart) {
-                    const rect = canvas.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    fastDrawings.push({
-                        type: 'tl',
-                        x1: currentTrendlineStart.x,
-                        y1: currentTrendlineStart.y,
-                        x2: x,
-                        y2: y
-                    });
-                    currentTrendlineStart = null;
-                    redrawFastCanvas();
-                }
-            });
-        }
-
-        // --- Fast Mode Touch-and-Hold Real-time Crosshair Tracking ---
-        let fastTouchTrackingActive = false;
-        let fastTouchHoldTimer = null;
-        let fastTouchStartPos = { x: 0, y: 0 };
-        let fastTouchMovedBeyondSlop = false;
-        let fastTouchTrackingInitialized = false;
-
-        function initFastTouchTracking() {
-            if (fastTouchTrackingInitialized) return;
-            const container = document.getElementById('fast_container');
-            if (!container) return;
-            fastTouchTrackingInitialized = true;
-
-            function getTouchCoords(e) {
-                const touch = e.touches[0] || e.changedTouches[0];
-                const rect = container.getBoundingClientRect();
-                return {
-                    x: Math.max(0, Math.min(rect.width, touch.clientX - rect.left)),
-                    y: Math.max(0, Math.min(rect.height, touch.clientY - rect.top))
-                };
-            }
-
-            function updateCrosshairAt(coords) {
-                if (!fastChart || !fastCandleSeries || fastCandles.length === 0) return;
-                const price = fastCandleSeries.coordinateToPrice(coords.y);
-                const logical = fastChart.timeScale().coordinateToLogical(coords.x);
-                if (price === null || isNaN(price)) return;
-
-                let targetTime = null;
-                let targetCandle = null;
-                if (logical !== null && !isNaN(logical)) {
-                    const idx = Math.round(logical);
-                    if (idx >= 0 && idx < fastCandles.length) {
-                        targetCandle = fastCandles[idx];
-                        targetTime = targetCandle.time;
-                    } else if (idx < 0) {
-                        targetCandle = fastCandles[0];
-                        targetTime = targetCandle.time;
-                    } else {
-                        targetCandle = fastCandles[fastCandles.length - 1];
-                        targetTime = targetCandle.time;
-                    }
-                }
-
-                try {
-                    fastChart.setCrosshairPosition(price, targetTime, fastCandleSeries);
-                } catch (err) {}
-
-                if (targetCandle) {
-                    updateFastLegend({
-                        time: targetCandle.time,
-                        point: coords,
-                        seriesPrices: new Map([[fastCandleSeries, targetCandle]])
-                    });
-                }
-            }
-
-            container.addEventListener('touchstart', (e) => {
-                if (fastDrawTool) return;
-                if (e.touches.length !== 1) {
-                    if (fastTouchHoldTimer) clearTimeout(fastTouchHoldTimer);
-                    if (fastTouchTrackingActive) {
-                        fastTouchTrackingActive = false;
-                        fastChart?.clearCrosshairPosition();
-                        updateFastLegend(null);
-                    }
-                    return;
-                }
-
-                const coords = getTouchCoords(e);
-                fastTouchStartPos = coords;
-                fastTouchMovedBeyondSlop = false;
-                if (fastTouchHoldTimer) clearTimeout(fastTouchHoldTimer);
-
-                // 120ms hold activates crosshair smoothly
-                fastTouchHoldTimer = setTimeout(() => {
-                    if (!fastTouchMovedBeyondSlop) {
-                        fastTouchTrackingActive = true;
-                        updateCrosshairAt(fastTouchStartPos);
-                        try {
-                            if (window.AndroidBridge && typeof window.AndroidBridge.performHapticFeedback === 'function') {
-                                window.AndroidBridge.performHapticFeedback();
-                            }
-                        } catch (err) {}
-                    }
-                }, 120);
-            }, { passive: true, capture: true });
-
-            container.addEventListener('touchmove', (e) => {
-                if (fastDrawTool) return;
-                if (e.touches.length !== 1) return;
-
-                const coords = getTouchCoords(e);
-                const dx = Math.abs(coords.x - fastTouchStartPos.x);
-                const dy = Math.abs(coords.y - fastTouchStartPos.y);
-
-                if (fastTouchTrackingActive) {
-                    // Prevent chart pan/scroll while crosshair is actively tracking
-                    if (e.cancelable) e.preventDefault();
-                    e.stopPropagation();
-                    updateCrosshairAt(coords);
-                } else {
-                    // Finger moved before hold timer finished: user is panning/scrolling
-                    if (dx > 8 || dy > 8) {
-                        fastTouchMovedBeyondSlop = true;
-                        if (fastTouchHoldTimer) clearTimeout(fastTouchHoldTimer);
-                    }
-                }
-            }, { passive: false, capture: true });
-
-            function endTouch() {
-                if (fastTouchHoldTimer) clearTimeout(fastTouchHoldTimer);
-                if (fastTouchTrackingActive) {
-                    fastTouchTrackingActive = false;
-                    try {
-                        fastChart?.clearCrosshairPosition();
-                    } catch (err) {}
-                    updateFastLegend(null);
-                }
-            }
-
-            container.addEventListener('touchend', endTouch, { passive: true, capture: true });
-            container.addEventListener('touchcancel', endTouch, { passive: true, capture: true });
-        }
-
-        function resizeFastCanvas() {
-            const canvas = document.getElementById('fast_draw_canvas');
-            const container = document.getElementById('fast_container');
-            if (!canvas || !container) return;
-            canvas.width = container.clientWidth || window.innerWidth;
-            canvas.height = container.clientHeight || window.innerHeight;
-            redrawFastCanvas();
-        }
-
-        function redrawFastCanvas() {
-            const canvas = document.getElementById('fast_draw_canvas');
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            for (const d of fastDrawings) {
-                ctx.save();
-                if (d.type === 'hl') {
-                    ctx.strokeStyle = '#F0B90B';
-                    ctx.lineWidth = 1.5;
-                    ctx.beginPath();
-                    ctx.moveTo(0, d.y);
-                    ctx.lineTo(canvas.width, d.y);
-                    ctx.stroke();
-
-                    // Price tag badge on right
-                    ctx.fillStyle = '#2A2E39';
-                    ctx.fillRect(canvas.width - 55, d.y - 8, 55, 16);
-                    ctx.fillStyle = '#FFFFFF';
-                    ctx.font = '10px monospace';
-                    ctx.fillText('Line', canvas.width - 45, d.y + 4);
-                } else if (d.type === 'tl') {
-                    ctx.strokeStyle = '#2962FF';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(d.x1, d.y1);
-                    ctx.lineTo(d.x2, d.y2);
-                    ctx.stroke();
-                }
-                ctx.restore();
-            }
-        }
-
-        function setFastDrawTool(tool) {
-            fastDrawTool = fastDrawTool === tool ? null : tool;
-            updateFastDrawBtnStyles();
-        }
-
-        function updateFastDrawBtnStyles() {
-            const btnHl = document.getElementById('draw_tool_hl');
-            const btnTl = document.getElementById('draw_tool_tl');
-            if (btnHl) btnHl.className = fastDrawTool === 'hl' ? 'draw-btn active' : 'draw-btn';
-            if (btnTl) btnTl.className = fastDrawTool === 'tl' ? 'draw-btn active' : 'draw-btn';
-        }
-
-        function clearFastDrawings() {
-            fastDrawings = [];
-            currentTrendlineStart = null;
-            redrawFastCanvas();
-        }
-
-        // --- Window Controls Bridge ---
-        window.setChartMode = function(mode) {
-            currentMode = mode;
-            const tvDiv = document.getElementById('tv_container');
-            const fastDiv = document.getElementById('fast_container');
-            if (mode === "fast") {
-                tvDiv.style.display = 'none';
-                fastDiv.style.display = 'block';
-                initFastChart();
-                if (fastChart) {
-                    fastChart.applyOptions({
-                        width: fastDiv.clientWidth || window.innerWidth,
-                        height: fastDiv.clientHeight || window.innerHeight
-                    });
-                    fastChart.timeScale().fitContent();
-                    resizeFastCanvas();
-                }
-                loadFastData(currentSymbol, currentInterval);
-            } else {
-                fastDiv.style.display = 'none';
-                tvDiv.style.display = 'block';
-                initTvWidget(currentSymbol, currentInterval);
-            }
-            applyToolbarState();
-        };
-
-        window.setInterval = function(interval) {
-            currentInterval = interval;
-            if (currentMode === "fast") {
-                loadFastData(currentSymbol, currentInterval);
-            } else {
-                initTvWidget(currentSymbol, currentInterval);
-            }
-        };
-
-        window.loadSymbol = function(sym, interval) {
-            if (!sym) return;
-            currentSymbol = sym.trim().toUpperCase();
-            if (interval) currentInterval = interval;
-            if (currentMode === "fast") {
-                loadFastData(currentSymbol, currentInterval);
-            } else {
-                initTvWidget(currentSymbol, currentInterval);
-            }
-        };
-
-        // Smooth instant drawing toolbar toggle: 0ms, preserves all user drawings & zoom!
-        window.setDrawingToolbar = function(visible) {
-            showDrawingToolbar = !!visible;
-            applyToolbarState();
-            return showDrawingToolbar;
-        };
-
-        window.toggleDrawingToolbar = function() {
-            showDrawingToolbar = !showDrawingToolbar;
-            applyToolbarState();
-            return showDrawingToolbar;
-        };
-
-        window.setChartStyle = function(style) {
-            currentStyle = style || "1";
-            if (currentMode === "tv") {
-                initTvWidget(currentSymbol, currentInterval);
-            }
-        };
-
-        window.resetChartZoom = function() {
-            if (currentMode === "fast" && fastChart) {
-                fastChart.timeScale().fitContent();
-            } else if (currentMode === "tv") {
-                window.dispatchEvent(new Event('resize'));
-            }
-        };
-
-        // Battery conservation: freeze rendering when document is hidden
-        document.addEventListener('visibilitychange', () => {
-            isDocumentVisible = !document.hidden;
-            if (isDocumentVisible && currentMode === "fast" && fastChart) {
-                fastChart.applyOptions({
-                    width: document.getElementById('fast_container').clientWidth || window.innerWidth,
-                    height: document.getElementById('fast_container').clientHeight || window.innerHeight
-                });
-            }
-        });
-
-        window.addEventListener('DOMContentLoaded', () => {
-            initTvWidget(currentSymbol, currentInterval);
-        });
-    </script>
+    <div id="sheet_bg"><div id="sheet"></div></div>
+</div>
+
+<script src="chart.js"></script>
+<script src="flow.js"></script>
 </body>
 </html>

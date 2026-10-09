@@ -4,11 +4,11 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 
@@ -17,6 +17,7 @@ class MarketDataRepository(
 ) {
     companion object {
         private const val TAG = "MarketDataRepository"
+        private const val PUBLISH_INTERVAL_MS = 100L
 
         @Volatile
         private var instance: MarketDataRepository? = null
@@ -58,9 +59,11 @@ class MarketDataRepository(
     private var isAppActive = false
 
     init {
-        // Collect trade events and update price map with high efficiency and 0% CPU waste
+        // Trade events update the cache immediately; UI listeners get at most one snapshot per PUBLISH_INTERVAL_MS.
+        // The publisher is event driven: with no trades (screen off, feed paused) nothing is scheduled, so the process
+        // does not wake up every 100 ms for nothing (the previous fixed-rate loop did exactly that, around the clock).
         clientScope.launch {
-            var hasPendingUpdate = false
+            val publishPending = Channel<Unit>(Channel.CONFLATED)
             launch {
                 binanceClient.tradeEvents.collect { event ->
                     val bdPrice = try {
@@ -75,18 +78,13 @@ class MarketDataRepository(
                         eventTime = event.eventTime,
                         isStale = false
                     )
-                    hasPendingUpdate = true
+                    publishPending.trySend(Unit)
                 }
             }
 
-            // Golden Standard 10 FPS (100ms) ticker emitter:
-            // Perfectly readable, calm price rendering, and eliminates 90% of CPU recompositions & GC churn!
-            while (isActive) {
-                delay(100L)
-                if (hasPendingUpdate) {
-                    hasPendingUpdate = false
-                    _marketPrices.value = priceCache.toMap()
-                }
+            for (signal in publishPending) {
+                _marketPrices.value = priceCache.toMap()
+                delay(PUBLISH_INTERVAL_MS)      // events arriving meanwhile collapse into the next single publish
             }
         }
     }
@@ -162,13 +160,13 @@ class MarketDataRepository(
         reconcileSubscriptions()
     }
 
-    // Called by in-app screens (TradingViewChartScreen / SettingsViewModel)
+    // Called by in-app screens (TradingViewChartScreen / SettingsViewModel).
+    // [currentChartSymbol] is the symbol the app itself needs a live feed for; null when no in-app
+    // screen is showing one (so it is not subscribed needlessly).
     fun setAppActive(active: Boolean, currentChartSymbol: String? = null) {
         synchronized(lock) {
             isAppActive = active
-            if (currentChartSymbol != null) {
-                appActiveSymbol = currentChartSymbol.uppercase()
-            }
+            appActiveSymbol = currentChartSymbol?.uppercase()
         }
         reconcileSubscriptions()
     }

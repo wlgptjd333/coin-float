@@ -11,7 +11,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import com.coinfloat.app.market.KlineItem
-import java.util.Locale
+import com.coinfloat.app.market.PriceFormatter
 import kotlin.math.max
 import kotlin.math.min
 
@@ -96,7 +96,8 @@ class CandleStickChartView @JvmOverloads constructor(
 
     private val badgeRect = RectF()
 
-    private var klines: List<KlineItem> = emptyList()
+    // Owned copy so live ticks can update the forming candle in place (no per-tick list allocation).
+    private val klines = ArrayList<KlineItem>()
     private var isLoading = false
     private var errorMessage: String? = null
     private var currentLivePrice: Float? = null
@@ -107,7 +108,8 @@ class CandleStickChartView @JvmOverloads constructor(
     var onCandleTouched: ((KlineItem?) -> Unit)? = null
 
     fun setData(items: List<KlineItem>) {
-        this.klines = items
+        klines.clear()
+        klines.addAll(items)
         this.isLoading = false
         this.errorMessage = null
         if (currentLivePrice == null && items.isNotEmpty()) {
@@ -145,11 +147,7 @@ class CandleStickChartView @JvmOverloads constructor(
         currentPriceLinePaint.color = activeColor
         priceBadgePaint.color = activeColor
 
-        val newHigh = max(last.high, price)
-        val newLow = min(last.low, price)
-        val updated = klines.toMutableList()
-        updated[lastIndex] = last.copy(close = price, high = newHigh, low = newLow)
-        this.klines = updated
+        klines[lastIndex] = last.copy(close = price, high = max(last.high, price), low = min(last.low, price))
         invalidate()
     }
 
@@ -217,7 +215,7 @@ class CandleStickChartView @JvmOverloads constructor(
         if (chartWidth <= 0 || chartHeight <= 0) return
 
         var minPrice = Float.MAX_VALUE
-        var maxPrice = Float.MIN_VALUE
+        var maxPrice = -Float.MAX_VALUE
 
         for (k in klines) {
             if (k.low < minPrice) minPrice = k.low
@@ -325,13 +323,5 @@ class CandleStickChartView @JvmOverloads constructor(
         }
     }
 
-    private fun formatLabelPrice(price: Float): String {
-        return if (price >= 1000f) {
-            String.format(Locale.US, "%.1f", price)
-        } else if (price >= 1f) {
-            String.format(Locale.US, "%.2f", price)
-        } else {
-            String.format(Locale.US, "%.4f", price)
-        }
-    }
+    private fun formatLabelPrice(price: Float): String = PriceFormatter.formatLabelPrice(price)
 }

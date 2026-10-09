@@ -5,6 +5,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -49,20 +50,34 @@ class FloatingOverlayService : Service() {
     private var priceUpdateJob: Job? = null
     private var isServiceRunning = false
 
+    // The market feed only has a consumer while the screen is on AND the overlay is visible. Keeping the socket
+    // open for a hidden or screen-off overlay only burns radio and battery; resuming takes a few hundred ms.
+    private var feedScreenOn = true
+    private var feedOverlayVisible = true
+    private var feedRunning: Boolean? = null
+
+    private fun syncFeed() {
+        if (!isServiceRunning) return
+        val shouldRun = feedScreenOn && feedOverlayVisible
+        if (shouldRun == feedRunning) return
+        feedRunning = shouldRun
+        if (shouldRun) marketDataRepository.resume() else marketDataRepository.pause()
+    }
+
     private val screenStateReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
                     Log.d(TAG, "Screen OFF detected: pausing market data to conserve battery")
-                    marketDataRepository.pause()
+                    feedScreenOn = false
+                    syncFeed()
                     overlayController.onScreenStateChanged(false)
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     Log.d(TAG, "Screen ON detected: resuming market data")
                     overlayController.onScreenStateChanged(true)
-                    if (isServiceRunning && settingsRepository.settingsFlow.value.isOverlayVisible) {
-                        marketDataRepository.resume()
-                    }
+                    feedScreenOn = true
+                    syncFeed()
                 }
             }
         }
@@ -86,6 +101,8 @@ class FloatingOverlayService : Service() {
             }
         }
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        // The service can be (re)started while the screen is off; no screen event will arrive to tell us.
+        feedScreenOn = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive
 
         CoinFloatNotification.createNotificationChannel(this)
 
@@ -102,9 +119,10 @@ class FloatingOverlayService : Service() {
             }
         }
 
-        // Observe connection state to update notification
+        // Observe connection state to update notification and dim the overlay while the feed is down
         serviceScope.launch {
             marketDataRepository.connectionState.collectLatest { state ->
+                overlayController.setLive(state == ConnectionState.CONNECTED)
                 updateNotification(state)
             }
         }
@@ -121,6 +139,13 @@ class FloatingOverlayService : Service() {
 
         if (action == ACTION_STOP) {
             handleStop()
+            return START_NOT_STICKY
+        }
+
+        // A stale "hide" (e.g. from an old notification) must not leave a foreground service running
+        // with nothing to show.
+        if (action == ACTION_HIDE && !isServiceRunning) {
+            stopSelf()
             return START_NOT_STICKY
         }
 
@@ -173,6 +198,8 @@ class FloatingOverlayService : Service() {
         Log.d(TAG, "handleStart: starting foreground service and overlay")
         isServiceRunning = true
         _isServiceActive.value = true
+        feedOverlayVisible = true
+        feedRunning = null
 
         serviceScope.launch {
             settingsRepository.updateServiceEnabled(true)
@@ -186,13 +213,17 @@ class FloatingOverlayService : Service() {
 
         updateNotification(marketDataRepository.connectionState.value)
         marketDataRepository.start(currentSettings.selectedSymbols)
+        feedRunning = true
+        syncFeed()
         showOverlay(currentSettings)
         startPriceObserving()
     }
 
     private fun handleHide() {
-        Log.d(TAG, "Hiding overlay view, keeping service and WebSocket running")
+        Log.d(TAG, "Hiding overlay view, pausing the market feed")
         overlayController.hide()
+        feedOverlayVisible = false
+        syncFeed()
         serviceScope.launch {
             settingsRepository.updateOverlayVisible(false)
         }
@@ -208,6 +239,8 @@ class FloatingOverlayService : Service() {
         serviceScope.launch {
             settingsRepository.updateOverlayVisible(true)
         }
+        feedOverlayVisible = true
+        syncFeed()
         val currentSettings = settingsRepository.settingsFlow.value.copy(isOverlayVisible = true)
         showOverlay(currentSettings)
         updateNotification(marketDataRepository.connectionState.value)
@@ -289,9 +322,22 @@ class FloatingOverlayService : Service() {
         }
     }
 
+    private data class NotificationKey(
+        val symbols: List<String>,
+        val state: ConnectionState,
+        val overlayVisible: Boolean
+    )
+
+    private var lastNotificationKey: NotificationKey? = null
+
     private fun updateNotification(state: ConnectionState) {
         if (!isServiceRunning) return
         val settings = settingsRepository.settingsFlow.value
+        // Settings change many times per second while a slider is dragged; only re-post the
+        // notification when something it shows actually changed.
+        val key = NotificationKey(settings.selectedSymbols, state, settings.isOverlayVisible)
+        if (key == lastNotificationKey) return
+        lastNotificationKey = key
         val notification = CoinFloatNotification.buildNotification(
             context = this,
             symbols = settings.selectedSymbols,
@@ -299,6 +345,11 @@ class FloatingOverlayService : Service() {
             isOverlayVisible = settings.isOverlayVisible
         )
         notificationManager.notify(CoinFloatNotification.NOTIFICATION_ID, notification)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        overlayController.onConfigurationChanged()
     }
 
     override fun onDestroy() {

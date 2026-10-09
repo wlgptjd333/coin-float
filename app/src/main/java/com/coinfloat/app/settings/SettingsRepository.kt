@@ -67,11 +67,7 @@ class SettingsRepository(
             }
         }
         .map { preferences ->
-            val symbolsStr = preferences[KEY_SELECTED_SYMBOLS] ?: "BTCUSDT,ETHUSDT"
-            val symbols = symbolsStr.split(",")
-                .map { it.trim().uppercase() }
-                .filter { it.isNotEmpty() }
-                .ifEmpty { listOf("BTCUSDT", "ETHUSDT") }
+            val symbols = readSymbols(preferences)
 
             val modeStr = preferences[KEY_SYMBOL_DISPLAY_MODE] ?: SymbolDisplayMode.SHORT.name
             val mode = try {
@@ -123,57 +119,63 @@ class SettingsRepository(
         )
 
     suspend fun updateSelectedSymbols(symbols: List<String>) {
-        val filtered = symbols.map { it.trim().uppercase() }.filter { it.isNotEmpty() }
-        val finalSymbols = if (filtered.isEmpty()) listOf("BTCUSDT") else filtered
+        editSymbols { it.clear(); it.addAll(symbols) }
+    }
+
+    // The symbol list is edited inside DataStore's own transaction. Reading settingsFlow.value first and
+    // writing back afterwards (as before) loses updates when two edits land before the flow re-emits,
+    // e.g. two quick taps on the move-up/down arrows or adding two symbols in a row.
+    private suspend fun editSymbols(transform: (MutableList<String>) -> Unit) {
         context.dataStore.edit { preferences ->
-            preferences[KEY_SELECTED_SYMBOLS] = finalSymbols.joinToString(",")
+            val list = readSymbols(preferences).toMutableList()
+            transform(list)
+            val cleaned = list.map { it.trim().uppercase() }.filter { it.isNotEmpty() }.distinct()
+            preferences[KEY_SELECTED_SYMBOLS] = cleaned.ifEmpty { listOf("BTCUSDT") }.joinToString(",")
         }
     }
 
     suspend fun addSymbol(symbol: String) {
         val upper = symbol.trim().uppercase()
-        val current = settingsFlow.value.selectedSymbols.toMutableList()
-        if (!current.contains(upper)) {
-            current.add(upper)
-            updateSelectedSymbols(current)
-        }
+        if (upper.isEmpty()) return
+        editSymbols { if (!it.contains(upper)) it.add(upper) }
     }
 
     suspend fun removeSymbol(symbol: String) {
         val upper = symbol.trim().uppercase()
-        val current = settingsFlow.value.selectedSymbols.toMutableList()
         // Requirements: keep at least 1 symbol
-        if (current.size > 1 && current.contains(upper)) {
-            current.remove(upper)
-            updateSelectedSymbols(current)
-        }
+        editSymbols { if (it.size > 1) it.remove(upper) }
     }
 
     suspend fun reorderSymbol(fromIndex: Int, toIndex: Int) {
-        val current = settingsFlow.value.selectedSymbols.toMutableList()
-        if (fromIndex in current.indices && toIndex in current.indices && fromIndex != toIndex) {
-            val item = current.removeAt(fromIndex)
-            current.add(toIndex, item)
-            updateSelectedSymbols(current)
+        editSymbols {
+            if (fromIndex in it.indices && toIndex in it.indices && fromIndex != toIndex) {
+                it.add(toIndex, it.removeAt(fromIndex))
+            }
         }
     }
 
     suspend fun moveSymbolUp(symbol: String) {
         val upper = symbol.trim().uppercase()
-        val current = settingsFlow.value.selectedSymbols
-        val index = current.indexOf(upper)
-        if (index > 0) {
-            reorderSymbol(index, index - 1)
+        editSymbols {
+            val index = it.indexOf(upper)
+            if (index > 0) it.add(index - 1, it.removeAt(index))
         }
     }
 
     suspend fun moveSymbolDown(symbol: String) {
         val upper = symbol.trim().uppercase()
-        val current = settingsFlow.value.selectedSymbols
-        val index = current.indexOf(upper)
-        if (index >= 0 && index < current.size - 1) {
-            reorderSymbol(index, index + 1)
+        editSymbols {
+            val index = it.indexOf(upper)
+            if (index >= 0 && index < it.size - 1) it.add(index + 1, it.removeAt(index))
         }
+    }
+
+    private fun readSymbols(preferences: Preferences): List<String> {
+        val symbolsStr = preferences[KEY_SELECTED_SYMBOLS] ?: "BTCUSDT,ETHUSDT"
+        return symbolsStr.split(",")
+            .map { it.trim().uppercase() }
+            .filter { it.isNotEmpty() }
+            .ifEmpty { listOf("BTCUSDT", "ETHUSDT") }
     }
 
     suspend fun updateSymbolDisplayMode(mode: SymbolDisplayMode) {

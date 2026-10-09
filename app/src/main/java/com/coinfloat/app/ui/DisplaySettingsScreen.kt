@@ -27,6 +27,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -129,7 +131,7 @@ fun DisplaySettingsContent(
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Slider(
+                SmoothSlider(
                     value = settings.fontSizeSp,
                     onValueChange = { onFontSizeChange(it.toInt().toFloat()) },
                     valueRange = 3f..24f,
@@ -224,7 +226,7 @@ fun DisplaySettingsContent(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
-                Slider(
+                SmoothSlider(
                     value = settings.textOpacity,
                     onValueChange = onTextOpacityChange,
                     valueRange = 0.1f..1.0f
@@ -317,7 +319,7 @@ fun DisplaySettingsContent(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
-                Slider(
+                SmoothSlider(
                     value = settings.backgroundOpacity,
                     onValueChange = onBackgroundOpacityChange,
                     valueRange = 0f..1f
@@ -356,7 +358,7 @@ fun DisplaySettingsContent(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
-                Slider(
+                SmoothSlider(
                     value = settings.paddingDp.toFloat(),
                     onValueChange = { onPaddingChange(it.toInt()) },
                     valueRange = 0f..16f,
@@ -402,7 +404,7 @@ fun DisplaySettingsContent(
                 if (settings.isChartEnabled) {
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "기본 차트 주기 (타임프레임)",
+                        text = "기본 차트 주기 (미니 차트 · 앱 차트 시작 주기)",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -500,7 +502,7 @@ fun DisplaySettingsContent(
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
-                        Slider(
+                        SmoothSlider(
                             value = settings.customChartWidthDp.toFloat(),
                             onValueChange = {
                                 onCustomChartSizeChange(it.toInt(), settings.customChartHeightDp)
@@ -523,7 +525,7 @@ fun DisplaySettingsContent(
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
-                        Slider(
+                        SmoothSlider(
                             value = settings.customChartHeightDp.toFloat(),
                             onValueChange = {
                                 onCustomChartSizeChange(settings.customChartWidthDp, it.toInt())
@@ -680,4 +682,37 @@ fun OverlayPreviewCard(settings: OverlaySettings) {
             }
         }
     }
+}
+
+/**
+ * Slider that keeps its thumb in local state while being dragged. Binding the thumb straight to a
+ * value that is written to DataStore and read back (async) makes it lag and jump during a drag;
+ * changes are still pushed out immediately so the live preview keeps working.
+ */
+@Composable
+private fun SmoothSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+    steps: Int = 0
+) {
+    var local by remember { mutableFloatStateOf(value) }
+    var dragging by remember { mutableStateOf(false) }
+    // Follow the persisted value, but never fight the user's finger mid-drag.
+    LaunchedEffect(value) {
+        if (!dragging) local = value
+    }
+    Slider(
+        value = local,
+        onValueChange = {
+            dragging = true
+            local = it
+            onValueChange(it)
+        },
+        onValueChangeFinished = { dragging = false },
+        valueRange = valueRange,
+        steps = steps,
+        modifier = modifier
+    )
 }

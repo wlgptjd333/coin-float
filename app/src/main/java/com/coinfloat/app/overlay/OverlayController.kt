@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import com.coinfloat.app.MainActivity
 import com.coinfloat.app.market.KlineItem
 import com.coinfloat.app.market.MarketPrice
 import com.coinfloat.app.market.PriceFormatter
@@ -41,10 +42,12 @@ class OverlayController(private val context: Context) {
     // Mini Chart Window
     private var miniChartView: MiniChartView? = null
     private var miniChartParams: WindowManager.LayoutParams? = null
+    @Volatile
     private var isMiniChartShowing = false
     private var currentChartSymbol: String = "BTCUSDT"
     private var currentChartInterval: String = "15m"
     private var chartRefreshJob: Job? = null
+    private var chartLoadJob: Job? = null
 
     private var latestSettings: OverlaySettings = OverlaySettings()
     private var latestPriceMap: Map<String, MarketPrice> = emptyMap()
@@ -87,18 +90,38 @@ class OverlayController(private val context: Context) {
         val defaultX = (24 * density).toInt()
         val defaultY = (120 * density).toInt()
 
-        val posX = if (settings.overlayX < 0 || settings.overlayX > screenWidth - 10) {
-            defaultX
-        } else {
-            settings.overlayX
+        // Never saved yet: use the default spot.
+        if (settings.overlayX < 0 || settings.overlayY < 0) {
+            return Pair(defaultX, defaultY)
         }
 
-        val posY = if (settings.overlayY < 0 || settings.overlayY > screenHeight - 10) {
-            defaultY
-        } else {
-            settings.overlayY
+        // Saved on a differently sized/oriented screen: pull the box back inside the visible area
+        // (without overwriting the saved spot, so it returns to it when the orientation flips back).
+        val viewW = overlayView?.width?.takeIf { it > 0 } ?: (40 * density).toInt()
+        val viewH = overlayView?.height?.takeIf { it > 0 } ?: (30 * density).toInt()
+        val maxX = (screenWidth - viewW).coerceAtLeast(0)
+        val maxY = (screenHeight - viewH).coerceAtLeast(0)
+        return Pair(settings.overlayX.coerceIn(0, maxX), settings.overlayY.coerceIn(0, maxY))
+    }
+
+    /** Re-clamps the overlay after a rotation / display-size change. */
+    fun onConfigurationChanged() {
+        runOnMainThread {
+            hideMiniChart() // its size and anchor were computed for the old screen
+            if (!isOverlayAttached || overlayView == null) return@runOnMainThread
+            val (posX, posY) = getSafePosition(latestSettings)
+            updatePosition(posX, posY)
         }
-        return Pair(posX, posY)
+    }
+
+    private var isLive = true
+
+    /** Dims the price box while the market feed is not connected so stale prices are not mistaken for live ones. */
+    fun setLive(live: Boolean) {
+        runOnMainThread {
+            isLive = live
+            overlayView?.setLive(live)
+        }
     }
 
     fun show(
@@ -132,6 +155,7 @@ class OverlayController(private val context: Context) {
             val view = OverlayView(context)
             view.applySettings(settings, symbolInfoMap)
             view.updatePrices(prices, symbolInfoMap)
+            view.setLive(isLive)
 
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -395,8 +419,8 @@ class OverlayController(private val context: Context) {
                 },
                 onExpandClicked = {
                     val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
-                        putExtra("TARGET_TAB", 1)
-                        putExtra("TARGET_SYMBOL", currentChartSymbol)
+                        putExtra(MainActivity.EXTRA_TARGET_TAB, 1)
+                        putExtra(MainActivity.EXTRA_TARGET_SYMBOL, currentChartSymbol)
                         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     }
                     if (intent != null) {
@@ -497,6 +521,8 @@ class OverlayController(private val context: Context) {
 
     fun hideMiniChart() {
         runOnMainThread {
+            chartLoadJob?.cancel()
+            chartLoadJob = null
             stopChartRefreshLoop()
             val chart = miniChartView
             if (chart != null) {
@@ -524,26 +550,36 @@ class OverlayController(private val context: Context) {
         chart.updateHeader(currentChartSymbol, formattedPrice, livePrice)
         chart.setChartLoading()
 
-        coroutineScope?.launch(Dispatchers.IO) {
+        // A newer request (user switched symbol/interval) supersedes this one: cancel it and, as
+        // a safety net for responses already in flight, drop any result that no longer matches.
+        chartLoadJob?.cancel()
+        val symbol = currentChartSymbol
+        val interval = currentChartInterval
+        chartLoadJob = coroutineScope?.launch(Dispatchers.IO) {
             try {
-                val klines = klineFetcher?.invoke(currentChartSymbol, currentChartInterval) ?: emptyList()
+                val klines = klineFetcher?.invoke(symbol, interval) ?: emptyList()
                 mainHandler.post {
+                    if (symbol != currentChartSymbol || interval != currentChartInterval) return@post
                     miniChartView?.setChartData(klines)
-                    val currentPrice = latestPriceMap[currentChartSymbol] ?: latestPriceMap[currentChartSymbol.uppercase()]
+                    val currentPrice = latestPriceMap[symbol] ?: latestPriceMap[symbol.uppercase()]
                     val latestLivePrice = currentPrice?.price?.toFloat()
                     if (latestLivePrice != null && latestLivePrice > 0f) {
                         miniChartView?.updateLivePrice(latestLivePrice)
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load klines: ${e.message}")
                 mainHandler.post {
+                    if (symbol != currentChartSymbol || interval != currentChartInterval) return@post
                     miniChartView?.setChartError("차트 로드 실패")
                 }
             }
         }
     }
 
+    @Volatile
     private var isScreenOn = true
 
     fun onScreenStateChanged(screenOn: Boolean) {
@@ -567,12 +603,16 @@ class OverlayController(private val context: Context) {
                 delay(15_000L)
                 if (!isMiniChartShowing || !isScreenOn) break
                 try {
-                    val klines = klineFetcher?.invoke(currentChartSymbol, currentChartInterval) ?: emptyList()
+                    val symbol = currentChartSymbol
+                    val interval = currentChartInterval
+                    val klines = klineFetcher?.invoke(symbol, interval) ?: emptyList()
                     if (klines.isNotEmpty()) {
                         mainHandler.post {
-                            if (isMiniChartShowing && isScreenOn) {
+                            if (isMiniChartShowing && isScreenOn &&
+                                symbol == currentChartSymbol && interval == currentChartInterval
+                            ) {
                                 miniChartView?.setChartData(klines)
-                                val currentPrice = latestPriceMap[currentChartSymbol] ?: latestPriceMap[currentChartSymbol.uppercase()]
+                                val currentPrice = latestPriceMap[symbol] ?: latestPriceMap[symbol.uppercase()]
                                 val livePrice = currentPrice?.price?.toFloat()
                                 if (livePrice != null && livePrice > 0f) {
                                     miniChartView?.updateLivePrice(livePrice)
@@ -580,6 +620,8 @@ class OverlayController(private val context: Context) {
                             }
                         }
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (_: Exception) {}
             }
         }

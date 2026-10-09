@@ -14,7 +14,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.coinfloat.app.market.KlineItem
-import java.util.Locale
+import com.coinfloat.app.market.PriceFormatter
 import kotlin.math.abs
 
 @SuppressLint("ViewConstructor")
@@ -388,13 +388,5 @@ class MiniChartView(
         bgDrawable.setColor(bgWithAlpha)
     }
 
-    private fun formatPriceShort(price: Float): String {
-        return if (price >= 1000f) {
-            String.format(Locale.US, "%.1f", price)
-        } else if (price >= 1f) {
-            String.format(Locale.US, "%.2f", price)
-        } else {
-            String.format(Locale.US, "%.4f", price)
-        }
-    }
+    private fun formatPriceShort(price: Float): String = PriceFormatter.formatLabelPrice(price)
 }

@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2026-10-10
+
+### Changed
+- **In-app chart rebuilt without TradingView's widget.** It now runs on TradingView's open-source `lightweight-charts`
+  engine bundled in the app: it works offline, uses far less battery and no longer shows duplicated timeframe/tool bars.
+  - One-line native header (symbol, live price, 24h change); funding/high/low/turnover fold away behind a chevron.
+  - Slim in-chart toolbar: scrollable intervals (1m-1W), chart type (candle, Heikin-Ashi, line, area), indicators.
+  - **Drawing tools sit in a rail with a collapse arrow** - folded away the chart uses the full width. Trend line,
+    horizontal line, Fibonacci, rectangle, measure; select/move/delete; saved per symbol, anchored to time and price.
+  - Landscape/fullscreen give the chart the whole window and hide the system bars.
+- **Moving averages: 5, 10, 50, 100, 200, 400** in red, yellow, green, blue, white and purple (periods and on/off per
+  line in the indicator sheet). Long averages no longer squash the candles.
+- Order flow & market data (all from Binance public USDT-M data, only active while switched on and the chart is visible):
+  CVD + per-candle delta, open interest, live liquidations (bubbles + long/short volume), large-trade bubbles,
+  order-book walls with depth profile, liquidity heatmap, and a modelled liquidation map (labelled as an estimate).
+- Other indicators: EMA 20/50, Bollinger bands, RSI, MACD, volume.
+
+### Battery
+- The price publisher no longer wakes the CPU every 100 ms around the clock; it is event driven.
+- The market feed now pauses while the overlay is hidden (it previously kept streaming for nothing) as well as while
+  the screen is off; it resumes on show / screen on.
+- Overlay rows that did not change are not re-formatted; the notification is only re-posted when it changed.
+- Chart page stops all sockets and timers whenever the app is in the background.
+
+### Fixed
+- WebSocket: a late `onClosed`/`onFailure` from a replaced socket could tear down the new connection or schedule a
+  needless reconnect (e.g. quick screen off/on).
+- Overlay froze after Hide -> screen off/on -> Show because the feed was never resumed.
+- Symbol list edits (add / remove / move up / move down) could lose updates when tapped quickly.
+- `MainActivity` re-applied the launch tab/symbol after every recreation; rotation no longer reloads the chart.
+- Prices of low-priced coins were shown with 2 decimals in the status tab; mini-chart axis labels showed `0.0000`
+  for sub-cent coins.
+- Mini chart: out-of-order kline responses could show another symbol/interval's candles.
+- Overlay is re-clamped into the screen after rotation and dimmed while the market feed is disconnected.
+- WebView: a renderer crash no longer takes the whole app (and the overlay service) down; links cannot replace the
+  chart page; WebView is destroyed when leaving the chart tab; DevTools only in debuggable builds; file/universal
+  access disabled.
+- Settings sliders no longer lag/jump; the live-price flag shared between coroutines is atomic.
+
+---
+
 ## [1.2.0] - 2026-10-05
 
 ### Added

@@ -30,6 +30,10 @@ import kotlinx.coroutines.launch
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
+    private companion object {
+        const val CHART_TAB_INDEX = 1
+    }
+
     private val settingsRepository = SettingsRepository.getInstance(application)
     private val marketDataRepository = MarketDataRepository.getInstance()
 
@@ -61,10 +65,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val ticker24hMap: StateFlow<Map<String, com.coinfloat.app.market.Ticker24h>> = marketDataRepository.ticker24hMap
     val fundingInfoMap: StateFlow<Map<String, com.coinfloat.app.market.FundingInfo>> = marketDataRepository.fundingInfoMap
 
+    private var isAppForeground = false
+
+    /** The chart's symbol only needs a live feed while the chart tab is what the user is looking at. */
+    private fun publishAppActive() {
+        val chartVisible = _selectedTabIndex.value == CHART_TAB_INDEX
+        marketDataRepository.setAppActive(
+            active = isAppForeground,
+            currentChartSymbol = if (chartVisible) _activeChartSymbol.value else null
+        )
+    }
+
     fun selectTab(index: Int) {
         _selectedTabIndex.value = index
-        if (index == 1) {
-            marketDataRepository.setAppActive(true, _activeChartSymbol.value)
+        publishAppActive()
+        if (index == CHART_TAB_INDEX) {
             load24hTicker(_activeChartSymbol.value)
             loadFundingInfo(_activeChartSymbol.value)
         }
@@ -73,14 +88,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun selectChartSymbol(symbol: String) {
         val upper = symbol.uppercase()
         _activeChartSymbol.value = upper
-        marketDataRepository.setAppActiveSymbol(upper)
+        publishAppActive()
         load24hTicker(upper)
         loadFundingInfo(upper)
     }
 
     fun setAppForegroundActive(active: Boolean) {
-        marketDataRepository.setAppActive(active, _activeChartSymbol.value)
-        if (active) {
+        isAppForeground = active
+        publishAppActive()
+        if (active && _selectedTabIndex.value == CHART_TAB_INDEX) {
             load24hTicker(_activeChartSymbol.value)
             loadFundingInfo(_activeChartSymbol.value)
         }
@@ -192,7 +208,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             settingsRepository.updateOverlayVisible(false)
         }
-        android.widget.Toast.makeText(context, "시세창을 숨겼습니다. (백그라운드 수신 유지)", android.widget.Toast.LENGTH_SHORT).show()
+        android.widget.Toast.makeText(context, "시세창을 숨겼습니다. (시세 수신은 배터리를 위해 일시정지)", android.widget.Toast.LENGTH_SHORT).show()
     }
 
     fun showOverlay() {
@@ -278,9 +294,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     init {
         viewModelScope.launch(Dispatchers.IO) {
             marketDataRepository.loadExchangeInfoIfNeeded()
-        }
-        viewModelScope.launch {
-            load24hTicker(_activeChartSymbol.value)
         }
         viewModelScope.launch {
             settings.collectLatest { s ->

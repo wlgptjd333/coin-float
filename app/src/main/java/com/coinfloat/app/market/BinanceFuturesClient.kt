@@ -44,8 +44,14 @@ class BinanceFuturesClient(
         .pingInterval(20, TimeUnit.SECONDS)
         .build()
 
+    @Volatile
     private var webSocket: WebSocket? = null
     private val requestId = AtomicInteger(1)
+
+    // Identifies the live socket. Every close/reconnect bumps it, so late callbacks from a socket we
+    // already replaced (onClosed/onFailure arrive asynchronously) cannot tear down its successor or
+    // schedule a spurious reconnect.
+    private val socketGeneration = AtomicInteger(0)
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -61,6 +67,8 @@ class BinanceFuturesClient(
     private val lock = Any()
 
     private var reconnectJob: Job? = null
+
+    @Volatile
     private var reconnectAttempt = 0
     private var isExplicitDisconnect = false
     private var isPaused = false
@@ -138,14 +146,17 @@ class BinanceFuturesClient(
     private fun initiateConnection() {
         if (_connectionState.value == ConnectionState.CONNECTING) return
 
-        closeWebSocket()
+        closeWebSocket() // also invalidates callbacks of the previous socket
         _connectionState.value = if (reconnectAttempt > 0) ConnectionState.RECONNECTING else ConnectionState.CONNECTING
 
         Log.d(TAG, "Initiating WebSocket connection to $WS_URL")
         val request = Request.Builder().url(WS_URL).build()
+        val generation = socketGeneration.get()
+        fun isCurrent() = generation == socketGeneration.get()
 
         webSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (!isCurrent()) return
                 Log.d(TAG, "WebSocket connected successfully")
                 _connectionState.value = ConnectionState.CONNECTED
                 reconnectAttempt = 0
@@ -157,6 +168,7 @@ class BinanceFuturesClient(
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (!isCurrent()) return
                 handleMessage(text)
             }
 
@@ -167,12 +179,12 @@ class BinanceFuturesClient(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "WebSocket closed: $code / $reason")
-                handleDisconnect()
+                if (isCurrent()) handleDisconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WebSocket failure: ${t.message}")
-                handleDisconnect()
+                if (isCurrent()) handleDisconnect()
             }
         })
     }
@@ -196,7 +208,8 @@ class BinanceFuturesClient(
             Log.d(TAG, "Reconnecting in ${totalDelay}ms (attempt $reconnectAttempt)")
             delay(totalDelay)
             reconnectAttempt++
-            if (isActive && !isExplicitDisconnect && !isPaused) {
+            val allowed = synchronized(lock) { !isExplicitDisconnect && !isPaused }
+            if (isActive && allowed) {
                 initiateConnection()
             }
         }
@@ -213,6 +226,7 @@ class BinanceFuturesClient(
     }
 
     private fun closeWebSocket() {
+        socketGeneration.incrementAndGet()
         try {
             webSocket?.close(1000, "Normal closure")
         } catch (_: Exception) {}

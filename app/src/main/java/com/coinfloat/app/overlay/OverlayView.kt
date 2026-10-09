@@ -116,6 +116,7 @@ class OverlayView(context: Context) : LinearLayout(context) {
     private fun rebuildRows(settings: OverlaySettings) {
         removeAllViews()
         rowViews.clear()
+        rendered.clear()
 
         val textColor = parseTextColor(settings.textColorHex, settings.textOpacity)
         val gapPx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 2f, resources.displayMetrics).toInt()
@@ -165,17 +166,30 @@ class OverlayView(context: Context) : LinearLayout(context) {
         }
     }
 
+    /** Dimmed while the market feed is down, so frozen prices do not look live. */
+    fun setLive(live: Boolean) {
+        val target = if (live) 1f else 0.55f
+        if (alpha != target) alpha = target
+    }
+
     fun updatePrices(prices: Map<String, MarketPrice>, infoMap: Map<String, SymbolInfo>) {
         this.latestPrices = prices
         this.symbolInfoMap = infoMap
         renderPrices()
     }
 
+    // What each row last showed. Prices tick far more often than they change per symbol, and the same MarketPrice
+    // instance is reused for unchanged symbols, so identical input skips the formatting and layout work entirely.
+    private val rendered = HashMap<String, Triple<MarketPrice?, SymbolInfo?, SymbolDisplayMode>>()
+
     private fun renderPrices() {
         for (symbol in currentSettings.selectedSymbols) {
             val tv = rowViews[symbol] ?: continue
             val marketPrice = latestPrices[symbol] ?: latestPrices[symbol.uppercase()] ?: latestPrices[symbol.lowercase()]
             val info = symbolInfoMap[symbol] ?: symbolInfoMap[symbol.uppercase()]
+            val last = rendered[symbol]
+            if (last != null && last.first === marketPrice && last.second === info && last.third == currentSettings.symbolDisplayMode) continue
+            rendered[symbol] = Triple(marketPrice, info, currentSettings.symbolDisplayMode)
 
             val tickSize = info?.tickSize
             val formattedPrice = PriceFormatter.formatPrice(marketPrice?.price, tickSize)
