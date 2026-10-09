@@ -100,8 +100,12 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 /* ---- bottom sheet -------------------------------------------------------------------------------- */
 #sheet_bg { position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, .45); display: none; align-items: flex-end; justify-content: center; }
 #sheet_bg.show { display: flex; }
-#sheet { width: 100%; max-width: 440px; max-height: 88%; overflow-y: auto; background: var(--panel); border-radius: 14px 14px 0 0; padding: 6px 0 12px; }
-#sheet h3 { font-size: 14px; padding: 10px 16px 6px; color: #fff; }
+#sheet_bg.live { background: transparent; }
+#sheet { width: 100%; max-width: 440px; max-height: 88%; overflow-y: auto; background: var(--panel); border-radius: 14px 14px 0 0; padding: 6px 0 12px; box-shadow: 0 -4px 18px rgba(0,0,0,.35); -webkit-overflow-scrolling: touch; }
+#sheet_bg.live #sheet { max-height: 52%; }
+#sheet h3 { font-size: 14px; padding: 10px 16px 6px; color: #fff; display: flex; align-items: center; gap: 6px; position: sticky; top: 0; background: var(--panel); z-index: 2; }
+#sheet h3 .back { color: var(--muted); font-size: 18px; padding: 0 8px 0 0; line-height: 1; }
+#sheet h3 .x { margin-left: auto; color: var(--muted); font-size: 18px; padding: 0 4px; }
 .row-opt { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 16px; font-size: 13.5px; text-align: left; }
 .row-opt small { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
 .row-opt:active { background: var(--line); }
@@ -117,6 +121,35 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 .ma-row { padding-top: 7px; padding-bottom: 7px; }
 .ma-row .dot { width: 12px; height: 12px; border-radius: 6px; flex: 0 0 12px; }
 .ma-row input { width: 72px; background: #131722; border: 1px solid var(--line); border-radius: 6px; color: #fff; font-size: 14px; padding: 6px 8px; text-align: right; -webkit-user-select: text; user-select: text; }
+.fld { padding: 8px 16px; font-size: 13.5px; }
+.fld .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 28px; }
+.fld .val { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 40px; text-align: right; }
+.fld small { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+.fld input[type=number], .hex { width: 76px; background: #131722; border: 1px solid var(--line); border-radius: 6px; color: #fff; font-size: 14px; padding: 5px 8px; text-align: right; -webkit-user-select: text; user-select: text; }
+.hex { width: 84px; text-align: left; font-size: 12px; padding: 4px 6px; }
+.fld input[type=range] { width: 100%; margin: 6px 0 0; accent-color: var(--accent); height: 22px; }
+.seg { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.seg button { padding: 5px 10px; border-radius: 14px; border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sw-strip { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.sw { width: 24px; height: 24px; border-radius: 12px; border: 2px solid transparent; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+.sw.on { border-color: #fff; }
+.chip-dot { width: 20px; height: 20px; border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); flex: 0 0 20px; }
+.ln { display: flex; align-items: center; gap: 8px; }
+.ln input[type=number] { width: 58px; }
+.ln .tag { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); font-size: 11.5px; color: var(--text); }
+.reset { display: block; width: 100%; text-align: center; padding: 12px; color: var(--accent); font-size: 13px; }
+.credit { padding: 6px 16px 2px; font-size: 10.5px; color: #5d6574; line-height: 1.4; }
+
+/* ---- price-scale corner (Auto / Log) and drawing style bar ------------------------------------ */
+#scale_btns { position: absolute; right: 0; bottom: 0; z-index: 7; display: flex; align-items: stretch; justify-content: center; gap: 2px; padding: 3px 3px; }
+#scale_btns button { flex: 1 1 0; min-width: 22px; border-radius: 4px; font-size: 11px; font-weight: 700; color: var(--muted); background: rgba(42, 46, 57, .75); line-height: 1; }
+#scale_btns button.on { color: #fff; background: var(--accent); }
+#dr_bar { position: absolute; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 9; display: none; align-items: center; gap: 6px; padding: 5px 8px; background: rgba(30, 34, 45, .96); border: 1px solid var(--line); border-radius: 18px; }
+#dr_bar.show { display: flex; }
+#dr_bar .sw { width: 20px; height: 20px; border-radius: 10px; }
+#dr_bar .tag { white-space: nowrap; min-width: 26px; height: 24px; padding: 0 6px; border-radius: 6px; font-size: 11.5px; color: var(--text); background: var(--line); display: flex; align-items: center; justify-content: center; }
+#dr_bar .vsep { width: 1px; height: 18px; background: var(--line); }
 .sheet-link { color: var(--muted); font-size: 12px; padding: 10px 16px 2px; display: block; }
 </style>
 <script src="lightweight-charts.js"></script>
@@ -129,6 +162,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
         <div id="intervals"></div>
         <button id="type_btn" class="tb-btn" aria-label="차트 종류"></button>
         <button id="ind_btn" class="tb-btn" aria-label="지표">지표</button>
+        <button id="cfg_btn" class="tb-btn" aria-label="차트 설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4.4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4.4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg></button>
         <button id="exit_btn" class="tb-btn imm" aria-label="닫기"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
     <div id="main">
@@ -138,6 +172,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
             <div id="chart"></div>
             <div id="legend"></div>
             <button id="to_latest" aria-label="최신 봉으로"><svg viewBox="0 0 24 24"><path d="M6 6l6 6-6 6M13 6l6 6-6 6"/></svg></button>
+            <div id="scale_btns"><button id="log_btn" aria-label="로그 스케일">L</button><button id="auto_btn" aria-label="자동 맞춤">A</button></div>
+            <div id="dr_bar"></div>
             <div id="hint"></div>
             <div id="loading"><div class="spinner"></div><span>차트 불러오는 중...</span></div>
             <div id="toast"><span id="toast_msg"></span><button id="toast_btn">다시 시도</button></div>

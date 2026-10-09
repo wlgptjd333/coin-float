@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.0] - 2026-10-10
+
+### Added
+- **Per-indicator settings.** Every indicator has its own ⚙ sheet (indicator list, or the gear in the chart toolbar for the
+  chart itself) with live preview: colors, line width, periods, levels, fills and more. Bollinger bands: period,
+  deviation, band/mid colors, width, band fill. MA/EMA: period, SMA/EMA type, color and width per line. RSI, MACD, CVD,
+  OI, liquidations, large trades, wall profile, heatmap and liquidation map each have their own options.
+- **Price axis zoom** - drag the price axis up/down to scale it (finger or mouse); drag the chart body vertically to move
+  the price range (can be switched off); double-tap the axis to reset.
+- Compact **A** (auto-fit) and **L** (log scale) buttons in the corner under the price axis.
+- Chart settings: red/blue ("Korean") or custom candle colors, hollow candles, black background, grid, magnet crosshair,
+  % scale, margins, legend detail, last-price line.
+- Selected drawings get a small style bar (color, thickness, dash, delete).
+
+### Fixed
+- **Order-book walls no longer blink.** Re-syncing the book keeps the old picture until the new one is ready, walls must
+  persist 1.2 s and linger briefly, depth bars sit on a fixed price grid and the scale changes smoothly.
+- **Walls on the wrong side of the price.** Buy walls are only shown under the market and sell walls above it; bars
+  never reach across the best bid/ask and a crossed book is repaired instead of drawn.
+- Wall labels sit next to the bar (not on top of it) as small text with a halo.
+- Open-interest and liquidation panes could shift every overlay on 1m/3m/1w charts (their timestamps were not on the
+  candle grid).
+- Volume-style panes show compact axis labels (7.63B) instead of 7,625,082,330.90.
+- The TradingView logo is removed from the chart; the required attribution is in the chart settings sheet and README.
+
 ## [1.4.0] - 2026-10-10
 
 ### Changed

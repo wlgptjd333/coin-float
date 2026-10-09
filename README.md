@@ -42,10 +42,11 @@
 
 ## 📈 앱 내 차트
 
-TradingView의 오픈소스 차트 엔진(lightweight-charts) 기반으로 앱 안에 내장되어 있어 TradingView 위젯 없이 동작합니다.
+TradingView의 오픈소스 차트 엔진([Lightweight Charts™](https://www.tradingview.com/lightweight-charts/), Apache-2.0, © TradingView, Inc.) 기반으로 앱 안에 내장되어 있어 TradingView 위젯 없이 동작합니다.
 
 - 봉 주기 1m~1W, 캔들 / 하이킨 아시 / 라인 / 에어리어
 - 이동평균선 5·10·50·100·200·400 (빨강·노랑·초록·파랑·흰색·보라), EMA, 볼린저, RSI, MACD, 거래량
+- 지표마다 ⚙ 세부 설정(색상·두께·기간·채우기 등)과 차트 설정(캔들 색 프리셋, 로그/% 스케일, 격자, 십자선 등), 가격 축 드래그 확대·축소와 하단 **A / L** 버튼
 - 그리기 도구 (추세선·수평선·피보나치·사각형·측정) — 왼쪽 도구바는 화살표로 접을 수 있고, 종목별로 저장됩니다
 - 오더플로우: CVD·델타, 미결제약정(OI), 실시간 청산, 대량 체결, 호가 벽·히트맵, 추정 청산맵(모델)
   - 데이터는 Binance 선물 공개 API/WebSocket이며, 켜 둔 동안·차트가 보이는 동안에만 수신합니다.

@@ -15,7 +15,8 @@ var WS_URL = 'wss://fstream.binance.com/market/stream';
 var MAX_BARS = 3000;
 // Multiple moving averages: periods are in candles of the current interval. Colors: red, yellow, green, blue, white, purple.
 var MA_DEFAULT = [[5, '#F6465D'], [10, '#F0B90B'], [50, '#0ECB81'], [100, '#2962FF'], [200, '#FFFFFF'], [400, '#B388FF']];
-var EMA_P = [20, 50], EMA_COL = ['#FF9800', '#2962FF'];
+var EMA_DEFAULT = [[20, '#FF9800'], [50, '#2962FF']];
+var PALETTE = ['#F6465D', '#FF7043', '#F0B90B', '#FFEB3B', '#0ECB81', '#00BCD4', '#2962FF', '#B388FF', '#E040FB', '#FFFFFF', '#B2B5BE', '#787B86'];
 var LS = {
     get: function (k, d) { try { var v = localStorage.getItem('cf.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set: function (k, v) { try { localStorage.setItem('cf.' + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } }
@@ -27,6 +28,151 @@ function bridge(name, arg) {
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
 // =====================================================================================================
+// Settings store: every indicator (and the chart itself) declares a schema; the same renderer builds each settings
+// sheet from it, and only values the user changed are persisted.
+// =====================================================================================================
+var CFGS = LS.get('cfg', {}); if (!CFGS || typeof CFGS !== 'object') CFGS = {};
+var SCHEMA = {}, cfgCache = {}, cfgSaveT = null, HEX = /^#[0-9a-fA-F]{6}$/;
+(function migrate() {                                           // 1.4.0 stored only period/on per average
+    var old = LS.get('ma6', null);
+    if (old && old.map && !CFGS.ma) CFGS.ma = { lines: old.map(function (m) { return { p: m.p, on: m.on }; }) };
+})();
+function defineSettings(key, def) { SCHEMA[key] = def; delete cfgCache[key]; }
+function clampN(v, a, b) { return v < a ? a : v > b ? b : v; }
+function fixLines(f, v) {
+    return f.def.map(function (d, i) {
+        var s = v && v[i] || {};
+        return {
+            on: typeof s.on === 'boolean' ? s.on : d.on !== false,
+            p: typeof s.p === 'number' && s.p >= 1 ? Math.min(2000, Math.floor(s.p)) : d.p,
+            c: typeof s.c === 'string' && HEX.test(s.c) ? s.c : d.c,
+            w: typeof s.w === 'number' ? clampN(Math.round(s.w), 1, 4) : (d.w || 1),
+            t: s.t === 'ema' || s.t === 'sma' ? s.t : d.t
+        };
+    });
+}
+function fieldValue(f, v) {
+    switch (f.t) {
+        case 'color': return typeof v === 'string' && HEX.test(v) ? v : f.def;
+        case 'bool': return typeof v === 'boolean' ? v : f.def;
+        case 'num': case 'range': return typeof v === 'number' && isFinite(v) ? clampN(v, f.min, f.max) : f.def;
+        case 'sel': return f.opts.some(function (o) { return o[0] === v; }) ? v : f.def;
+        case 'lines': return fixLines(f, v);
+    }
+    return f.def;
+}
+function S(key) {
+    var c = cfgCache[key]; if (c) return c;
+    var saved = CFGS[key] || {}, o = {};
+    SCHEMA[key].fields.forEach(function (f) { if (f.k) o[f.k] = fieldValue(f, saved[f.k]); });
+    return (cfgCache[key] = o);
+}
+function saveCfg() { clearTimeout(cfgSaveT); cfgSaveT = setTimeout(function () { LS.set('cfg', CFGS); }, 250); }
+function setCfg(key, k, v) {
+    var o = CFGS[key] || (CFGS[key] = {}); o[k] = v; delete cfgCache[key]; saveCfg();
+    var d = SCHEMA[key]; if (d.onChange) d.onChange(S(key), k);
+}
+function resetCfg(key) { delete CFGS[key]; delete cfgCache[key]; saveCfg(); var d = SCHEMA[key]; if (d.onChange) d.onChange(S(key), null); }
+
+function lineDef(arr, type, width) { return arr.map(function (d) { return { p: d[0], c: d[1], w: width || 1, t: type, on: true }; }); }
+var calcChanged = function () { scheduleRefresh(true); }, styleChanged = function () { scheduleRefresh(false); };
+
+defineSettings('chart', {
+    title: '차트 설정', onChange: function () { scheduleChartCfg(); },
+    fields: [
+        { t: 'sec', label: '캔들' },
+        { k: 'palette', t: 'sel', label: '상승 / 하락 색', def: 'gr', opts: [['gr', '초록 / 빨강'], ['kr', '빨강 / 파랑'], ['custom', '직접 지정']] },
+        { k: 'up', t: 'color', label: '상승 색', def: '#0ECB81', showIf: function (c) { return c.palette === 'custom'; } },
+        { k: 'down', t: 'color', label: '하락 색', def: '#F6465D', showIf: function (c) { return c.palette === 'custom'; } },
+        { k: 'hollow', t: 'bool', label: '상승 캔들 속 비우기', def: false },
+        { t: 'sec', label: '가격 축 · 이동' },
+        { k: 'scale', t: 'sel', label: '스케일', def: 'normal', opts: [['normal', '일반'], ['log', '로그'], ['pct', '퍼센트']] },
+        { k: 'vdrag', t: 'bool', label: '차트를 위아래로 끌어 가격 이동', sub: '끄면 가격 축만 위아래로 끌어 확대·축소합니다 (A 버튼: 자동 맞춤)', def: true },
+        { k: 'top', t: 'range', label: '위쪽 여백', def: 8, min: 0, max: 40, step: 1, unit: '%' },
+        { k: 'bottom', t: 'range', label: '아래쪽 여백', def: 20, min: 0, max: 50, step: 1, unit: '%' },
+        { k: 'lastLine', t: 'bool', label: '현재가 선 · 라벨', def: true },
+        { t: 'sec', label: '화면' },
+        { k: 'theme', t: 'sel', label: '배경', def: 'dark', opts: [['dark', '다크'], ['black', '블랙']] },
+        { k: 'grid', t: 'sel', label: '격자', def: 'both', opts: [['both', '가로·세로'], ['horz', '가로만'], ['none', '없음']] },
+        { k: 'cross', t: 'sel', label: '십자선', def: 'free', opts: [['free', '자유'], ['magnet', '캔들에 붙이기']] },
+        { k: 'legend', t: 'sel', label: '상단 수치 표시', def: 'full', opts: [['full', '시세 + 지표'], ['ohlc', '시세만'], ['off', '숨김']] }
+    ],
+    credit: '차트 엔진: TradingView Lightweight Charts™ (Apache-2.0) · © TradingView, Inc. · https://www.tradingview.com'
+});
+defineSettings('vol', {
+    title: '거래량 설정', onChange: styleChanged,
+    fields: [
+        { k: 'follow', t: 'bool', label: '캔들 색상 따르기', def: true },
+        { k: 'up', t: 'color', label: '상승 거래량 색', def: '#0ECB81', showIf: function (c) { return !c.follow; } },
+        { k: 'down', t: 'color', label: '하락 거래량 색', def: '#F6465D', showIf: function (c) { return !c.follow; } },
+        { k: 'opacity', t: 'range', label: '진하기', def: 38, min: 10, max: 100, step: 1, unit: '%' },
+        { k: 'height', t: 'range', label: '차지하는 높이', def: 18, min: 8, max: 50, step: 1, unit: '%' }
+    ]
+});
+defineSettings('ma', {
+    title: '이동평균선 설정', onChange: calcChanged,
+    fields: [
+        { k: 'lines', t: 'lines', def: lineDef(MA_DEFAULT, 'sma'), types: true },
+        { k: 'labels', t: 'bool', label: '가격 축에 현재 값 표시', def: false },
+        { t: 'note', label: '기간은 현재 차트 봉 개수 기준입니다 (일봉이면 일 단위). SMA = 단순, EMA = 지수 이동평균.' }
+    ]
+});
+defineSettings('ema', {
+    title: '지수이동평균(EMA) 설정', onChange: calcChanged,
+    fields: [{ k: 'lines', t: 'lines', def: lineDef(EMA_DEFAULT, 'ema'), types: false }]
+});
+defineSettings('boll', {
+    title: '볼린저 밴드 설정', onChange: calcChanged,
+    fields: [
+        { t: 'sec', label: '계산' },
+        { k: 'period', t: 'num', label: '기간', def: 20, min: 2, max: 200, step: 1 },
+        { k: 'mult', t: 'num', label: '표준편차 배수', def: 2, min: 0.5, max: 5, step: 0.1 },
+        { t: 'sec', label: '스타일' },
+        { k: 'cBand', t: 'color', label: '상단 · 하단 밴드 색', def: '#2962FF' },
+        { k: 'midOn', t: 'bool', label: '중심선 표시', def: true },
+        { k: 'cMid', t: 'color', label: '중심선 색', def: '#FF9800', showIf: function (c) { return c.midOn; } },
+        { k: 'width', t: 'range', label: '선 두께', def: 1, min: 1, max: 4, step: 1, unit: 'px' },
+        { k: 'fill', t: 'bool', label: '밴드 안쪽 채우기', def: true },
+        { k: 'fillA', t: 'range', label: '채우기 진하기', def: 10, min: 2, max: 40, step: 1, unit: '%', showIf: function (c) { return c.fill; } }
+    ]
+});
+defineSettings('rsi', {
+    title: 'RSI 설정', onChange: calcChanged,
+    fields: [
+        { k: 'period', t: 'num', label: '기간', def: 14, min: 2, max: 100, step: 1 },
+        { k: 'color', t: 'color', label: '선 색', def: '#B388FF' },
+        { k: 'width', t: 'range', label: '선 두께', def: 1, min: 1, max: 4, step: 1, unit: 'px' },
+        { k: 'levels', t: 'bool', label: '과매수 · 과매도 선', def: true },
+        { k: 'ob', t: 'num', label: '과매수 기준', def: 70, min: 50, max: 99, step: 1, showIf: function (c) { return c.levels; } },
+        { k: 'os', t: 'num', label: '과매도 기준', def: 30, min: 1, max: 50, step: 1, showIf: function (c) { return c.levels; } }
+    ]
+});
+defineSettings('macd', {
+    title: 'MACD 설정', onChange: calcChanged,
+    fields: [
+        { t: 'sec', label: '계산' },
+        { k: 'fast', t: 'num', label: '단기 EMA', def: 12, min: 2, max: 100, step: 1 },
+        { k: 'slow', t: 'num', label: '장기 EMA', def: 26, min: 3, max: 200, step: 1 },
+        { k: 'signal', t: 'num', label: '시그널', def: 9, min: 2, max: 100, step: 1 },
+        { t: 'sec', label: '스타일' },
+        { k: 'cMacd', t: 'color', label: 'MACD 선 색', def: '#2962FF' },
+        { k: 'cSig', t: 'color', label: '시그널 선 색', def: '#FF9800' },
+        { k: 'width', t: 'range', label: '선 두께', def: 1, min: 1, max: 4, step: 1, unit: 'px' },
+        { k: 'hist', t: 'bool', label: '히스토그램 표시', def: true }
+    ]
+});
+defineSettings('cvd', {
+    title: 'CVD · 델타 설정', onChange: calcChanged,
+    fields: [
+        { k: 'color', t: 'color', label: 'CVD 선 색', def: '#00BCD4' },
+        { k: 'width', t: 'range', label: '선 두께', def: 2, min: 1, max: 4, step: 1, unit: 'px' },
+        { k: 'delta', t: 'bool', label: '봉별 델타 막대', def: true },
+        { k: 'reset', t: 'sel', label: '누적 기준', def: 'none', opts: [['none', '불러온 구간 전체'], ['day', '매일 0시(UTC) 리셋']] },
+        { t: 'note', label: 'CVD = 매수 체결량 − 매도 체결량의 누적. 위로 가면 공격적 매수 우세입니다.' }
+    ]
+});
+
+// =====================================================================================================
 // State
 // =====================================================================================================
 var symbol = 'BTCUSDT';
@@ -36,13 +182,6 @@ var ind = Object.assign({
     vol: true, ma: true, ema: false, boll: false, rsi: false, macd: false,
     cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false
 }, LS.get('ind', {}));
-var maCfg = (function () {
-    var saved = LS.get('ma6', null);
-    return MA_DEFAULT.map(function (d, k) {
-        var s = saved && saved[k] ? saved[k] : {};
-        return { p: s.p > 0 ? Math.min(2000, Math.floor(s.p)) : d[0], c: d[1], on: s.on !== false };
-    });
-})();
 var railOpen = LS.get('rail', false);
 var active = true, immersive = false, started = false;
 var precision = 2;
@@ -86,25 +225,34 @@ function crosshairTimeFmt(time) {
 // Chart
 // =====================================================================================================
 var LW = window.LightweightCharts;
+function computeColors() {
+    var c = S('chart');
+    C.up = c.palette === 'kr' ? '#F6465D' : c.palette === 'custom' ? c.up : '#0ECB81';
+    C.down = c.palette === 'kr' ? '#3B82F6' : c.palette === 'custom' ? c.down : '#F6465D';
+    C.bg = c.theme === 'black' ? '#000000' : '#131722';
+    C.grid = c.theme === 'black' ? '#171b24' : '#1E222D';
+}
+computeColors();
 var chart = LW.createChart($('chart'), {
     autoSize: true,
-    layout: { background: { type: 'solid', color: C.bg }, textColor: C.text, fontSize: 11, panes: { separatorColor: C.border, separatorHoverColor: 'rgba(41,98,255,.35)' } },
-    grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
-    crosshair: { mode: LW.CrosshairMode.Normal, vertLine: { labelBackgroundColor: '#2A2E39' }, horzLine: { labelBackgroundColor: '#2A2E39' } },
-    rightPriceScale: { borderColor: C.border, scaleMargins: { top: 0.08, bottom: 0.2 } },
+    layout: { background: { type: 'solid', color: C.bg }, textColor: C.text, fontSize: 11, attributionLogo: false, panes: { separatorColor: C.border, separatorHoverColor: 'rgba(41,98,255,.35)' } },
+    grid: { vertLines: { color: C.grid, visible: S('chart').grid === 'both' }, horzLines: { color: C.grid, visible: S('chart').grid !== 'none' } },
+    crosshair: { mode: S('chart').cross === 'magnet' ? LW.CrosshairMode.Magnet : LW.CrosshairMode.Normal, vertLine: { labelBackgroundColor: '#2A2E39' }, horzLine: { labelBackgroundColor: '#2A2E39' } },
+    rightPriceScale: { borderColor: C.border, scaleMargins: { top: S('chart').top / 100, bottom: S('chart').bottom / 100 } },
     timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 8, minBarSpacing: 1.5, tickMarkFormatter: tickFmt },
-    localization: { timeFormatter: crosshairTimeFmt, priceFormatter: fmtPrice },
+    localization: { timeFormatter: crosshairTimeFmt },
     kineticScroll: { touch: true, mouse: false },
     trackingMode: { exitMode: LW.TrackingModeExitMode.OnTouchEnd },
-    handleScale: { axisPressedMouseMove: { time: true, price: false }, mouseWheel: true, pinch: true },
-    handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false }
+    handleScale: { axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: { time: true, price: true }, mouseWheel: true, pinch: true },
+    handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: S('chart').vdrag }
 });
 
-var candleSeries = chart.addSeries(LW.CandlestickSeries, { upColor: C.up, downColor: C.down, borderVisible: false, wickUpColor: C.up, wickDownColor: C.down });
-var lineSeries = chart.addSeries(LW.LineSeries, { color: C.accent, lineWidth: 2, visible: false });
-var areaSeries = chart.addSeries(LW.AreaSeries, { lineColor: C.accent, topColor: 'rgba(41,98,255,.35)', bottomColor: 'rgba(41,98,255,0)', lineWidth: 2, visible: false });
+var PRICE_FMT = { type: 'custom', minMove: 0.01, formatter: fmtPrice };
+var candleSeries = chart.addSeries(LW.CandlestickSeries, { upColor: C.up, downColor: C.down, borderVisible: false, wickUpColor: C.up, wickDownColor: C.down, priceFormat: PRICE_FMT });
+var lineSeries = chart.addSeries(LW.LineSeries, { color: C.accent, lineWidth: 2, visible: false, priceFormat: PRICE_FMT });
+var areaSeries = chart.addSeries(LW.AreaSeries, { lineColor: C.accent, topColor: 'rgba(41,98,255,.35)', bottomColor: 'rgba(41,98,255,0)', lineWidth: 2, visible: false, priceFormat: PRICE_FMT });
 var volSeries = chart.addSeries(LW.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '', lastValueVisible: false, priceLineVisible: false });
-volSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+volSeries.priceScale().applyOptions({ scaleMargins: { top: 1 - S('vol').height / 100, bottom: 0 } });
 
 // Long averages (200/400) sit far from price; keeping them out of auto-scaling stops them squashing the candles.
 function overlayLine(color, width, noScale) {
@@ -113,59 +261,69 @@ function overlayLine(color, width, noScale) {
         autoscaleInfoProvider: noScale ? function () { return null; } : undefined
     });
 }
-var maS = maCfg.map(function (m) { return overlayLine(m.c, 1, true); });
-var emaS = EMA_COL.map(function (c) { return overlayLine(c, 1, true); });
+var maS = MA_DEFAULT.map(function (d) { return overlayLine(d[1], 1, true); });
+var emaS = EMA_DEFAULT.map(function (d) { return overlayLine(d[1], 1, true); });
 var bUpS = overlayLine('rgba(41,98,255,.9)'), bMidS = overlayLine('rgba(255,152,0,.9)'), bLoS = overlayLine('rgba(41,98,255,.9)');
 
 function mainSeries() { return chartType === 'line' ? lineSeries : chartType === 'area' ? areaSeries : candleSeries; }
 function barOf(c) { return { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }; }
-function volOf(c) { return { time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(14,203,129,.38)' : 'rgba(246,70,93,.38)' }; }
+function volOf(c) {
+    var v = S('vol'), up = c.close >= c.open;
+    return { time: c.time, value: c.volume, color: hexA(v.follow ? (up ? C.up : C.down) : (up ? v.up : v.down), v.opacity / 100) };
+}
 
 // =====================================================================================================
 // Indicators
 // =====================================================================================================
+var P = {};                                   // calculation parameters, refreshed together with D
 function newD() {
-    return { ma: maCfg.map(function () { return []; }), ema: [[], []], bMid: [], bUp: [], bLo: [], rsi: [], rsiG: [], rsiL: [], e12: [], e26: [], macd: [], sig: [], hist: [], cvd: [], delta: [] };
+    P.ma = S('ma').lines; P.ema = S('ema').lines;
+    var b = S('boll'); P.bp = b.period; P.bm = b.mult;
+    P.rsi = S('rsi').period;
+    var m = S('macd'); P.fast = m.fast; P.slow = Math.max(m.slow, m.fast + 1); P.sig = m.signal;
+    P.cvdDay = S('cvd').reset === 'day';
+    return { cs: [], ma: P.ma.map(function () { return []; }), ema: P.ema.map(function () { return []; }), bMid: [], bUp: [], bLo: [], rsi: [], rsiG: [], rsiL: [], e12: [], e26: [], macd: [], sig: [], hist: [], cvd: [], delta: [] };
 }
 var D = newD();
-var RSI_P = 14, A12 = 2 / 13, A26 = 2 / 27, A9 = 2 / 10;
 
+// simple or exponential average of the closes ending at bar i (simple ones use the running sum)
+function avgAt(arr, i, p, type) {
+    if (i < p - 1) return null;
+    if (type === 'ema' && i > 0 && arr[i - 1] != null) return arr[i - 1] + (2 / (p + 1)) * (candles[i].close - arr[i - 1]);
+    return (D.cs[i] - (i >= p ? D.cs[i - p] : 0)) / p;
+}
 function stepInd(i) {
-    var close = candles[i].close, k, j, s;
-    for (k = 0; k < maCfg.length; k++) {
-        var p = maCfg[k].p;
-        if (maCfg[k].on && i >= p - 1) { s = 0; for (j = i - p + 1; j <= i; j++) s += candles[j].close; D.ma[k][i] = s / p; } else D.ma[k][i] = null;
-    }
+    var close = candles[i].close, k, j;
+    D.cs[i] = (i > 0 ? D.cs[i - 1] : 0) + close;
+    for (k = 0; k < P.ma.length; k++) D.ma[k][i] = P.ma[k].on ? avgAt(D.ma[k], i, P.ma[k].p, P.ma[k].t) : null;
+    for (k = 0; k < P.ema.length; k++) D.ema[k][i] = P.ema[k].on ? avgAt(D.ema[k], i, P.ema[k].p, P.ema[k].t) : null;
     // order flow: the candle's taker-buy volume against the rest is the bar's delta; its running sum is CVD
     D.delta[i] = 2 * candles[i].buy - candles[i].volume;
-    D.cvd[i] = (i > 0 ? D.cvd[i - 1] : 0) + D.delta[i];
-    for (k = 0; k < 2; k++) {
-        var pe = EMA_P[k], a = 2 / (pe + 1);
-        var prev = i > 0 ? D.ema[k][i - 1] : null;
-        var e = i === 0 ? close : (prev == null ? close : prev + a * (close - prev));
-        D.ema[k][i] = e;
-    }
-    if (i >= 19) {
-        s = 0; for (j = i - 19; j <= i; j++) s += candles[j].close;
-        var mean = s / 20, sq = 0;
-        for (j = i - 19; j <= i; j++) { var df = candles[j].close - mean; sq += df * df; }
-        var sd = Math.sqrt(sq / 20);
-        D.bMid[i] = mean; D.bUp[i] = mean + 2 * sd; D.bLo[i] = mean - 2 * sd;
+    var newDay = P.cvdDay && i > 0 && Math.floor(candles[i].time / 86400) !== Math.floor(candles[i - 1].time / 86400);
+    D.cvd[i] = (i > 0 && !newDay ? D.cvd[i - 1] : 0) + D.delta[i];
+    var bp = P.bp;
+    if (i >= bp - 1) {
+        var mean = (D.cs[i] - (i >= bp ? D.cs[i - bp] : 0)) / bp, sq = 0;
+        for (j = i - bp + 1; j <= i; j++) { var df = candles[j].close - mean; sq += df * df; }
+        var sd = Math.sqrt(sq / bp);
+        D.bMid[i] = mean; D.bUp[i] = mean + P.bm * sd; D.bLo[i] = mean - P.bm * sd;
     } else { D.bMid[i] = D.bUp[i] = D.bLo[i] = null; }
+    var RP = P.rsi;
     if (i === 0) { D.rsiG[0] = 0; D.rsiL[0] = 0; D.rsi[0] = null; }
     else {
         var ch = close - candles[i - 1].close, g = ch > 0 ? ch : 0, l = ch < 0 ? -ch : 0;
-        if (i <= RSI_P) { D.rsiG[i] = (D.rsiG[i - 1] * (i - 1) + g) / i; D.rsiL[i] = (D.rsiL[i - 1] * (i - 1) + l) / i; }
-        else { D.rsiG[i] = (D.rsiG[i - 1] * (RSI_P - 1) + g) / RSI_P; D.rsiL[i] = (D.rsiL[i - 1] * (RSI_P - 1) + l) / RSI_P; }
-        D.rsi[i] = i >= RSI_P ? (D.rsiL[i] === 0 ? 100 : 100 - 100 / (1 + D.rsiG[i] / D.rsiL[i])) : null;
+        if (i <= RP) { D.rsiG[i] = (D.rsiG[i - 1] * (i - 1) + g) / i; D.rsiL[i] = (D.rsiL[i - 1] * (i - 1) + l) / i; }
+        else { D.rsiG[i] = (D.rsiG[i - 1] * (RP - 1) + g) / RP; D.rsiL[i] = (D.rsiL[i - 1] * (RP - 1) + l) / RP; }
+        D.rsi[i] = i >= RP ? (D.rsiL[i] === 0 ? 100 : 100 - 100 / (1 + D.rsiG[i] / D.rsiL[i])) : null;
     }
-    D.e12[i] = i === 0 ? close : D.e12[i - 1] + A12 * (close - D.e12[i - 1]);
-    D.e26[i] = i === 0 ? close : D.e26[i - 1] + A26 * (close - D.e26[i - 1]);
-    D.macd[i] = i >= 25 ? D.e12[i] - D.e26[i] : null;
+    var af = 2 / (P.fast + 1), as = 2 / (P.slow + 1), ag = 2 / (P.sig + 1);
+    D.e12[i] = i === 0 ? close : D.e12[i - 1] + af * (close - D.e12[i - 1]);
+    D.e26[i] = i === 0 ? close : D.e26[i - 1] + as * (close - D.e26[i - 1]);
+    D.macd[i] = i >= P.slow - 1 ? D.e12[i] - D.e26[i] : null;
     if (D.macd[i] == null) { D.sig[i] = null; D.hist[i] = null; }
     else {
         var ps = D.sig[i - 1];
-        D.sig[i] = ps == null ? D.macd[i] : ps + A9 * (D.macd[i] - ps);
+        D.sig[i] = ps == null ? D.macd[i] : ps + ag * (D.macd[i] - ps);
         D.hist[i] = D.macd[i] - D.sig[i];
     }
 }
@@ -199,14 +357,15 @@ function setAllData() {
     lineSeries.setData(chartType === 'line' ? mainData() : []);
     areaSeries.setData(chartType === 'area' ? mainData() : []);
     volSeries.setData(ind.vol ? candles.map(volOf) : []);
-    maS.forEach(function (s, k) { s.setData(ind.ma && maCfg[k].on ? pts(D.ma[k]) : []); });
-    emaS.forEach(function (s, k) { s.setData(ind.ema ? pts(D.ema[k]) : []); });
-    bUpS.setData(ind.boll ? pts(D.bUp) : []); bMidS.setData(ind.boll ? pts(D.bMid) : []); bLoS.setData(ind.boll ? pts(D.bLo) : []);
+    maS.forEach(function (s, k) { s.setData(ind.ma && P.ma[k].on ? pts(D.ma[k]) : []); });
+    emaS.forEach(function (s, k) { s.setData(ind.ema && P.ema[k].on ? pts(D.ema[k]) : []); });
+    var mid = ind.boll && S('boll').midOn;
+    bUpS.setData(ind.boll ? pts(D.bUp) : []); bMidS.setData(mid ? pts(D.bMid) : []); bLoS.setData(ind.boll ? pts(D.bLo) : []);
     subsSetData();
 }
 function histPts() {
     var out = [];
-    for (var i = 0; i < candles.length; i++) if (D.hist[i] != null) out.push({ time: candles[i].time, value: D.hist[i], color: D.hist[i] >= 0 ? 'rgba(14,203,129,.6)' : 'rgba(246,70,93,.6)' });
+    for (var i = 0; i < candles.length; i++) if (D.hist[i] != null) out.push({ time: candles[i].time, value: D.hist[i], color: histColor(D.hist[i]) });
     return out;
 }
 // incremental update of the last (forming) bar or a freshly appended bar
@@ -217,9 +376,9 @@ function pushLast() {
     if (chartType === 'line' || chartType === 'area') mainSeries().update({ time: c.time, value: c.close });
     else candleSeries.update(mainBar(i));
     if (ind.vol) volSeries.update(volOf(c));
-    if (ind.ma) maS.forEach(function (s, k) { var p = maCfg[k].on ? ptAt(D.ma[k], i) : null; if (p) s.update(p); });
-    if (ind.ema) emaS.forEach(function (s, k) { var p = ptAt(D.ema[k], i); if (p) s.update(p); });
-    if (ind.boll) { var u = ptAt(D.bUp, i); if (u) { bUpS.update(u); bMidS.update(ptAt(D.bMid, i)); bLoS.update(ptAt(D.bLo, i)); } }
+    if (ind.ma) maS.forEach(function (s, k) { var p = P.ma[k].on ? ptAt(D.ma[k], i) : null; if (p) s.update(p); });
+    if (ind.ema) emaS.forEach(function (s, k) { var p = P.ema[k].on ? ptAt(D.ema[k], i) : null; if (p) s.update(p); });
+    if (ind.boll) { var u = ptAt(D.bUp, i); if (u) { bUpS.update(u); if (S('boll').midOn) bMidS.update(ptAt(D.bMid, i)); bLoS.update(ptAt(D.bLo, i)); } }
     subsUpdate(i);
 }
 
@@ -231,22 +390,34 @@ function applySubs() {
         if (on && !subLive[key]) subLive[key] = SUBS[key].create(chart.panes().length);
         else if (!on && subLive[key]) { removeSubSeries(subLive[key]); delete subLive[key]; }
     });
-    var ps = chart.panes(); for (var i = 1; i < ps.length; i++) ps[i].setStretchFactor(0.3);
+    var ps = chart.panes();
+    for (var i = 1; i < ps.length; i++) {
+        ps[i].setStretchFactor(0.3);
+        try { chart.priceScale('right', i).applyOptions({ scaleMargins: { top: 0.12, bottom: 0.1 } }); } catch (e) { /* older engine */ }
+    }
+    Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); });
 }
-function removeSubSeries(o) { Object.keys(o).forEach(function (k) { try { chart.removeSeries(o[k]); } catch (e) { /* ignore */ } }); }
+function removeSubSeries(o) { Object.keys(o).forEach(function (k) { if (k !== 'pl' && o[k] && o[k].priceScale) { try { chart.removeSeries(o[k]); } catch (e) { /* ignore */ } } }); }
 function subsSetData() { Object.keys(subLive).forEach(function (key) { SUBS[key].setData(subLive[key]); }); }
 function subsUpdate(i) { Object.keys(subLive).forEach(function (key) { if (SUBS[key].update) SUBS[key].update(subLive[key], i); }); }
-function panePriceLines(series) {
-    [70, 30].forEach(function (v) { series.createPriceLine({ price: v, color: 'rgba(132,142,156,.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false }); });
-}
 function lineOpts(color, last) { return { color: color, lineWidth: 1, priceLineVisible: false, lastValueVisible: !!last, crosshairMarkerVisible: false }; }
 function signedVol(v) { return (v < 0 ? '-' : '+') + fmtVol(Math.abs(v)); }
-var UPFILL = 'rgba(14,203,129,.55)', DOWNFILL = 'rgba(246,70,93,.55)';
+// axis labels of the volume-like panes: 7.63B instead of 7,625,082,330.90 (the chart-wide formatter is for prices)
+var COMPACT = { type: 'custom', minMove: 0.01, formatter: function (v) { return (v < 0 ? '-' : '') + fmtVol(Math.abs(v)); } };
+function upFill() { return hexA(C.up, 0.55); }
+function downFill() { return hexA(C.down, 0.55); }
+function histColor(v) { return v >= 0 ? hexA(C.up, 0.6) : hexA(C.down, 0.6); }
 SUBS.rsi = {
-    create: function (pane) { var l = chart.addSeries(LW.LineSeries, lineOpts('#B388FF', true), pane); panePriceLines(l); return { line: l }; },
+    create: function (pane) { return { line: chart.addSeries(LW.LineSeries, lineOpts('#B388FF', true), pane), pl: [] }; },
+    style: function (o) {
+        var c = S('rsi');
+        o.line.applyOptions({ color: c.color, lineWidth: c.width });
+        o.pl.forEach(function (l) { try { o.line.removePriceLine(l); } catch (e) { /* gone */ } }); o.pl = [];
+        if (c.levels) [c.ob, c.os].forEach(function (v) { o.pl.push(o.line.createPriceLine({ price: v, color: 'rgba(132,142,156,.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false })); });
+    },
     setData: function (o) { o.line.setData(pts(D.rsi)); },
     update: function (o, i) { var r = ptAt(D.rsi, i); if (r) o.line.update(r); },
-    legend: function (i) { return D.rsi[i] != null ? '<span style="color:#B388FF">RSI ' + D.rsi[i].toFixed(1) + '</span>' : ''; }
+    legend: function (i) { var c = S('rsi'); return D.rsi[i] != null ? '<span style="color:' + c.color + '">RSI ' + c.period + ' ' + D.rsi[i].toFixed(1) + '</span>' : ''; }
 };
 SUBS.macd = {
     create: function (pane) {
@@ -256,31 +427,44 @@ SUBS.macd = {
             sig: chart.addSeries(LW.LineSeries, lineOpts('#FF9800'), pane)
         };
     },
+    style: function (o) {
+        var c = S('macd');
+        var dec = Math.min(8, precision + 1), pf = { type: 'custom', minMove: Math.pow(10, -dec), formatter: function (v) { return v.toFixed(dec); } };
+        o.macd.applyOptions({ color: c.cMacd, lineWidth: c.width, priceFormat: pf }); o.sig.applyOptions({ color: c.cSig, lineWidth: c.width, priceFormat: pf });
+        o.hist.applyOptions({ visible: c.hist, priceFormat: pf });
+    },
     setData: function (o) { o.macd.setData(pts(D.macd)); o.sig.setData(pts(D.sig)); o.hist.setData(histPts()); },
     update: function (o, i) {
         var m = ptAt(D.macd, i);
-        if (m) { o.macd.update(m); o.sig.update(ptAt(D.sig, i)); o.hist.update({ time: candles[i].time, value: D.hist[i], color: D.hist[i] >= 0 ? 'rgba(14,203,129,.6)' : 'rgba(246,70,93,.6)' }); }
+        if (m) { o.macd.update(m); o.sig.update(ptAt(D.sig, i)); o.hist.update({ time: candles[i].time, value: D.hist[i], color: histColor(D.hist[i]) }); }
     },
-    legend: function (i) { return D.macd[i] != null ? '<span style="color:#2962FF">MACD ' + D.macd[i].toFixed(precision) + '</span> <span style="color:#FF9800">' + D.sig[i].toFixed(precision) + '</span>' : ''; }
+    legend: function (i) {
+        var c = S('macd');
+        return D.macd[i] != null ? '<span style="color:' + c.cMacd + '">MACD ' + D.macd[i].toFixed(precision) + '</span> <span style="color:' + c.cSig + '">' + D.sig[i].toFixed(precision) + '</span>' : '';
+    }
 };
 SUBS.cvd = {
     create: function (pane) {
         return {
             delta: chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceScaleId: '' }, pane),
-            line: chart.addSeries(LW.LineSeries, { color: '#00BCD4', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: { type: 'volume' } }, pane)
+            line: chart.addSeries(LW.LineSeries, { color: '#00BCD4', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: COMPACT }, pane)
         };
+    },
+    style: function (o) {
+        var c = S('cvd');
+        o.line.applyOptions({ color: c.color, lineWidth: c.width }); o.delta.applyOptions({ visible: c.delta });
     },
     setData: function (o) {
         o.delta.priceScale().applyOptions({ scaleMargins: { top: 0.55, bottom: 0 } });
         o.line.setData(pts(D.cvd));
-        o.delta.setData(candles.map(function (c, i) { return { time: c.time, value: D.delta[i], color: D.delta[i] >= 0 ? UPFILL : DOWNFILL }; }));
+        o.delta.setData(candles.map(function (c, i) { return { time: c.time, value: D.delta[i], color: D.delta[i] >= 0 ? upFill() : downFill() }; }));
     },
     update: function (o, i) {
         o.line.update({ time: candles[i].time, value: D.cvd[i] });
-        o.delta.update({ time: candles[i].time, value: D.delta[i], color: D.delta[i] >= 0 ? UPFILL : DOWNFILL });
+        o.delta.update({ time: candles[i].time, value: D.delta[i], color: D.delta[i] >= 0 ? upFill() : downFill() });
     },
     legend: function (i) {
-        return D.cvd[i] == null ? '' : '<span style="color:#00BCD4">CVD ' + signedVol(D.cvd[i]) + '</span> <span class="' + (D.delta[i] >= 0 ? 'up' : 'down') + '">Δ ' + signedVol(D.delta[i]) + '</span>';
+        return D.cvd[i] == null ? '' : '<span style="color:' + S('cvd').color + '">CVD ' + signedVol(D.cvd[i]) + '</span> <span class="' + (D.delta[i] >= 0 ? 'up' : 'down') + '">Δ ' + signedVol(D.delta[i]) + '</span>';
     }
 };
 
@@ -311,8 +495,9 @@ function applyType() {
 }
 function applyIndicators() {
     var vis = function (s, on) { s.applyOptions({ visible: !!on }); };
-    vis(volSeries, ind.vol); maS.forEach(function (s, k) { vis(s, ind.ma && maCfg[k].on); }); emaS.forEach(function (s) { vis(s, ind.ema); });
-    vis(bUpS, ind.boll); vis(bMidS, ind.boll); vis(bLoS, ind.boll);
+    vis(volSeries, ind.vol); maS.forEach(function (s, k) { vis(s, ind.ma && P.ma[k].on); }); emaS.forEach(function (s, k) { vis(s, ind.ema && P.ema[k].on); });
+    vis(bUpS, ind.boll); vis(bMidS, ind.boll && S('boll').midOn); vis(bLoS, ind.boll);
+    applyStyles();
     applySubs();
     setAllData();
     var extra = Object.keys(ind).some(function (k) { return k !== 'vol' && ind[k]; });
@@ -320,6 +505,67 @@ function applyIndicators() {
     syncFeatures();
     scheduleLegend();
 }
+
+// ---- styling driven by the settings schemas ------------------------------------------------------------------------
+function applyStyles() {
+    volSeries.priceScale().applyOptions({ scaleMargins: { top: 1 - S('vol').height / 100, bottom: 0 } });
+    var m = S('ma'), e = S('ema'), b = S('boll');
+    maS.forEach(function (s, k) { var l = m.lines[k]; s.applyOptions({ color: l.c, lineWidth: l.w, lastValueVisible: m.labels }); });
+    emaS.forEach(function (s, k) { var l = e.lines[k]; s.applyOptions({ color: l.c, lineWidth: l.w }); });
+    bUpS.applyOptions({ color: b.cBand, lineWidth: b.width }); bLoS.applyOptions({ color: b.cBand, lineWidth: b.width });
+    bMidS.applyOptions({ color: b.cMid, lineWidth: b.width });
+}
+var refreshRaf = 0, refreshCalc = false;
+function scheduleRefresh(calc) {                  // slider drags fire many changes: coalesce into one repaint per frame
+    if (calc) refreshCalc = true;
+    if (refreshRaf) return;
+    refreshRaf = requestAnimationFrame(function () {
+        refreshRaf = 0;
+        if (refreshCalc) { refreshCalc = false; D = newD(); computeAllInd(); if (chartType === 'ha') toHA(); }
+        applyIndicators();
+        DR.redraw();
+    });
+}
+var chartCfgRaf = 0;
+function scheduleChartCfg() { if (chartCfgRaf) return; chartCfgRaf = requestAnimationFrame(function () { chartCfgRaf = 0; applyChartCfg(); }); }
+function applyChartCfg() {
+    computeColors();
+    var c = S('chart');
+    document.documentElement.style.setProperty('--bg', C.bg);
+    chart.applyOptions({
+        layout: { background: { type: 'solid', color: C.bg } },
+        grid: { vertLines: { color: C.grid, visible: c.grid === 'both' }, horzLines: { color: C.grid, visible: c.grid !== 'none' } },
+        crosshair: { mode: c.cross === 'magnet' ? LW.CrosshairMode.Magnet : LW.CrosshairMode.Normal },
+        handleScroll: { vertTouchDrag: c.vdrag }
+    });
+    chart.priceScale('right').applyOptions({
+        mode: c.scale === 'log' ? LW.PriceScaleMode.Logarithmic : c.scale === 'pct' ? LW.PriceScaleMode.Percentage : LW.PriceScaleMode.Normal,
+        scaleMargins: { top: c.top / 100, bottom: c.bottom / 100 }
+    });
+    candleSeries.applyOptions({
+        upColor: c.hollow ? 'rgba(0,0,0,0)' : C.up, downColor: C.down, borderVisible: !!c.hollow, borderUpColor: C.up, borderDownColor: C.down,
+        wickUpColor: C.up, wickDownColor: C.down, priceLineVisible: c.lastLine, lastValueVisible: c.lastLine
+    });
+    [lineSeries, areaSeries].forEach(function (x) { x.applyOptions({ priceLineVisible: c.lastLine, lastValueVisible: c.lastLine }); });
+    syncScaleBtns();
+    scheduleRefresh(false);                       // volume colors, indicator styles
+    scheduleLegend();
+}
+// Compact "L" (log) and "A" (auto-fit) buttons sit in the corner under the price axis, like other chart apps.
+function syncScaleBtns() {
+    var ps = chart.priceScale('right'), o = ps.options(), box = $('scale_btns');
+    $('auto_btn').classList.toggle('on', !!o.autoScale);
+    $('log_btn').classList.toggle('on', o.mode === LW.PriceScaleMode.Logarithmic);
+    var w = ps.width(), th = chart.timeScale().height();
+    if (w > 0) box.style.width = w + 'px';
+    if (th > 0) box.style.height = th + 'px';
+}
+$('auto_btn').onclick = function () {
+    var ps = chart.priceScale('right');
+    ps.applyOptions({ autoScale: !ps.options().autoScale });
+    syncScaleBtns();
+};
+$('log_btn').onclick = function () { setCfg('chart', 'scale', S('chart').scale === 'log' ? 'normal' : 'log'); syncScaleBtns(); };
 
 // =====================================================================================================
 // Time <-> logical-index mapping (drawings are anchored to real time + price)
@@ -380,7 +626,7 @@ var DR = {
 // Everything that is drawn on top of / behind the candles (drawings, heatmap, bubbles, profiles) renders
 // inside the chart's own canvas through two series primitives, so it always stays in sync with pan/zoom.
 var layers = { bottom: [], top: [] };
-var layerPrims = [], layerSeries = null;
+var layerPrims = [], layerSeries = null, layerErr = false;
 function makeLayerPrimitive(z) {
     var prim = {
         _req: null,
@@ -397,7 +643,7 @@ function makeLayerPrimitive(z) {
                 var ctx = scope.context, w = scope.mediaSize.width, h = scope.mediaSize.height;
                 layers[z].forEach(function (fn) {
                     ctx.save(); ctx.scale(scope.horizontalPixelRatio, scope.verticalPixelRatio);
-                    try { fn(ctx, w, h); } catch (e) { /* a broken layer must not take the chart down */ }
+                    try { fn(ctx, w, h); } catch (e) { if (!layerErr) { layerErr = true; console.error('layer', e); } }   // a broken layer must not take the chart down
                     ctx.restore();
                 });
             });
@@ -426,6 +672,7 @@ function label(ctx, text, x, y, bg, fg, align) {
     ctx.fillStyle = fg; ctx.textBaseline = 'middle'; ctx.fillText(text, lx + 5, y + 0.5);
 }
 function handle(ctx, p) {
+    ctx.setLineDash([]);
     ctx.beginPath(); ctx.arc(p.x, p.y, 6.5, 0, Math.PI * 2);
     ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = C.accent; ctx.stroke();
 }
@@ -433,18 +680,19 @@ function handle(ctx, p) {
 function paint(ctx, d, selected, w, h) {
     var a = px(d.a), b = d.b ? px(d.b) : null;
     if (!a) return;
-    ctx.lineWidth = selected ? 2.2 : 1.6; ctx.setLineDash([]);
+    var col = drawingColor(d), dash = d.ds === 1 ? [7, 5] : d.ds === 2 ? [2, 4] : [];
+    ctx.lineWidth = (d.w || 1.6) + (selected ? 0.6 : 0); ctx.setLineDash(dash);
     if (d.type === 'hline') {
-        ctx.strokeStyle = C.gold; ctx.beginPath(); ctx.moveTo(0, a.y); ctx.lineTo(w, a.y); ctx.stroke();
-        label(ctx, fmtPrice(d.a.price), w - 4, a.y - 11, C.gold, '#1a1a1a', 'right');
+        ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(0, a.y); ctx.lineTo(w, a.y); ctx.stroke();
+        label(ctx, fmtPrice(d.a.price), w - 4, a.y - 11, col, '#1a1a1a', 'right');
         if (selected) handle(ctx, { x: Math.min(40, w / 3), y: a.y });
     } else if (d.type === 'trend' && b) {
-        ctx.strokeStyle = C.accent; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
         if (selected) { handle(ctx, a); handle(ctx, b); }
     } else if (d.type === 'rect' && b) {
         var x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), rw = Math.abs(a.x - b.x), rh = Math.abs(a.y - b.y);
-        ctx.fillStyle = 'rgba(41,98,255,.14)'; ctx.fillRect(x, y, rw, rh);
-        ctx.strokeStyle = C.accent; ctx.strokeRect(x, y, rw, rh);
+        ctx.fillStyle = hexA(col, 0.14); ctx.fillRect(x, y, rw, rh);
+        ctx.strokeStyle = col; ctx.strokeRect(x, y, rw, rh);
         if (selected) { handle(ctx, a); handle(ctx, b); }
     } else if (d.type === 'fib' && b) {
         var x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x);
@@ -476,11 +724,30 @@ function paint(ctx, d, selected, w, h) {
         label(ctx, txt, lx, Math.max(11, Math.min(h - 11, cy)), col, '#0b0e11');
     }
 }
+function drawingColor(d) { return d.col || (d.type === 'hline' ? C.gold : C.accent); }
 function hexA(hex, a) {
     var n = parseInt(hex.slice(1), 16);
     return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
 }
 
+addLayer('bottom', function (ctx) {
+    if (!ind.boll) return;
+    var b = S('boll'); if (!b.fill || !D.bUp.length) return;
+    var ts = chart.timeScale(), r = ts.getVisibleLogicalRange(); if (!r) return;
+    var a = Math.max(0, Math.floor(r.from) - 1), z = Math.min(candles.length - 1, Math.ceil(r.to) + 1), st = Math.max(1, Math.ceil((z - a) / 400));
+    var up = [], lo = [];
+    for (var i = a; i <= z; i += st) {
+        if (D.bUp[i] == null) continue;
+        var x = ts.logicalToCoordinate(i), yu = yOf(D.bUp[i]), yl = yOf(D.bLo[i]);
+        if (x == null || yu == null || yl == null) continue;
+        up.push(x, yu); lo.push(x, yl);
+    }
+    if (up.length < 4) return;
+    ctx.beginPath(); ctx.moveTo(up[0], up[1]);
+    for (var j = 2; j < up.length; j += 2) ctx.lineTo(up[j], up[j + 1]);
+    for (var k = lo.length - 2; k >= 0; k -= 2) ctx.lineTo(lo[k], lo[k + 1]);
+    ctx.closePath(); ctx.fillStyle = hexA(b.cBand, b.fillA / 100); ctx.fill();
+});
 addLayer('top', function (ctx, w, h) {
     DR.list.forEach(function (d) { paint(ctx, d, d.id === DR.sel, w, h); });
     if (DR.draft) paint(ctx, DR.draft, false, w, h);
@@ -638,6 +905,16 @@ function cancelGesture() { gesture = null; DR.draft = null; showHint(''); DR.red
 function swallow(e) {
     if (gesture || Date.now() < swallowUntil) { e.stopPropagation(); if (e.cancelable) e.preventDefault(); }
 }
+// A finger on the price axis always scales it (vertical drag); on the chart body vertical drags move the price only when
+// the "drag chart up/down" option is on. The engine reads the option while the gesture runs, so it is set on touch start.
+wrap.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse') return;
+    var want = local(e).x > chart.paneSize(0).width || S('chart').vdrag;
+    if (chart.options().handleScroll.vertTouchDrag !== want) chart.applyOptions({ handleScroll: { vertTouchDrag: want } });
+}, true);
+['pointerup', 'pointercancel', 'wheel', 'dblclick'].forEach(function (t) {
+    wrap.addEventListener(t, function () { setTimeout(syncScaleBtns, 40); }, { capture: true, passive: true });
+});
 wrap.addEventListener('pointerdown', onDown, true);
 wrap.addEventListener('pointermove', onMove, true);
 wrap.addEventListener('pointerup', onUp, true);
@@ -691,7 +968,32 @@ function refreshRail() {
         btns[i].className = 'tool' + ((t === 'cursor' ? !DR.tool : DR.tool === t) ? ' active' : '');
     }
     var tr = $('trash'); if (tr) { tr.className = 'tool danger' + (trashArmed ? ' armed' : ''); tr.querySelector('span').textContent = trashArmed ? '전체삭제?' : (DR.sel != null ? '선택삭제' : '삭제'); }
+    refreshDrBar();
 }
+// floating style bar for the selected drawing: color, thickness, dash, delete
+var DR_COLORS = ['#2962FF', '#F0B90B', '#F6465D', '#0ECB81', '#FFFFFF', '#B388FF'];
+function refreshDrBar() {
+    var bar = $('dr_bar'), d = DR.list.filter(function (x) { return x.id === DR.sel; })[0];
+    if (!d || DR.tool) { bar.className = ''; return; }
+    var cur = drawingColor(d).toLowerCase(), html = '';
+    if (d.type !== 'fib') {
+        DR_COLORS.forEach(function (c) { html += '<button class="sw' + (cur === c.toLowerCase() ? ' on' : '') + '" data-c="' + c + '" style="background:' + c + '"></button>'; });
+        html += '<span class="vsep"></span>';
+    }
+    html += '<button class="tag" data-a="w">' + Math.round(d.w || 1.6) + 'px</button>' +
+        '<button class="tag" data-a="s">' + (d.ds === 1 ? '- - -' : d.ds === 2 ? '· · ·' : '───') + '</button>' +
+        '<span class="vsep"></span><button class="tag" data-a="x" style="color:' + C.down + '">삭제</button>';
+    bar.innerHTML = html; bar.className = 'show';
+}
+$('dr_bar').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var d = DR.list.filter(function (x) { return x.id === DR.sel; })[0]; if (!d) return;
+    if (b.getAttribute('data-c')) d.col = b.getAttribute('data-c');
+    else if (b.getAttribute('data-a') === 'w') d.w = Math.round(d.w || 1.6) >= 3 ? 1 : Math.round(d.w || 1.6) + 1;
+    else if (b.getAttribute('data-a') === 's') d.ds = ((d.ds || 0) + 1) % 3;
+    else if (b.getAttribute('data-a') === 'x') { onTrash(); return; }
+    DR.save(); DR.redraw(); refreshDrBar();
+});
 function onTrash() {
     if (DR.sel != null) {
         DR.list = DR.list.filter(function (d) { return d.id !== DR.sel; }); DR.sel = null; DR.save(); DR.redraw(); refreshRail(); return;
@@ -732,20 +1034,22 @@ function changeInterval(i) {
 
 // ---- sheets ---------------------------------------------------------------------------------------------------------
 function openSheet(title, rows, footer) {
-    var s = $('sheet'); s.innerHTML = '<h3>' + title + '</h3>';
+    var s = $('sheet'); s.innerHTML = '<h3><span>' + title + '</span><button class="x" aria-label="닫기">✕</button></h3>';
+    s.querySelector('.x').onclick = closeSheet;
     rows.forEach(function (r) { s.appendChild(r); });
     if (footer) s.appendChild(footer);
-    $('sheet_bg').classList.add('show');
+    $('sheet_bg').classList.remove('live'); $('sheet_bg').classList.add('show');
 }
-function closeSheet() { $('sheet_bg').classList.remove('show'); }
+function closeSheet() { $('sheet_bg').classList.remove('show', 'live'); settingsKey = null; }
 $('sheet_bg').addEventListener('click', function (e) { if (e.target === $('sheet_bg')) closeSheet(); });
 
 function switchRow(text, sub, key, gear) {
+    var hasGear = gear && SCHEMA[key];
     var b = document.createElement('div'); b.className = 'row-opt'; b.setAttribute('role', 'button');
     b.innerHTML = '<span style="flex:1">' + text + (sub ? '<small>' + sub + '</small>' : '') + '</span>' +
-        (gear ? '<button class="gear" aria-label="설정">⚙</button>' : '') + '<span class="switch' + (ind[key] ? ' on' : '') + '"></span>';
+        (hasGear ? '<button class="gear" aria-label="설정">⚙</button>' : '') + '<span class="switch' + (ind[key] ? ' on' : '') + '"></span>';
     b.onclick = function (e) {
-        if (gear && e.target.closest('.gear')) { gear(); return; }
+        if (hasGear && e.target.closest('.gear')) { openSettings(key, openIndicators); return; }
         ind[key] = !ind[key]; LS.set('ind', ind);
         b.querySelector('.switch').classList.toggle('on', ind[key]);
         applyIndicators();
@@ -755,49 +1059,142 @@ function switchRow(text, sub, key, gear) {
 function sectionTitle(t) { var d = document.createElement('div'); d.className = 'sec'; d.textContent = t; return d; }
 function noteRow(t) { var d = document.createElement('div'); d.className = 'note'; d.textContent = t; return d; }
 
-// the MA list: period + on/off per line, colors are fixed (red, yellow, green, blue, white, purple)
-function openMaSettings() {
-    var rows = maCfg.map(function (m) {
-        var r = document.createElement('div'); r.className = 'row-opt ma-row';
-        r.innerHTML = '<span class="dot" style="background:' + m.c + '"></span><span style="flex:1">MA</span>' +
-            '<input type="number" inputmode="numeric" min="1" max="2000" value="' + m.p + '"><span class="switch' + (m.on ? ' on' : '') + '"></span>';
-        var input = r.querySelector('input'), sw = r.querySelector('.switch');
-        input.onclick = function (e) { e.stopPropagation(); };
-        input.onchange = function () {
-            var v = Math.max(1, Math.min(2000, Math.floor(+input.value) || m.p)); input.value = v; m.p = v; saveMa();
-        };
-        r.onclick = function (e) { if (e.target === input) return; m.on = !m.on; sw.classList.toggle('on', m.on); saveMa(); };
-        return r;
+// ---- generic settings sheet (built from the schema of each indicator) -------------------------------------------------
+function colorStrip(cur, onPick) {
+    var st = document.createElement('div'); st.className = 'sw-strip';
+    var list = PALETTE.slice();
+    if (list.map(function (c) { return c.toLowerCase(); }).indexOf(cur.toLowerCase()) < 0) list.unshift(cur);
+    var dots = [];
+    function mark(c) { dots.forEach(function (d) { d.el.classList.toggle('on', d.c.toLowerCase() === c.toLowerCase()); }); }
+    list.forEach(function (c) {
+        var b = document.createElement('button'); b.className = 'sw'; b.style.background = c; dots.push({ el: b, c: c });
+        b.onclick = function (e) { e.stopPropagation(); mark(c); inp.value = c; onPick(c); };
+        st.appendChild(b);
     });
-    var reset = document.createElement('button'); reset.className = 'row-opt'; reset.style.color = '#2962FF'; reset.textContent = '기본값으로 되돌리기 (5·10·50·100·200·400)';
-    reset.onclick = function () { maCfg.forEach(function (m, k) { m.p = MA_DEFAULT[k][0]; m.on = true; }); saveMa(); openMaSettings(); };
-    openSheet('이동평균선 설정', rows.concat([noteRow('기간은 현재 차트의 봉 개수 기준입니다. 일봉(1D)에서 보면 일 단위 이동평균입니다.'), reset]));
+    var inp = document.createElement('input'); inp.className = 'hex'; inp.type = 'text'; inp.value = cur; inp.maxLength = 7; inp.placeholder = '#RRGGBB';
+    inp.onclick = function (e) { e.stopPropagation(); };
+    inp.onchange = function () {
+        var v = inp.value.trim(); if (v[0] !== '#') v = '#' + v;
+        if (HEX.test(v)) { inp.value = v; mark(v); onPick(v); } else inp.value = cur;
+    };
+    mark(cur); st.appendChild(inp);
+    return st;
 }
-function saveMa() {
-    LS.set('ma6', maCfg.map(function (m) { return { p: m.p, on: m.on }; }));
-    D = newD(); computeAllInd(); applyIndicators();
+function buildLines(key, f) {
+    var box = document.createElement('div'), openAt = -1;
+    function save(i, patch) {
+        var arr = S(key)[f.k].map(function (l) { return Object.assign({}, l); });
+        Object.assign(arr[i], patch); setCfg(key, f.k, arr);
+    }
+    function draw() {
+        box.innerHTML = '';
+        S(key)[f.k].forEach(function (l, i) {
+            var row = document.createElement('div'); row.className = 'fld';
+            row.innerHTML = '<div class="ln"><button class="chip-dot" style="background:' + l.c + '" aria-label="색상"></button>' +
+                '<input type="number" inputmode="numeric" min="1" max="2000" value="' + l.p + '">' +
+                (f.types ? '<button class="tag t">' + (l.t === 'ema' ? 'EMA' : 'SMA') + '</button>' : '') +
+                '<button class="tag w">' + l.w + 'px</button>' +
+                '<span class="switch' + (l.on ? ' on' : '') + '" style="margin-left:auto"></span></div>';
+            var dot = row.querySelector('.chip-dot'), inp = row.querySelector('input');
+            dot.onclick = function () { openAt = openAt === i ? -1 : i; draw(); };
+            inp.onchange = function () { var n = Math.max(1, Math.min(2000, Math.floor(+inp.value) || l.p)); inp.value = n; save(i, { p: n }); };
+            var tb = row.querySelector('.t'); if (tb) tb.onclick = function () { save(i, { t: l.t === 'ema' ? 'sma' : 'ema' }); draw(); };
+            row.querySelector('.w').onclick = function () { save(i, { w: l.w >= 4 ? 1 : l.w + 1 }); draw(); };
+            row.querySelector('.switch').onclick = function () { save(i, { on: !l.on }); draw(); };
+            box.appendChild(row);
+            if (openAt === i) { var fl = document.createElement('div'); fl.className = 'fld'; fl.style.paddingTop = '0'; fl.appendChild(colorStrip(l.c, function (c) { dot.style.background = c; save(i, { c: c }); })); box.appendChild(fl); }
+        });
+    }
+    draw();
+    return box;
 }
-$('ind_btn').onclick = function () {
+function buildField(key, f, rerender) {
+    var cur = S(key);
+    if (f.showIf && !f.showIf(cur)) return null;
+    var el = document.createElement('div');
+    if (f.t === 'sec') { el.className = 'sec'; el.textContent = f.label; return el; }
+    if (f.t === 'note') { el.className = 'note'; el.textContent = f.label; return el; }
+    if (f.t === 'lines') return buildLines(key, f);
+    el.className = 'fld';
+    var v = cur[f.k], sub = f.sub ? '<small>' + f.sub + '</small>' : '';
+    if (f.t === 'bool') {
+        el.innerHTML = '<div class="top"><span>' + f.label + sub + '</span><span class="switch' + (v ? ' on' : '') + '"></span></div>';
+        el.onclick = function () { setCfg(key, f.k, !S(key)[f.k]); rerender(); };
+    } else if (f.t === 'num') {
+        el.innerHTML = '<div class="top"><span>' + f.label + '</span><input type="number" inputmode="decimal" min="' + f.min + '" max="' + f.max + '" step="' + (f.step || 1) + '" value="' + v + '"></div>';
+        var inp = el.querySelector('input');
+        inp.onchange = function () { var n = parseFloat(inp.value); if (!isFinite(n)) n = f.def; n = clampN(n, f.min, f.max); inp.value = n; setCfg(key, f.k, n); };
+    } else if (f.t === 'range') {
+        var fmt = function (n) { return (f.step < 1 ? n.toFixed(1) : String(Math.round(n))) + (f.unit || ''); };
+        el.innerHTML = '<div class="top"><span>' + f.label + '</span><span class="val">' + fmt(v) + '</span></div>' +
+            '<input type="range" min="' + f.min + '" max="' + f.max + '" step="' + (f.step || 1) + '" value="' + v + '">';
+        var rg = el.querySelector('input'), vl = el.querySelector('.val');
+        rg.oninput = function () { var n = parseFloat(rg.value); vl.textContent = fmt(n); setCfg(key, f.k, n); };
+    } else if (f.t === 'color') {
+        el.innerHTML = '<div class="top"><span>' + f.label + '</span><span class="chip-dot" style="background:' + v + '"></span></div>';
+        var strip = null, dot = el.querySelector('.chip-dot');
+        el.querySelector('.top').onclick = function () {
+            if (strip) { strip.remove(); strip = null; return; }
+            strip = colorStrip(S(key)[f.k], function (c) { dot.style.background = c; setCfg(key, f.k, c); });
+            el.appendChild(strip);
+        };
+    } else if (f.t === 'sel') {
+        el.innerHTML = '<div class="top"><span>' + f.label + '</span></div><div class="seg"></div>';
+        var seg = el.querySelector('.seg');
+        f.opts.forEach(function (o) {
+            var b = document.createElement('button'); b.className = o[0] === v ? 'on' : ''; b.textContent = o[1];
+            b.onclick = function () { setCfg(key, f.k, o[0]); rerender(); };
+            seg.appendChild(b);
+        });
+    }
+    return el;
+}
+var settingsKey = null;
+function openSettings(key, back) {
+    var def = SCHEMA[key]; if (!def) return;
+    var sheet = $('sheet'), keep = settingsKey === key ? sheet.scrollTop : 0;
+    settingsKey = key; sheet.innerHTML = '';
+    var h = document.createElement('h3');
+    h.innerHTML = (back ? '<button class="back" aria-label="뒤로">‹</button>' : '') + '<span>' + def.title + '</span><button class="x" aria-label="닫기">✕</button>';
+    h.querySelector('.x').onclick = closeSheet;
+    if (back) h.querySelector('.back').onclick = back;
+    sheet.appendChild(h);
+    var rerender = function () { openSettings(key, back); };
+    def.fields.forEach(function (f) { var r = buildField(key, f, rerender); if (r) sheet.appendChild(r); });
+    var rs = document.createElement('button'); rs.className = 'reset'; rs.textContent = '기본값으로 되돌리기';
+    rs.onclick = function () { resetCfg(key); rerender(); };
+    sheet.appendChild(rs);
+    if (def.credit) { var cr = document.createElement('div'); cr.className = 'credit'; cr.textContent = def.credit; sheet.appendChild(cr); }
+    $('sheet_bg').classList.add('show', 'live');
+    sheet.scrollTop = keep;
+}
+$('cfg_btn').onclick = function () { openSettings('chart'); };
+
+function openIndicators() {
+    settingsKey = null;
+    var maLines = S('ma').lines.filter(function (l) { return l.on; }).map(function (l) { return l.p; }).join(' · ');
+    var b = S('boll'), r = S('rsi'), m = S('macd');
     openSheet('지표', [
         sectionTitle('기본'),
-        switchRow('거래량', '', 'vol'),
-        switchRow('이동평균선', maCfg.map(function (m) { return m.p; }).join(' · '), 'ma', openMaSettings),
-        switchRow('지수이동평균', 'EMA 20 · 50', 'ema'),
-        switchRow('볼린저 밴드', '20, 2', 'boll'),
-        switchRow('RSI', '14 · 별도 창', 'rsi'),
-        switchRow('MACD', '12, 26, 9 · 별도 창', 'macd'),
+        switchRow('거래량', '', 'vol', true),
+        switchRow('이동평균선', maLines, 'ma', true),
+        switchRow('지수이동평균', 'EMA ' + S('ema').lines.map(function (l) { return l.p; }).join(' · '), 'ema', true),
+        switchRow('볼린저 밴드', b.period + ', ' + b.mult, 'boll', true),
+        switchRow('RSI', r.period + ' · 별도 창', 'rsi', true),
+        switchRow('MACD', m.fast + ', ' + m.slow + ', ' + m.signal + ' · 별도 창', 'macd', true),
         sectionTitle('오더플로우'),
-        switchRow('CVD · 델타', '누적 체결 델타 (매수-매도 체결량)', 'cvd'),
-        switchRow('미결제약정 (OI)', 'Binance 선물 · 별도 창', 'oi'),
-        switchRow('실시간 청산', '청산 주문 버블 + 봉별 청산량', 'liq'),
-        switchRow('대량 체결', '큰 체결만 버블로 표시', 'trades'),
+        switchRow('CVD · 델타', '누적 체결 델타 (매수-매도 체결량)', 'cvd', true),
+        switchRow('미결제약정 (OI)', 'Binance 선물 · 별도 창', 'oi', true),
+        switchRow('실시간 청산', '청산 주문 버블 + 봉별 청산량', 'liq', true),
+        switchRow('대량 체결', '큰 체결만 버블로 표시', 'trades', true),
         sectionTitle('호가창 · 청산맵'),
-        switchRow('호가 벽', '매수/매도 벽 · 우측 깊이 막대', 'depth'),
-        switchRow('호가 히트맵', '유동성 변화를 시간별 색으로', 'heat'),
-        switchRow('추정 청산맵', 'OI·레버리지 기반 추정(모델)', 'liqmap'),
-        noteRow('실시간 항목은 켜 둔 동안에만 데이터를 받습니다. 차트를 벗어나면 자동으로 멈춰 배터리를 아낍니다.')
+        switchRow('호가 벽', '매수/매도 벽 · 우측 깊이 막대', 'depth', true),
+        switchRow('호가 히트맵', '유동성 변화를 시간별 색으로', 'heat', true),
+        switchRow('추정 청산맵', 'OI·레버리지 기반 추정(모델)', 'liqmap', true),
+        noteRow('⚙ 를 누르면 지표별 색상·두께·기간 등 세부 설정을 바꿀 수 있습니다. 실시간 항목은 켜 둔 동안에만 데이터를 받고, 차트를 벗어나면 자동으로 멈춥니다.')
     ]);
-};
+}
+$('ind_btn').onclick = openIndicators;
 var TYPE_NAMES = [['candle', '캔들'], ['ha', '하이킨 아시'], ['line', '라인'], ['area', '에어리어']];
 function refreshTypeBtn() { $('type_btn').innerHTML = ICON[chartType]; }
 $('type_btn').onclick = function () {
@@ -833,6 +1230,8 @@ function renderLegend() {
     var n = candles.length; if (!n) { $('legend').innerHTML = ''; return; }
     var i = crossTime != null ? indexOfTime(crossTime) : -1; if (i < 0) i = n - 1;
     var c = candles[i], b = chartType === 'ha' && haBars[i] ? haBars[i] : c;
+    var mode = S('chart').legend;
+    if (mode === 'off') { $('legend').innerHTML = ''; return; }
     var cls = c.close >= c.open ? 'up' : 'down', chg = c.open ? (c.close - c.open) / c.open * 100 : 0;
     var l1 = '<div class="row">O <span class="' + cls + '">' + fmtPrice(b.open) + '</span> H <span class="' + cls + '">' + fmtPrice(b.high) +
         '</span> L <span class="' + cls + '">' + fmtPrice(b.low) + '</span> C <span class="' + cls + '">' + fmtPrice(b.close) + '</span> <span class="' + cls + '">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</span>';
@@ -840,10 +1239,15 @@ function renderLegend() {
     var parts = [];
     if (ind.vol) parts.push('Vol <b>' + fmtVol(c.volume) + '</b>');
     if (i === n - 1) parts.push('<span id="cd" style="color:#B2B5BE"></span>');
-    if (ind.ma) maCfg.forEach(function (m, k) { if (!m.on) return; var v = val(D.ma[k], i); if (v) parts.push('<span style="color:' + m.c + '">MA' + m.p + ' ' + v + '</span>'); });
-    if (ind.ema) EMA_P.forEach(function (p, k) { if (i >= p - 1) parts.push('<span style="color:' + EMA_COL[k] + '">EMA' + p + ' ' + fmtPrice(D.ema[k][i]) + '</span>'); });
-    if (ind.boll && D.bMid[i] != null) parts.push('<span style="color:#FF9800">BOLL ' + fmtPrice(D.bMid[i]) + '</span> <span style="color:#7aa2ff">' + fmtPrice(D.bUp[i]) + ' / ' + fmtPrice(D.bLo[i]) + '</span>');
-    Object.keys(subLive).forEach(function (key) { var h = SUBS[key].legend && SUBS[key].legend(i, c); if (h) parts.push(h); });
+    if (mode === 'full') {
+        if (ind.ma) S('ma').lines.forEach(function (m, k) { if (!m.on) return; var v = val(D.ma[k], i); if (v) parts.push('<span style="color:' + m.c + '">' + (m.t === 'ema' ? 'EMA' : 'MA') + m.p + ' ' + v + '</span>'); });
+        if (ind.ema) S('ema').lines.forEach(function (m, k) { if (!m.on) return; var v = val(D.ema[k], i); if (v) parts.push('<span style="color:' + m.c + '">EMA' + m.p + ' ' + v + '</span>'); });
+        if (ind.boll && D.bMid[i] != null) {
+            var bc = S('boll');
+            parts.push('<span style="color:' + bc.cMid + '">BOLL ' + fmtPrice(D.bMid[i]) + '</span> <span style="color:' + bc.cBand + '">' + fmtPrice(D.bUp[i]) + ' / ' + fmtPrice(D.bLo[i]) + '</span>');
+        }
+        Object.keys(subLive).forEach(function (key) { var h = SUBS[key].legend && SUBS[key].legend(i, c); if (h) parts.push(h); });
+    }
     var l2 = parts.length ? '<div class="row">' + parts.join(' &nbsp;') + '</div>' : '';
     $('legend').innerHTML = l1 + l2;
     updateCountdown();
@@ -891,9 +1295,9 @@ function setPrecision(dec) {
     dec = Math.max(0, Math.min(8, dec));
     if (dec === precision && started) return;
     precision = dec;
-    var pf = { type: 'price', precision: dec, minMove: Math.pow(10, -dec) };
+    var pf = { type: 'custom', minMove: Math.pow(10, -dec), formatter: fmtPrice };       // thousands separators, fixed decimals
     [candleSeries, lineSeries, areaSeries].forEach(function (s) { s.applyOptions({ priceFormat: pf }); });
-    chart.applyOptions({ localization: { priceFormatter: fmtPrice } });
+    Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); });
 }
 function showLoading(on) { $('loading').className = on ? '' : 'hide'; }
 
@@ -1077,8 +1481,11 @@ window.CF = {
     registerSub: function (key, def) { SUBS[key] = def; },
     registerFeature: function (key, def) { features[key] = def; def.running = false; },
     subSeries: function (key) { return subLive[key]; },
+    compactFormat: COMPACT,
     refreshSub: function (key) { if (subLive[key]) SUBS[key].setData(subLive[key]); scheduleLegend(); },
-    scheduleLegend: scheduleLegend, hexA: hexA
+    scheduleLegend: scheduleLegend, hexA: hexA,
+    defineSettings: defineSettings, S: S, setCfg: setCfg, scheduleRefresh: scheduleRefresh,
+    styleSubs: function () { Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); }); scheduleLegend(); }
 };
 
 // =====================================================================================================
@@ -1087,12 +1494,15 @@ window.CF = {
 function boot() {
     buildRail(); buildIntervals(); refreshTypeBtn();
     $('app').classList.toggle('rail-closed', !railOpen);
+    document.documentElement.style.setProperty('--bg', C.bg);
     DR.attachTo(mainSeries());
+    applyChartCfg();
     applyType(); applyIndicators();
+    syncScaleBtns();
     startTimers();
     // The native layer calls loadSymbol() as soon as the page has loaded; standalone, start anyway.
     setTimeout(function () { if (!started) window.loadSymbol(symbol); }, 700);
 }
 window.addEventListener('DOMContentLoaded', boot);
-window.__cf = { chart: chart, DR: DR, get candles() { return candles; }, get interval() { return interval; }, setTool: setTool, ind: ind, get D() { return D; }, features: features, subs: SUBS, get live() { return subLive; }, maCfg: maCfg };
+window.__cf = { chart: chart, DR: DR, get candles() { return candles; }, get interval() { return interval; }, setTool: setTool, ind: ind, get D() { return D; }, features: features, subs: SUBS, get live() { return subLive; }, S: S, P: P };
 })();
