@@ -58,6 +58,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -236,6 +239,11 @@ fun TradingViewChartScreen(
     }
 
     BackHandler(enabled = immersive) { leaveImmersive() }
+    // Registered last so it wins: Back first closes what is open inside the chart page.
+    var chartCanGoBack by remember { mutableStateOf(false) }
+    BackHandler(enabled = chartCanGoBack) {
+        webViewHolder.view?.evaluateJavascript("window.cfBack && window.cfBack();", null)
+    }
 
     Column(
         modifier = modifier
@@ -265,6 +273,7 @@ fun TradingViewChartScreen(
             holder = webViewHolder,
             onOpenSymbolSearch = { showSearchSheet = true },
             onExitImmersive = ::leaveImmersive,
+            onBackState = { chartCanGoBack = it },
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
@@ -293,6 +302,27 @@ fun TradingViewChartScreen(
 
 @Composable
 private fun ChartHeader(
+    symbol: String,
+    formattedPrice: String,
+    priceColor: Color,
+    ticker24h: Ticker24h?,
+    fundingInfo: FundingInfo?,
+    tickSize: String?,
+    statsExpanded: Boolean,
+    onToggleStats: () -> Unit,
+    onSymbolClick: () -> Unit,
+    onRotate: () -> Unit,
+    onFullscreen: () -> Unit
+) {
+    // The one-line header is dense by design; a large system font scale would truncate the symbol.
+    val density = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = minOf(density.fontScale, 1.0f))) {
+        ChartHeaderContent(symbol, formattedPrice, priceColor, ticker24h, fundingInfo, tickSize, statsExpanded, onToggleStats, onSymbolClick, onRotate, onFullscreen)
+    }
+}
+
+@Composable
+private fun ChartHeaderContent(
     symbol: String,
     formattedPrice: String,
     priceColor: Color,
@@ -630,6 +660,7 @@ private fun ChartWebView(
     holder: WebViewHolder,
     onOpenSymbolSearch: () -> Unit,
     onExitImmersive: () -> Unit,
+    onBackState: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Bumped when the WebView's renderer process dies, which rebuilds the WebView instead of letting
@@ -640,6 +671,7 @@ private fun ChartWebView(
     val latestImmersive by rememberUpdatedState(immersive)
     val latestOpenSearch by rememberUpdatedState(onOpenSymbolSearch)
     val latestExit by rememberUpdatedState(onExitImmersive)
+    val latestBackState by rememberUpdatedState(onBackState)
 
     LaunchedEffect(immersive, generation) {
         holder.view?.evaluateJavascript("window.setImmersive && window.setImmersive($immersive);", null)
@@ -656,7 +688,8 @@ private fun ChartWebView(
                     immersive = { latestImmersive },
                     onOpenSymbolSearch = { latestOpenSearch() },
                     onExitImmersive = { latestExit() },
-                    onRendererGone = { generation++ }
+                    onBackState = { latestBackState(it) },
+                    onRendererGone = { generation++; latestBackState(false) }
                 ).also { holder.view = it }
             },
             update = { webView ->
@@ -693,8 +726,16 @@ private fun WebView.destroyChart() {
 private class ChartBridge(
     private val webView: WebView,
     private val openSearch: () -> Unit,
-    private val exitImmersive: () -> Unit
+    private val exitImmersive: () -> Unit,
+    private val backState: (Boolean) -> Unit
 ) {
+    // The page reports whether it has something Back should close first (settings sheet, drawing tool, selection).
+    @JavascriptInterface
+    fun backState(arg: String?) {
+        val consume = arg == "1"
+        webView.post { backState(consume) }
+    }
+
     @JavascriptInterface
     fun openSymbolSearch(arg: String?) {
         webView.post { openSearch() }
@@ -714,6 +755,7 @@ private fun createChartWebView(
     immersive: () -> Boolean,
     onOpenSymbolSearch: () -> Unit,
     onExitImmersive: () -> Unit,
+    onBackState: (Boolean) -> Unit,
     onRendererGone: () -> Unit
 ): WebView {
     val debuggable = (ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -755,9 +797,10 @@ private fun createChartWebView(
             builtInZoomControls = false
             displayZoomControls = false
             setSupportZoom(false)
+            textZoom = 100                      // the dense chart layout must not reflow with the system font scale
         }
 
-        addJavascriptInterface(ChartBridge(this, onOpenSymbolSearch, onExitImmersive), "AndroidBridge")
+        addJavascriptInterface(ChartBridge(this, onOpenSymbolSearch, onExitImmersive, onBackState), "AndroidBridge")
 
         webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {

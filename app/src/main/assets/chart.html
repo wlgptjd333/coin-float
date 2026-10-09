@@ -75,7 +75,14 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
     font-size: 10.5px; line-height: 1.45; color: var(--muted); font-variant-numeric: tabular-nums;
     text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg);
 }
-#legend .row { white-space: normal; word-break: keep-all; }
+#legend .row { display: inline-block; white-space: normal; word-break: keep-all; background: rgba(19, 23, 34, .62); border-radius: 6px; padding: 1px 6px; margin-bottom: 2px; }
+#legend .row + .row { display: block; width: fit-content; }
+.lg-t { pointer-events: auto; color: #B2B5BE; font-size: 10px; line-height: 14px; padding: 1px 8px; margin-left: 6px; border-radius: 9px; border: 1px solid var(--line); background: rgba(30, 34, 45, .9); vertical-align: 1px; }
+#pane_tags { position: absolute; inset: 0 60px 0 0; z-index: 6; pointer-events: none; }
+.ptag-row { position: absolute; left: 6px; display: flex; gap: 4px; }
+.ptag { pointer-events: auto; display: flex; align-items: center; height: 20px; padding: 0 2px 0 7px; border-radius: 5px; background: rgba(30, 34, 45, .82); font-size: 10.5px; font-weight: 600; }
+.ptag button { color: var(--muted); font-size: 11px; padding: 0 4px; height: 20px; }
+#cd_tag { position: absolute; right: 0; z-index: 6; display: none; text-align: center; font-size: 10px; font-weight: 600; color: #fff; padding: 1px 0; border-radius: 3px; pointer-events: none; font-variant-numeric: tabular-nums; }
 #legend b { color: var(--text); font-weight: 600; }
 .up { color: var(--up); } .down { color: var(--down); }
 #to_latest {
@@ -89,6 +96,8 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
     background: rgba(41, 98, 255, .92); color: #fff; font-size: 12px; display: none; pointer-events: none; white-space: nowrap;
 }
 #hint.show { display: block; }
+#conn { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 25; padding: 5px 12px; border-radius: 14px; background: rgba(240, 185, 11, .94); color: #1a1a1a; font-size: 11.5px; font-weight: 600; display: none; pointer-events: none; white-space: nowrap; }
+#conn.show { display: block; }
 #loading { position: absolute; inset: 0; z-index: 20; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; gap: 10px; transition: opacity .2s; pointer-events: none; }
 #loading.hide { opacity: 0; }
 .spinner { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
@@ -103,6 +112,9 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 #sheet_bg.live { background: transparent; }
 #sheet { width: 100%; max-width: 440px; max-height: 88%; overflow-y: auto; background: var(--panel); border-radius: 14px 14px 0 0; padding: 6px 0 12px; box-shadow: 0 -4px 18px rgba(0,0,0,.35); -webkit-overflow-scrolling: touch; }
 #sheet_bg.live #sheet { max-height: 52%; }
+#sheet { animation: sheet-up .2s ease-out; }
+#sheet::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px; background: #3A3F4B; margin: 4px auto 0; }
+@keyframes sheet-up { from { transform: translateY(28px); opacity: .5; } to { transform: none; opacity: 1; } }
 #sheet h3 { font-size: 14px; padding: 10px 16px 6px; color: #fff; display: flex; align-items: center; gap: 6px; position: sticky; top: 0; background: var(--panel); z-index: 2; }
 #sheet h3 .back { color: var(--muted); font-size: 18px; padding: 0 8px 0 0; line-height: 1; }
 #sheet h3 .x { margin-left: auto; color: var(--muted); font-size: 18px; padding: 0 4px; }
@@ -171,9 +183,12 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
         <div id="chart_wrap">
             <div id="chart"></div>
             <div id="legend"></div>
+            <div id="pane_tags"></div>
+            <div id="cd_tag"></div>
             <button id="to_latest" aria-label="최신 봉으로"><svg viewBox="0 0 24 24"><path d="M6 6l6 6-6 6M13 6l6 6-6 6"/></svg></button>
             <div id="scale_btns"><button id="log_btn" aria-label="로그 스케일">L</button><button id="auto_btn" aria-label="자동 맞춤">A</button></div>
             <div id="dr_bar"></div>
+            <div id="conn"></div>
             <div id="hint"></div>
             <div id="loading"><div class="spinner"></div><span>차트 불러오는 중...</span></div>
             <div id="toast"><span id="toast_msg"></span><button id="toast_btn">다시 시도</button></div>

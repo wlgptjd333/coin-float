@@ -42,3 +42,8 @@ Thumbs.db
 # Screenshots / test dumps
 *.png
 !app/src/main/**/*.png
+
+# local signing material
+keystore.properties
+*.jks
+*.keystore

@@ -95,7 +95,9 @@ defineSettings('chart', {
         { k: 'theme', t: 'sel', label: '배경', def: 'dark', opts: [['dark', '다크'], ['black', '블랙']] },
         { k: 'grid', t: 'sel', label: '격자', def: 'both', opts: [['both', '가로·세로'], ['horz', '가로만'], ['none', '없음']] },
         { k: 'cross', t: 'sel', label: '십자선', def: 'free', opts: [['free', '자유'], ['magnet', '캔들에 붙이기']] },
-        { k: 'legend', t: 'sel', label: '상단 수치 표시', def: 'full', opts: [['full', '시세 + 지표'], ['ohlc', '시세만'], ['off', '숨김']] }
+        { k: 'legend', t: 'sel', label: '상단 수치 표시', def: 'full', opts: [['full', '시세 + 지표 (탭하면 펼침)'], ['ohlc', '시세만'], ['off', '숨김']] },
+        { t: 'sec', label: '하단 지표 창' },
+        { k: 'merge', t: 'bool', label: '하단 지표를 한 창에 합치기', sub: 'RSI · MACD · CVD · OI · 청산을 한 창에 겹쳐 보여줍니다', def: false }
     ],
     credit: '차트 엔진: TradingView Lightweight Charts™ (Apache-2.0) · © TradingView, Inc. · https://www.tradingview.com'
 });
@@ -180,7 +182,7 @@ var interval = normInterval(LS.get('interval', '15m'));
 var chartType = LS.get('type', 'candle');                       // candle | ha | line | area
 var ind = Object.assign({
     vol: true, ma: true, ema: false, boll: false, rsi: false, macd: false,
-    cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false
+    cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false, bidask: false
 }, LS.get('ind', {}));
 var railOpen = LS.get('rail', false);
 var active = true, immersive = false, started = false;
@@ -383,12 +385,28 @@ function pushLast() {
 }
 
 // ---- bottom panes (RSI, MACD, CVD, OI, liquidations ...) -----------------------------------------------------
-var SUBS = {}, subLive = {};
+var SUBS = {}, subLive = {}, subShared = {};
+function eachSeries(o, fn) { Object.keys(o).forEach(function (k) { if (k !== 'pl' && o[k] && o[k].priceScale) fn(o[k], k); }); }
+function paneOf(key) {                                  // current pane index of a live sub-indicator (-1 when absent)
+    var o = subLive[key], idx = -1;
+    if (o) eachSeries(o, function (s) { if (idx < 0) { try { idx = s.getPane().paneIndex(); } catch (e) { /* ignore */ } } });
+    return idx;
+}
+function sidOpt(sid) { return sid ? { priceScaleId: sid } : {}; }
+function rebuildSubs() {
+    Object.keys(subLive).forEach(function (k) { removeSubSeries(subLive[k]); delete subLive[k]; delete subShared[k]; });
+}
 function applySubs() {
+    var merged = !!S('chart').merge;
     Object.keys(SUBS).forEach(function (key) {
         var on = !!ind[key];
-        if (on && !subLive[key]) subLive[key] = SUBS[key].create(chart.panes().length);
-        else if (!on && subLive[key]) { removeSubSeries(subLive[key]); delete subLive[key]; }
+        if (on && !subLive[key]) {
+            var host = -1;                              // merged mode: join the pane a previous indicator already opened
+            if (merged) Object.keys(subLive).forEach(function (k) { if (host < 0 && subShared[k]) host = paneOf(k); });
+            subLive[key] = host >= 0 ? SUBS[key].create(host, 'm_' + key) : SUBS[key].create(chart.panes().length);
+            subShared[key] = merged;
+            if (host >= 0) eachSeries(subLive[key], function (se) { try { se.priceScale().applyOptions({ scaleMargins: { top: 0.15, bottom: 0.12 } }); } catch (e) { /* ignore */ } });
+        } else if (!on && subLive[key]) { removeSubSeries(subLive[key]); delete subLive[key]; delete subShared[key]; }
     });
     var ps = chart.panes();
     for (var i = 1; i < ps.length; i++) {
@@ -397,10 +415,10 @@ function applySubs() {
     }
     Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); });
 }
-function removeSubSeries(o) { Object.keys(o).forEach(function (k) { if (k !== 'pl' && o[k] && o[k].priceScale) { try { chart.removeSeries(o[k]); } catch (e) { /* ignore */ } } }); }
+function removeSubSeries(o) { eachSeries(o, function (se) { try { chart.removeSeries(se); } catch (e) { /* ignore */ } }); }
 function subsSetData() { Object.keys(subLive).forEach(function (key) { SUBS[key].setData(subLive[key]); }); }
 function subsUpdate(i) { Object.keys(subLive).forEach(function (key) { if (SUBS[key].update) SUBS[key].update(subLive[key], i); }); }
-function lineOpts(color, last) { return { color: color, lineWidth: 1, priceLineVisible: false, lastValueVisible: !!last, crosshairMarkerVisible: false }; }
+function lineOpts(color, last, sid) { return Object.assign({ color: color, lineWidth: 1, priceLineVisible: false, lastValueVisible: !!last, crosshairMarkerVisible: false }, sidOpt(sid)); }
 function signedVol(v) { return (v < 0 ? '-' : '+') + fmtVol(Math.abs(v)); }
 // axis labels of the volume-like panes: 7.63B instead of 7,625,082,330.90 (the chart-wide formatter is for prices)
 var COMPACT = { type: 'custom', minMove: 0.01, formatter: function (v) { return (v < 0 ? '-' : '') + fmtVol(Math.abs(v)); } };
@@ -408,7 +426,7 @@ function upFill() { return hexA(C.up, 0.55); }
 function downFill() { return hexA(C.down, 0.55); }
 function histColor(v) { return v >= 0 ? hexA(C.up, 0.6) : hexA(C.down, 0.6); }
 SUBS.rsi = {
-    create: function (pane) { return { line: chart.addSeries(LW.LineSeries, lineOpts('#B388FF', true), pane), pl: [] }; },
+    create: function (pane, sid) { return { line: chart.addSeries(LW.LineSeries, lineOpts('#B388FF', true, sid), pane), pl: [] }; },
     style: function (o) {
         var c = S('rsi');
         o.line.applyOptions({ color: c.color, lineWidth: c.width });
@@ -420,11 +438,11 @@ SUBS.rsi = {
     legend: function (i) { var c = S('rsi'); return D.rsi[i] != null ? '<span style="color:' + c.color + '">RSI ' + c.period + ' ' + D.rsi[i].toFixed(1) + '</span>' : ''; }
 };
 SUBS.macd = {
-    create: function (pane) {
+    create: function (pane, sid) {
         return {
-            hist: chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, pane),
-            macd: chart.addSeries(LW.LineSeries, lineOpts('#2962FF'), pane),
-            sig: chart.addSeries(LW.LineSeries, lineOpts('#FF9800'), pane)
+            hist: chart.addSeries(LW.HistogramSeries, Object.assign({ priceLineVisible: false, lastValueVisible: false }, sidOpt(sid)), pane),
+            macd: chart.addSeries(LW.LineSeries, lineOpts('#2962FF', false, sid), pane),
+            sig: chart.addSeries(LW.LineSeries, lineOpts('#FF9800', false, sid), pane)
         };
     },
     style: function (o) {
@@ -444,10 +462,10 @@ SUBS.macd = {
     }
 };
 SUBS.cvd = {
-    create: function (pane) {
+    create: function (pane, sid) {
         return {
-            delta: chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceScaleId: '' }, pane),
-            line: chart.addSeries(LW.LineSeries, { color: '#00BCD4', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: COMPACT }, pane)
+            delta: chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceScaleId: sid ? sid + '_d' : '' }, pane),
+            line: chart.addSeries(LW.LineSeries, Object.assign({ color: '#00BCD4', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: COMPACT }, sidOpt(sid)), pane)
         };
     },
     style: function (o) {
@@ -493,6 +511,46 @@ function applyType() {
     DR.attachTo(mainSeries());
     setAllData();
 }
+// Each lower pane gets a small tag row (name, ⚙, ✕) like pro charting apps; merged indicators share one row.
+var PANE_NAME = { rsi: 'RSI', macd: 'MACD', cvd: 'CVD', oi: 'OI', liq: '청산' };
+function paneTagColor(key) {
+    try {
+        if (key === 'rsi') return S('rsi').color;
+        if (key === 'macd') return S('macd').cMacd;
+        if (key === 'cvd') return S('cvd').color;
+        if (key === 'oi') return S('oi').color;
+        if (key === 'liq') return C.down;
+    } catch (e) { /* schema not registered yet */ }
+    return '#B2B5BE';
+}
+var tagsRaf = 0;
+function scheduleTags() { if (tagsRaf) return; tagsRaf = requestAnimationFrame(function () { tagsRaf = 0; layoutPaneTags(); }); }
+function layoutPaneTags() {
+    var box = $('pane_tags'), ps = chart.panes(), rows = {}, html = '';
+    if (!box) return;
+    var base = chartEl.getBoundingClientRect().top;
+    Object.keys(subLive).forEach(function (key) {
+        var pi = paneOf(key); if (pi < 1) return;
+        (rows[pi] = rows[pi] || []).push(key);
+    });
+    Object.keys(rows).forEach(function (pi) {
+        var el = ps[pi] && ps[pi].getHTMLElement && ps[pi].getHTMLElement(); if (!el) return;
+        var top = el.getBoundingClientRect().top - base + 3;
+        html += '<div class="ptag-row" style="top:' + top.toFixed(0) + 'px">' + rows[pi].map(function (k) {
+            return '<span class="ptag" style="color:' + paneTagColor(k) + '">' + (PANE_NAME[k] || k) +
+                '<button data-k="' + k + '" data-a="cfg" aria-label="설정">⚙</button><button data-k="' + k + '" data-a="x" aria-label="닫기">✕</button></span>';
+        }).join('') + '</div>';
+    });
+    box.innerHTML = html;
+}
+$('pane_tags').addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button'); if (!b) return;
+    var k = b.getAttribute('data-k');
+    if (b.getAttribute('data-a') === 'cfg') openSettings(k);
+    else if (b.getAttribute('data-a') === 'x') { ind[k] = false; LS.set('ind', ind); applyIndicators(); }
+});
+if (window.ResizeObserver) new ResizeObserver(function () { scheduleTags(); scheduleCd(); }).observe($('chart'));
+
 function applyIndicators() {
     var vis = function (s, on) { s.applyOptions({ visible: !!on }); };
     vis(volSeries, ind.vol); maS.forEach(function (s, k) { vis(s, ind.ma && P.ma[k].on); }); emaS.forEach(function (s, k) { vis(s, ind.ema && P.ema[k].on); });
@@ -500,6 +558,7 @@ function applyIndicators() {
     applyStyles();
     applySubs();
     setAllData();
+    scheduleTags();
     var extra = Object.keys(ind).some(function (k) { return k !== 'vol' && ind[k]; });
     $('ind_btn').className = 'tb-btn' + (extra ? ' on' : '');
     syncFeatures();
@@ -528,9 +587,12 @@ function scheduleRefresh(calc) {                  // slider drags fire many chan
 }
 var chartCfgRaf = 0;
 function scheduleChartCfg() { if (chartCfgRaf) return; chartCfgRaf = requestAnimationFrame(function () { chartCfgRaf = 0; applyChartCfg(); }); }
+var lastMerge = null;
 function applyChartCfg() {
     computeColors();
     var c = S('chart');
+    if (lastMerge !== null && !!c.merge !== lastMerge) rebuildSubs();
+    lastMerge = !!c.merge;
     document.documentElement.style.setProperty('--bg', C.bg);
     chart.applyOptions({
         layout: { background: { type: 'solid', color: C.bg } },
@@ -611,7 +673,7 @@ function yOf(price) { return mainSeries().priceToCoordinate(price); }
 // =====================================================================================================
 var FIB = [[0, '#787B86'], [0.236, '#F23645'], [0.382, '#FF9800'], [0.5, '#4CAF50'], [0.618, '#089981'], [0.786, '#00BCD4'], [1, '#787B86']];
 var DR = {
-    list: [], sel: null, tool: null, draft: null, measure: null, nextId: 1,
+    list: [], sel: null, tool: null, draft: null, measure: null, nextId: 1, hidden: LS.get('drHidden', false),
     attachTo: function (s) { attachLayers(s); },
     redraw: function () { redrawLayers(); },
     load: function () {
@@ -749,7 +811,7 @@ addLayer('bottom', function (ctx) {
     ctx.closePath(); ctx.fillStyle = hexA(b.cBand, b.fillA / 100); ctx.fill();
 });
 addLayer('top', function (ctx, w, h) {
-    DR.list.forEach(function (d) { paint(ctx, d, d.id === DR.sel, w, h); });
+    if (!DR.hidden) DR.list.forEach(function (d) { paint(ctx, d, d.id === DR.sel, w, h); });
     if (DR.draft) paint(ctx, DR.draft, false, w, h);
     if (DR.measure) paint(ctx, DR.measure, false, w, h);
 });
@@ -827,6 +889,7 @@ function inMain(p) { var ps = chart.paneSize(0); return p.x >= 0 && p.y >= 0 && 
 function cloneA(a) { return { time: a.time, price: a.price }; }
 
 function setTool(t) {
+    if (t && DR.hidden) { DR.hidden = false; LS.set('drHidden', false); }
     DR.tool = t; DR.draft = null;
     var hints = { trend: '시작점을 누르세요', hline: '가격 위치를 누르세요', fib: '시작점을 누르세요', rect: '한쪽 모서리를 누르세요', measure: '시작점을 누르세요' };
     showHint(t ? hints[t] : '');
@@ -846,6 +909,7 @@ function onDown(e) {
         else if (DR.tool === 'hline') { DR.draft = { id: 0, type: 'hline', a: a }; gesture = { mode: 'create', startP: p, moved: true }; }
         else { DR.draft = { id: 0, type: DR.tool, a: a, b: cloneA(a) }; gesture = { mode: 'create', startP: p, moved: false }; }
     } else {
+        if (DR.hidden) return;
         var sel = DR.list.filter(function (d) { return d.id === DR.sel; })[0];
         var hk = hitHandle(sel, p);
         if (hk) gesture = { mode: 'handle', d: sel, which: hk, startP: p, moved: false };
@@ -913,8 +977,9 @@ wrap.addEventListener('pointerdown', function (e) {
     if (chart.options().handleScroll.vertTouchDrag !== want) chart.applyOptions({ handleScroll: { vertTouchDrag: want } });
 }, true);
 ['pointerup', 'pointercancel', 'wheel', 'dblclick'].forEach(function (t) {
-    wrap.addEventListener(t, function () { setTimeout(syncScaleBtns, 40); }, { capture: true, passive: true });
+    wrap.addEventListener(t, function () { setTimeout(syncScaleBtns, 40); setTimeout(scheduleTags, 60); scheduleCd(); }, { capture: true, passive: true });
 });
+wrap.addEventListener('pointermove', scheduleCd, { capture: true, passive: true });
 wrap.addEventListener('pointerdown', onDown, true);
 wrap.addEventListener('pointermove', onMove, true);
 wrap.addEventListener('pointerup', onUp, true);
@@ -940,6 +1005,7 @@ var ICON = {
     rect: '<svg viewBox="0 0 24 24"><rect x="5" y="7" width="14" height="10" rx="1"/></svg>',
     measure: '<svg viewBox="0 0 24 24"><path d="M4 16l12-12 4 4L8 20z"/><path d="M8 12l2 2M11 9l2 2M14 6l2 2"/></svg>',
     trash: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/></svg>',
+    eye: '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
     candle: '<svg viewBox="0 0 24 24"><path d="M7 4v3M7 17v3M17 7v3M17 20v-3"/><rect x="5" y="7" width="4" height="10" rx=".5"/><rect x="15" y="10" width="4" height="7" rx=".5"/></svg>',
     ha: '<svg viewBox="0 0 24 24"><path d="M7 3v3M7 18v3M17 6v3M17 21v-3"/><rect x="5" y="6" width="4" height="12" rx=".5"/><rect x="15" y="9" width="4" height="9" rx=".5"/></svg>',
     line: '<svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 8-10"/></svg>',
@@ -957,6 +1023,9 @@ function buildRail() {
         r.appendChild(b);
     });
     var sep = document.createElement('div'); sep.className = 'rail-sep'; r.appendChild(sep);
+    var ey = document.createElement('button'); ey.className = 'tool'; ey.id = 'eye'; ey.innerHTML = ICON.eye + '<span>숨기기</span>';
+    ey.onclick = function () { setDrawingsHidden(!DR.hidden); };
+    r.appendChild(ey);
     var tr = document.createElement('button'); tr.className = 'tool danger'; tr.id = 'trash'; tr.innerHTML = ICON.trash + '<span>삭제</span>';
     tr.onclick = onTrash; r.appendChild(tr);
     refreshRail();
@@ -967,9 +1036,24 @@ function refreshRail() {
         var t = btns[i].getAttribute('data-tool');
         btns[i].className = 'tool' + ((t === 'cursor' ? !DR.tool : DR.tool === t) ? ' active' : '');
     }
+    var ey = $('eye'); if (ey) { ey.className = 'tool' + (DR.hidden ? ' active' : ''); ey.querySelector('span').textContent = DR.hidden ? '보이기' : '숨기기'; }
     var tr = $('trash'); if (tr) { tr.className = 'tool danger' + (trashArmed ? ' armed' : ''); tr.querySelector('span').textContent = trashArmed ? '전체삭제?' : (DR.sel != null ? '선택삭제' : '삭제'); }
     refreshDrBar();
+    backState();
 }
+// Android's Back button first closes whatever is open inside the page; the app is told whether there is something to close.
+var lastBack = false;
+function backState() {
+    var v = $('sheet_bg').classList.contains('show') || !!DR.tool || DR.sel != null;
+    if (v !== lastBack) { lastBack = v; bridge('backState', v ? '1' : '0'); }
+}
+window.cfBack = function () {
+    if ($('sheet_bg').classList.contains('show')) closeSheet();
+    else if (DR.tool) setTool(null);
+    else if (DR.sel != null) { DR.sel = null; refreshRail(); DR.redraw(); }
+    backState();
+    return true;
+};
 // floating style bar for the selected drawing: color, thickness, dash, delete
 var DR_COLORS = ['#2962FF', '#F0B90B', '#F6465D', '#0ECB81', '#FFFFFF', '#B388FF'];
 function refreshDrBar() {
@@ -994,12 +1078,26 @@ $('dr_bar').addEventListener('click', function (e) {
     else if (b.getAttribute('data-a') === 'x') { onTrash(); return; }
     DR.save(); DR.redraw(); refreshDrBar();
 });
+function setDrawingsHidden(on) {
+    DR.hidden = !!on; LS.set('drHidden', DR.hidden);
+    if (DR.hidden) { DR.sel = null; if (DR.tool) setTool(null); }
+    refreshRail(); DR.redraw();
+    toast(DR.hidden ? '그린 선을 숨겼어요' : '그린 선을 다시 표시합니다');
+}
 function onTrash() {
     if (DR.sel != null) {
-        DR.list = DR.list.filter(function (d) { return d.id !== DR.sel; }); DR.sel = null; DR.save(); DR.redraw(); refreshRail(); return;
+        var gone = DR.list.filter(function (d) { return d.id === DR.sel; });
+        DR.list = DR.list.filter(function (d) { return d.id !== DR.sel; }); DR.sel = null; DR.save(); DR.redraw(); refreshRail();
+        if (gone.length) toast('그림을 지웠어요', '되돌리기', function () { DR.list = DR.list.concat(gone); DR.sel = gone[0].id; DR.save(); DR.redraw(); refreshRail(); });
+        return;
     }
     if (!DR.list.length && !DR.measure) { toast('지울 그림이 없습니다'); return; }
-    if (trashArmed) { clearTimeout(trashArmed); trashArmed = null; DR.list = []; DR.measure = null; DR.save(); DR.redraw(); refreshRail(); return; }
+    if (trashArmed) {
+        clearTimeout(trashArmed); trashArmed = null;
+        var all = DR.list.slice(); DR.list = []; DR.measure = null; DR.save(); DR.redraw(); refreshRail();
+        if (all.length) toast('그림 ' + all.length + '개를 지웠어요', '되돌리기', function () { DR.list = all; DR.save(); DR.redraw(); refreshRail(); });
+        return;
+    }
     trashArmed = setTimeout(function () { trashArmed = null; refreshRail(); }, 2500);
     refreshRail();
 }
@@ -1039,8 +1137,9 @@ function openSheet(title, rows, footer) {
     rows.forEach(function (r) { s.appendChild(r); });
     if (footer) s.appendChild(footer);
     $('sheet_bg').classList.remove('live'); $('sheet_bg').classList.add('show');
+    backState();
 }
-function closeSheet() { $('sheet_bg').classList.remove('show', 'live'); settingsKey = null; }
+function closeSheet() { $('sheet_bg').classList.remove('show', 'live'); settingsKey = null; backState(); }
 $('sheet_bg').addEventListener('click', function (e) { if (e.target === $('sheet_bg')) closeSheet(); });
 
 function switchRow(text, sub, key, gear) {
@@ -1054,6 +1153,12 @@ function switchRow(text, sub, key, gear) {
         b.querySelector('.switch').classList.toggle('on', ind[key]);
         applyIndicators();
     };
+    return b;
+}
+function mergeRow() {
+    var b = document.createElement('div'); b.className = 'row-opt'; b.setAttribute('role', 'button');
+    b.innerHTML = '<span style="flex:1">하단 지표 한 창에 합치기<small>RSI · MACD · CVD · OI · 청산을 하나의 창에 겹쳐 표시</small></span><span class="switch' + (S('chart').merge ? ' on' : '') + '"></span>';
+    b.onclick = function () { setCfg('chart', 'merge', !S('chart').merge); b.querySelector('.switch').classList.toggle('on', S('chart').merge); };
     return b;
 }
 function sectionTitle(t) { var d = document.createElement('div'); d.className = 'sec'; d.textContent = t; return d; }
@@ -1167,6 +1272,7 @@ function openSettings(key, back) {
     if (def.credit) { var cr = document.createElement('div'); cr.className = 'credit'; cr.textContent = def.credit; sheet.appendChild(cr); }
     $('sheet_bg').classList.add('show', 'live');
     sheet.scrollTop = keep;
+    backState();
 }
 $('cfg_btn').onclick = function () { openSettings('chart'); };
 
@@ -1191,6 +1297,9 @@ function openIndicators() {
         switchRow('호가 벽', '매수/매도 벽 · 우측 깊이 막대', 'depth', true),
         switchRow('호가 히트맵', '유동성 변화를 시간별 색으로', 'heat', true),
         switchRow('추정 청산맵', 'OI·레버리지 기반 추정(모델)', 'liqmap', true),
+        switchRow('Bid / Ask 라인', '최우선 매수·매도 호가 · 스프레드 (무료 공개 데이터)', 'bidask', true),
+        sectionTitle('표시'),
+        mergeRow(),
         noteRow('⚙ 를 누르면 지표별 색상·두께·기간 등 세부 설정을 바꿀 수 있습니다. 실시간 항목은 켜 둔 동안에만 데이터를 받고, 차트를 벗어나면 자동으로 멈춥니다.')
     ]);
 }
@@ -1226,20 +1335,22 @@ function indexOfTime(t) {
     return -1;
 }
 function val(arr, i, dig) { return arr[i] == null ? null : (dig == null ? fmtPrice(arr[i]) : arr[i].toFixed(dig)); }
+var legendOpen = LS.get('legendOpen', false);
 function renderLegend() {
-    var n = candles.length; if (!n) { $('legend').innerHTML = ''; return; }
+    var n = candles.length; if (!n) { $('legend').innerHTML = ''; placeCd(); return; }
+    var mode = S('chart').legend;
+    if (mode === 'off') { $('legend').innerHTML = ''; placeCd(); return; }
     var i = crossTime != null ? indexOfTime(crossTime) : -1; if (i < 0) i = n - 1;
     var c = candles[i], b = chartType === 'ha' && haBars[i] ? haBars[i] : c;
-    var mode = S('chart').legend;
-    if (mode === 'off') { $('legend').innerHTML = ''; return; }
     var cls = c.close >= c.open ? 'up' : 'down', chg = c.open ? (c.close - c.open) / c.open * 100 : 0;
+    var open = mode === 'full' && (legendOpen || crossTime != null);
     var l1 = '<div class="row">O <span class="' + cls + '">' + fmtPrice(b.open) + '</span> H <span class="' + cls + '">' + fmtPrice(b.high) +
         '</span> L <span class="' + cls + '">' + fmtPrice(b.low) + '</span> C <span class="' + cls + '">' + fmtPrice(b.close) + '</span> <span class="' + cls + '">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</span>';
+    if (ind.vol) l1 += ' &nbsp;Vol <b>' + fmtVol(c.volume) + '</b>';
+    if (mode === 'full') l1 += '<button class="lg-t" id="lg_t" aria-label="지표 값 펼치기">' + (open ? '▴' : '▾') + '</button>';
     l1 += '</div>';
     var parts = [];
-    if (ind.vol) parts.push('Vol <b>' + fmtVol(c.volume) + '</b>');
-    if (i === n - 1) parts.push('<span id="cd" style="color:#B2B5BE"></span>');
-    if (mode === 'full') {
+    if (open) {
         if (ind.ma) S('ma').lines.forEach(function (m, k) { if (!m.on) return; var v = val(D.ma[k], i); if (v) parts.push('<span style="color:' + m.c + '">' + (m.t === 'ema' ? 'EMA' : 'MA') + m.p + ' ' + v + '</span>'); });
         if (ind.ema) S('ema').lines.forEach(function (m, k) { if (!m.on) return; var v = val(D.ema[k], i); if (v) parts.push('<span style="color:' + m.c + '">EMA' + m.p + ' ' + v + '</span>'); });
         if (ind.boll && D.bMid[i] != null) {
@@ -1247,22 +1358,49 @@ function renderLegend() {
             parts.push('<span style="color:' + bc.cMid + '">BOLL ' + fmtPrice(D.bMid[i]) + '</span> <span style="color:' + bc.cBand + '">' + fmtPrice(D.bUp[i]) + ' / ' + fmtPrice(D.bLo[i]) + '</span>');
         }
         Object.keys(subLive).forEach(function (key) { var h = SUBS[key].legend && SUBS[key].legend(i, c); if (h) parts.push(h); });
+        Object.keys(features).forEach(function (key) {
+            var f = features[key]; if (!f.running || !f.legend) return;
+            var h = f.legend(i, c); if (h) parts.push(h);
+        });
     }
     var l2 = parts.length ? '<div class="row">' + parts.join(' &nbsp;') + '</div>' : '';
     $('legend').innerHTML = l1 + l2;
-    updateCountdown();
+    placeCd();
 }
+$('legend').addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('#lg_t')) return;
+    legendOpen = !legendOpen; LS.set('legendOpen', legendOpen); renderLegend();
+});
 chart.subscribeCrosshairMove(function (param) { crossTime = param && param.time ? param.time : null; scheduleLegend(); });
 
-function updateCountdown() {
-    var el = $('cd'); if (!el || !candles.length) return;
-    var left = candles[candles.length - 1].time + curSec() - Math.floor(Date.now() / 1000);
+// countdown to the candle close, shown right under the last-price label on the axis
+function placeCd() {
+    var el = $('cd_tag'); if (!el) return;
+    if (!candles.length || !active) { el.style.display = 'none'; return; }
+    var last = candles[candles.length - 1], y = mainSeries().priceToCoordinate(last.close), ph = chart.paneSize(0).height;
+    if (y == null || y + 26 > ph || y < 0 || !S('chart').lastLine) { el.style.display = 'none'; return; }
+    var left = last.time + curSec() - Math.floor(Date.now() / 1000);
     if (left < 0) left = 0;
-    var h = Math.floor(left / 3600), m = Math.floor(left % 3600 / 60), s = left % 60;
-    el.textContent = (h ? h + ':' + pad2(m) : pad2(m)) + ':' + pad2(s);
+    var hh = Math.floor(left / 3600), mm = Math.floor(left % 3600 / 60), ss = left % 60, pw = chart.priceScale('right').width();
+    el.style.display = 'block'; el.style.top = (y + 10) + 'px'; if (pw > 0) el.style.width = pw + 'px';
+    el.style.background = hexA(last.close >= last.open ? C.up : C.down, 0.85);
+    el.textContent = (hh ? hh + ':' + pad2(mm) : pad2(mm)) + ':' + pad2(ss);
 }
+var cdRaf = 0;
+function scheduleCd() { if (cdRaf) return; cdRaf = requestAnimationFrame(function () { cdRaf = 0; placeCd(); }); }
+function updateCountdown() { placeCd(); }
 var cdTimer = null;
-function startTimers() { stopTimers(); cdTimer = setInterval(updateCountdown, 1000); }
+var connLostAt = 0;
+function checkConn() {
+    var pill = $('conn'); if (!pill) return;
+    var down = active && started && candles.length > 0 && (!streams.market.open || navigator.onLine === false);
+    if (!down) { connLostAt = 0; pill.className = ''; return; }
+    if (!connLostAt) connLostAt = Date.now();
+    if (Date.now() - connLostAt < 3500) return;                      // short blips are not worth a banner
+    pill.textContent = navigator.onLine === false ? '오프라인 · 네트워크를 확인하세요' : '실시간 연결 끊김 · 재연결 중…';
+    pill.className = 'show';
+}
+function startTimers() { stopTimers(); cdTimer = setInterval(function () { updateCountdown(); checkConn(); }, 1000); }
 function stopTimers() { if (cdTimer) { clearInterval(cdTimer); cdTimer = null; } }
 
 function showPrice(p, dir) {
@@ -1275,6 +1413,7 @@ function showPrice(p, dir) {
 chart.timeScale().subscribeVisibleLogicalRangeChange(function (r) {
     if (!r || !candles.length) return;
     $('to_latest').classList.toggle('show', r.to < candles.length - 4);
+    scheduleCd();
     if (r.from < 25) loadOlder();
 });
 $('to_latest').onclick = function () { chart.timeScale().scrollToRealTime(); };

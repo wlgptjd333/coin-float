@@ -1,7 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// Release signing: keystore.properties (gitignored) or COINFLOAT_KEYSTORE_* environment variables (CI secrets).
+// Without them the build falls back to the debug key, so forks and quick local builds keep working.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun signingValue(env: String, key: String): String? = System.getenv(env)?.takeIf { it.isNotBlank() } ?: keystoreProps.getProperty(key)
+val releaseKeystore = signingValue("COINFLOAT_KEYSTORE_FILE", "storeFile")
 
 android {
     namespace = "com.coinfloat.app"
@@ -11,8 +22,8 @@ android {
         applicationId = "com.coinfloat.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 16
-        versionName = "1.5.0"
+        versionCode = 17
+        versionName = "1.6.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -20,10 +31,22 @@ android {
         }
     }
 
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseKeystore)
+                storePassword = signingValue("COINFLOAT_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signingValue("COINFLOAT_KEY_ALIAS", "keyAlias")
+                keyPassword = signingValue("COINFLOAT_KEY_PASSWORD", "keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

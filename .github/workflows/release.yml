@@ -30,6 +30,29 @@ jobs:
       - name: Run Unit Tests
         run: ./gradlew test
 
+      # Updates only install over an earlier version when every release is signed with the same key.
+      # Provide it as repository secrets (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD);
+      # without them the APK is built with the debug key and is only attached as a workflow artifact.
+      - name: Prepare signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            {
+              echo "COINFLOAT_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore"
+              echo "COINFLOAT_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "COINFLOAT_KEY_ALIAS=$KEY_ALIAS"
+              echo "COINFLOAT_KEY_PASSWORD=$KEY_PASSWORD"
+              echo "APK_SIGNED=true"
+            } >> "$GITHUB_ENV"
+          else
+            echo "APK_SIGNED=false" >> "$GITHUB_ENV"
+          fi
+
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
@@ -38,9 +61,15 @@ jobs:
           mkdir -p release-artifacts
           cp app/build/outputs/apk/release/app-release.apk release-artifacts/CoinFloat-${{ github.ref_name }}.apk
 
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CoinFloat-${{ github.ref_name }}
+          path: release-artifacts/*.apk
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && env.APK_SIGNED == 'true'
         with:
           files: release-artifacts/CoinFloat-${{ github.ref_name }}.apk
           generate_release_notes: true

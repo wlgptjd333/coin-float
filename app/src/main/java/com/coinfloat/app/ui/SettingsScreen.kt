@@ -527,13 +527,20 @@ fun SettingsScreen(
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
                                     text = "• 거래소: Binance USDⓈ-M Futures (공개 시장 데이터)\n" +
-                                            "• 실시간 스트림: Aggregate Trade Stream (100ms)\n" +
-                                            "• 트레이딩뷰 실시간 차트 & 미니 캔들 팝업 내장\n" +
-                                            "• 서비스 안정성: 포그라운드 즉시 승격 및 5초 크래시 방지 보장\n" +
-                                            "• 계정/API 키/로그인 불필요, 주문/거래 기능 없음",
+                                            "• 차트: 앱에 내장된 자체 차트 (TradingView Lightweight Charts™ 엔진)\n" +
+                                            "• 계정/API 키/로그인 불필요, 주문/거래 기능 없음, 개인정보 수집 없음",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "표시되는 시세·지표·추정치는 정보 제공용이며 투자 권유나 자문이 아닙니다. 데이터는 지연되거나 틀릴 수 있고, " +
+                                            "추정 청산맵은 거래소가 공개한 실제 데이터가 아닌 계산 모델입니다. 투자 판단과 결과에 대한 책임은 사용자에게 있습니다.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                AboutLegalButtons()
                             }
                         }
                     }

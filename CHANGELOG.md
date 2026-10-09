@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.0] - 2026-10-10
+
+### Added
+- **Bid / Ask**: best bid and ask lines with price/size tags, spread and (with walls/heatmap on) book imbalance. Free
+  Binance public book-ticker data.
+- **Merge lower panes**: RSI, MACD, CVD, OI and liquidations can share a single pane (chart settings or indicator list).
+  Every lower pane has a tag row with name, settings and close.
+- **Candle countdown** under the last-price label on the axis; the OHLC line is collapsible (tap the chevron, or hold the
+  crosshair) so the indicator values no longer eat chart space.
+- Drawings: hide/show all, undo after delete, style bar. Android Back closes sheets / tools / selection inside the chart first.
+- Connection banner when the live feed drops, offline hint.
+- About card: open-source licenses, privacy policy and a not-investment-advice notice. PRIVACY.md, THIRD_PARTY_NOTICES.md.
+
+### Changed
+- **Large trades no longer cover the chart**: bubbles fade out after a configurable time (default 15 min), smaller and more
+  transparent by default, optional "sum per candle" (one buy + one sell bubble per candle) and outline-only style.
+  Liquidation bubbles fade the same way (default 1 h).
+- **Heatmap is readable**: sampling follows the candle interval, the current book is carried across the empty history so
+  it is visible at once, three palettes, sensitivity/opacity, a color key, and history survives price re-centering.
+- Release builds are minified (R8 + resource shrinking): APK 11 MB -> 1.6 MB.
+- CI: unit tests, lint, release build and script syntax check on every push; release workflow only attaches an APK to a
+  release when a stable signing key is configured (otherwise every CI build would be signed with a different throw-away key and
+  could not update an installed copy).
+- Header ignores the system font scale so the symbol is no longer truncated; chart text size is fixed.
+
+### Fixed
+- Candle/price panes: OHLC legend can be read over busy overlays (soft backdrop).
+
 ## [1.5.0] - 2026-10-10
 
 ### Added

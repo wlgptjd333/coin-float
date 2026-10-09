@@ -55,9 +55,10 @@ CF.defineSettings('liq', {
     fields: [
         { t: 'sec', label: '버블' },
         { k: 'bubbles', t: 'bool', label: '차트에 청산 버블 표시', def: true },
+        { k: 'ttl', t: 'sel', label: '버블 유지 시간 (지나면 서서히 사라짐)', def: '3600', opts: [['60', '1분'], ['300', '5분'], ['900', '15분'], ['3600', '1시간'], ['14400', '4시간'], ['0', '계속 표시']], showIf: function (c) { return c.bubbles; } },
         { k: 'minUsd', t: 'num', label: '표시 최소 금액 ($)', def: 0, min: 0, max: 5000000, step: 1000, showIf: function (c) { return c.bubbles; } },
-        { k: 'size', t: 'range', label: '버블 크기', def: 1, min: 0.5, max: 2, step: 0.1, showIf: function (c) { return c.bubbles; } },
-        { k: 'opacity', t: 'range', label: '버블 진하기', def: 32, min: 10, max: 80, step: 1, unit: '%', showIf: function (c) { return c.bubbles; } },
+        { k: 'size', t: 'range', label: '버블 크기', def: 0.9, min: 0.4, max: 2, step: 0.1, showIf: function (c) { return c.bubbles; } },
+        { k: 'opacity', t: 'range', label: '버블 진하기', def: 28, min: 10, max: 80, step: 1, unit: '%', showIf: function (c) { return c.bubbles; } },
         { k: 'labels', t: 'bool', label: '금액 숫자 표시', def: true, showIf: function (c) { return c.bubbles; } },
         { k: 'labelMin', t: 'num', label: '숫자 표시 최소 금액 ($)', def: 150000, min: 0, max: 5000000, step: 10000, showIf: function (c) { return c.bubbles && c.labels; } },
         { t: 'note', label: '청산 데이터는 앱이 켜져 있는 동안 받은 것만 쌓입니다. (롱청산 = 빨강 계열, 숏청산 = 초록 계열)' }
@@ -66,12 +67,18 @@ CF.defineSettings('liq', {
 CF.defineSettings('trades', {
     title: '대량 체결 설정', onChange: redraw,
     fields: [
+        { t: 'sec', label: '어떤 체결을 보일까' },
         { k: 'mode', t: 'sel', label: '기준', def: 'auto', opts: [['auto', '자동 (상위 0.5%)'], ['fixed', '직접 지정']] },
-        { k: 'floor', t: 'num', label: '자동일 때 최소 금액 ($)', def: 15000, min: 1000, max: 5000000, step: 1000, showIf: function (c) { return c.mode === 'auto'; } },
+        { k: 'floor', t: 'num', label: '자동일 때 최소 금액 ($)', def: 30000, min: 1000, max: 5000000, step: 1000, showIf: function (c) { return c.mode === 'auto'; } },
         { k: 'fixed', t: 'num', label: '표시 기준 금액 ($)', def: 100000, min: 1000, max: 20000000, step: 10000, showIf: function (c) { return c.mode === 'fixed'; } },
-        { k: 'size', t: 'range', label: '버블 크기', def: 1, min: 0.5, max: 2, step: 0.1 },
-        { k: 'opacity', t: 'range', label: '버블 진하기', def: 38, min: 10, max: 90, step: 1, unit: '%' },
-        { k: 'labels', t: 'bool', label: '금액 숫자 표시', def: true }
+        { t: 'sec', label: '어떻게 보일까' },
+        { k: 'group', t: 'sel', label: '묶기', def: 'off', opts: [['off', '개별 체결'], ['candle', '봉마다 합산 (매수·매도 각 1개)']] },
+        { k: 'ttl', t: 'sel', label: '버블 유지 시간 (지나면 서서히 사라짐)', def: '900', opts: [['60', '1분'], ['300', '5분'], ['900', '15분'], ['3600', '1시간'], ['14400', '4시간'], ['0', '계속 표시']], showIf: function (c) { return c.group === 'off'; } },
+        { k: 'size', t: 'range', label: '버블 크기', def: 0.8, min: 0.4, max: 2, step: 0.1 },
+        { k: 'opacity', t: 'range', label: '버블 진하기', def: 28, min: 8, max: 90, step: 1, unit: '%' },
+        { k: 'ring', t: 'bool', label: '테두리만 표시 (속 비우기)', def: false },
+        { k: 'labels', t: 'bool', label: '금액 숫자 표시', def: true },
+        { t: 'note', label: '초록 = 공격적 매수 체결, 빨강 = 공격적 매도 체결. 버블이 많아 가려지면 유지 시간을 줄이거나 "봉마다 합산"을 쓰세요.' }
     ]
 });
 CF.defineSettings('depth', {
@@ -94,8 +101,22 @@ CF.defineSettings('heat', {
     title: '호가 히트맵 설정', onChange: function () { heatRecolor(); redraw(); },
     fields: [
         { k: 'palette', t: 'sel', label: '색상', def: 'fire', opts: [['fire', '열화상'], ['ice', '아이스'], ['mono', '흑백']] },
-        { k: 'gain', t: 'range', label: '민감도 (높을수록 작은 물량도 진하게)', def: 4, min: 1, max: 10, step: 1 },
-        { k: 'opacity', t: 'range', label: '전체 진하기', def: 100, min: 20, max: 100, step: 1, unit: '%' }
+        { k: 'gain', t: 'range', label: '민감도 (높을수록 작은 물량도 진하게)', def: 5, min: 1, max: 10, step: 1 },
+        { k: 'opacity', t: 'range', label: '전체 진하기', def: 100, min: 20, max: 100, step: 1, unit: '%' },
+        { k: 'extend', t: 'bool', label: '현재 호가를 좌우로 연장해 표시', sub: '쌓인 기록이 없는 구간을 현재 대기 물량으로 채웁니다', def: true },
+        { k: 'legend', t: 'bool', label: '색상 안내 막대', def: true },
+        { t: 'note', label: '호가창에 쌓여 있는 대기 주문 물량을 색으로 보여줍니다. 밝고 뜨거운 색일수록 대기 물량이 많아 지지·저항이 되기 쉬운 가격대입니다. 앱을 켜 둔 동안 기록이 쌓이며, 봉 주기에 맞춰 기록 간격이 자동 조절됩니다.' }
+    ]
+});
+CF.defineSettings('bidask', {
+    title: 'Bid / Ask 설정', onChange: function () { redraw(); CF.scheduleLegend(); },
+    fields: [
+        { k: 'lines', t: 'bool', label: '최우선 호가 선 표시', def: true },
+        { k: 'style', t: 'sel', label: '선 모양', def: 'dotted', opts: [['solid', '실선'], ['dashed', '점선'], ['dotted', '점']], showIf: function (c) { return c.lines; } },
+        { k: 'width', t: 'range', label: '선 두께', def: 1, min: 1, max: 3, step: 1, unit: 'px', showIf: function (c) { return c.lines; } },
+        { k: 'tags', t: 'bool', label: '가격 · 수량 라벨', def: true },
+        { k: 'spread', t: 'bool', label: '스프레드 · 호가 불균형 수치 (상단 수치 펼침 시)', def: true },
+        { t: 'note', label: 'Binance 선물의 최우선 매수(Bid)·매도(Ask) 호가를 실시간으로 보여줍니다. 거래소가 무료로 공개하는 데이터입니다.' }
     ]
 });
 CF.defineSettings('liqmap', {
@@ -133,8 +154,8 @@ function oiAt(candleT) {                            // last OI sample at or befo
     return best >= 0 ? { cur: a[best], prev: best > 0 ? a[best - 1] : null } : null;
 }
 CF.registerSub('oi', {
-    create: function (pane) {
-        return { line: chart.addSeries(LW.LineSeries, { color: '#FFB300', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: CF.compactFormat }, pane) };
+    create: function (pane, sid) {
+        return { line: chart.addSeries(LW.LineSeries, Object.assign({ color: '#FFB300', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: CF.compactFormat }, sid ? { priceScaleId: sid } : {}), pane) };
     },
     style: function (o) { var c = CF.S('oi'); o.line.applyOptions({ color: c.color, lineWidth: c.width }); },
     setData: function (o) { o.line.setData(oiPoints()); },
@@ -195,9 +216,10 @@ function liqSeriesData() {
     return { longs: longs, shorts: shorts };
 }
 CF.registerSub('liq', {
-    create: function (pane) {
-        var o = { L: chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceFormat: CF.compactFormat }, pane) };
-        o.S = chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceFormat: CF.compactFormat }, pane);
+    create: function (pane, sid) {
+        var opt = Object.assign({ priceLineVisible: false, lastValueVisible: false, priceFormat: CF.compactFormat }, sid ? { priceScaleId: sid } : {});
+        var o = { L: chart.addSeries(LW.HistogramSeries, opt, pane) };
+        o.S = chart.addSeries(LW.HistogramSeries, Object.assign({}, opt), pane);
         return o;
     },
     setData: function (o) { var d = liqSeriesData(); o.L.setData(d.longs); o.S.setData(d.shorts); },
@@ -209,17 +231,20 @@ CF.registerSub('liq', {
 function paintLiq(ctx, w, h) {
     var cfg = CF.S('liq');
     if (!liq.list.length || !cfg.bubbles) return;
+    var ttl = +cfg.ttl, now = Date.now() / 1000;
     ctx.font = '600 10px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
     for (var i = 0; i < liq.list.length; i++) {
         var e = liq.list[i];
         if (e.usd < cfg.minUsd) continue;
+        var age = now - e.t; if (ttl && age > ttl) continue;                              // expired: gone
+        var fade = ttl ? 1 - 0.85 * age / ttl : 1;                                         // older → fainter
         var x = CF.xOf(e.t), y = CF.yOf(e.price);
         if (x == null || y == null || x < -30 || x > w + 30 || y < -30 || y > h + 30) continue;
-        var r = clamp((3 + Math.sqrt(e.usd) / 28) * cfg.size, 2.5, 30), col = e.side === 'L' ? DOWN() : UP();
+        var r = clamp((3 + Math.sqrt(e.usd) / 30) * cfg.size, 2.5, 26), col = e.side === 'L' ? DOWN() : UP();
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = CF.hexA(col, cfg.opacity / 100); ctx.fill();
-        ctx.lineWidth = 1.4; ctx.strokeStyle = col; ctx.stroke();
-        if (cfg.labels && e.usd >= cfg.labelMin) { ctx.fillStyle = '#fff'; ctx.fillText(fmtUsd(e.usd), x, y); }
+        ctx.fillStyle = CF.hexA(col, cfg.opacity / 100 * fade); ctx.fill();
+        ctx.lineWidth = 1.2; ctx.strokeStyle = CF.hexA(col, 0.25 + 0.7 * fade); ctx.stroke();
+        if (cfg.labels && e.usd >= cfg.labelMin) { ctx.fillStyle = 'rgba(255,255,255,' + (0.35 + 0.65 * fade).toFixed(2) + ')'; ctx.fillText(fmtUsd(e.usd), x, y); }
     }
     ctx.textAlign = 'start';
 }
@@ -229,6 +254,7 @@ CF.registerFeature('liq', {
         liq.name = sym.toLowerCase() + '@forceOrder'; liq.key = liqKey();
         liq.list = (LS.get(liq.key, []) || []).filter(function (e) { return e && e.t > cutoff; });
         liq.off = CF.layer('top', paintLiq);
+        liq.fade = setInterval(function () { if (liq.list.length && +CF.S('liq').ttl) CF.redraw(); }, 4000);     // let bubbles fade out
         CF.refreshSub('liq');
         streams.market.sub(liq.name, function (d) {
             var o = d && d.o; if (!o || o.s !== sym) return;
@@ -243,6 +269,7 @@ CF.registerFeature('liq', {
     stop: function () {
         streams.market.unsub(liq.name);
         if (liq.off) { liq.off(); liq.off = null; }
+        clearInterval(liq.fade); liq.fade = null;
         clearTimeout(liq.saveT); if (liq.list.length) LS.set(liq.key, liq.list.slice(-400));
         liq.list = [];
     }
@@ -257,20 +284,38 @@ function updateThreshold() {
     big.thr = a[Math.floor(a.length * 0.995)] || 0;
 }
 function bigLimit(cfg) { return cfg.mode === 'fixed' ? cfg.fixed : Math.max(cfg.floor, big.thr); }
+// one buy and one sell bubble per candle (volume-weighted price), for a calm picture on busy markets
+function groupBig(lim) {
+    var key = big.list.length + '|' + lim + '|' + CF.candles().length + '|' + CF.interval();
+    if (big.gKey === key) return big.gItems;
+    var acc = {};
+    big.list.forEach(function (e) {
+        if (e.usd < lim) return;
+        var t0 = candleStartOf(e.t); if (t0 == null) return;
+        var k = t0 + (e.buy ? 'b' : 's'), a = acc[k] || (acc[k] = { t0: t0, buy: e.buy, usd: 0, pu: 0, n: 0 });
+        a.usd += e.usd; a.pu += e.price * e.usd; a.n++;
+    });
+    big.gItems = Object.keys(acc).map(function (k) { var a = acc[k]; return { t: a.t0 + CF.secs() / 2, price: a.pu / a.usd, usd: a.usd, buy: a.buy, n: a.n }; });
+    big.gKey = key;
+    return big.gItems;
+}
 function paintBig(ctx, w, h) {
     if (!big.list.length) return;
-    var cfg = CF.S('trades'), lim = bigLimit(cfg);
+    var cfg = CF.S('trades'), lim = bigLimit(cfg), grouped = cfg.group === 'candle', ttl = grouped ? 0 : +cfg.ttl, now = Date.now() / 1000;
+    var items = grouped ? groupBig(lim) : big.list;
     ctx.font = '600 10px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-    for (var i = 0; i < big.list.length; i++) {
-        var e = big.list[i];
+    for (var i = 0; i < items.length; i++) {
+        var e = items[i];
         if (e.usd < lim) continue;
+        var age = now - e.t; if (ttl && age > ttl) continue;
+        var fade = ttl ? 1 - 0.85 * age / ttl : 1;
         var x = CF.xOf(e.t), y = CF.yOf(e.price);
         if (x == null || y == null || x < -30 || x > w + 30 || y < -30 || y > h + 30) continue;
-        var r = clamp((4 + Math.sqrt(e.usd / lim) * 6) * cfg.size, 3, 30), col = e.buy ? UP() : DOWN();
+        var r = clamp((3.5 + Math.sqrt(e.usd / lim) * 5) * cfg.size, 3, 26), col = e.buy ? UP() : DOWN();
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = CF.hexA(col, cfg.opacity / 100); ctx.fill();
-        ctx.lineWidth = 1.2; ctx.strokeStyle = CF.hexA(col, 0.9); ctx.stroke();
-        if (cfg.labels && r >= 11) { ctx.fillStyle = '#fff'; ctx.fillText(fmtUsd(e.usd), x, y); }
+        if (!cfg.ring) { ctx.fillStyle = CF.hexA(col, cfg.opacity / 100 * fade); ctx.fill(); }
+        ctx.lineWidth = 1.2; ctx.strokeStyle = CF.hexA(col, 0.25 + 0.65 * fade); ctx.stroke();
+        if (cfg.labels && r >= 10) { ctx.fillStyle = 'rgba(255,255,255,' + (0.4 + 0.6 * fade).toFixed(2) + ')'; ctx.fillText(fmtUsd(e.usd), x, y); }
     }
     ctx.textAlign = 'start';
 }
@@ -280,6 +325,7 @@ CF.registerFeature('trades', {
         big.name = sym.toLowerCase() + '@aggTrade';
         big.list = []; big.recent = []; big.n = 0; big.thr = 15000;
         big.off = CF.layer('top', paintBig);
+        big.fade = setInterval(function () { var c = CF.S('trades'); if (big.list.length && c.group === 'off' && +c.ttl) CF.redraw(); }, 4000);
         streams.market.sub(big.name, function (d) {
             if (!d || d.s !== sym) return;
             var usd = +d.p * +d.q;
@@ -288,7 +334,8 @@ CF.registerFeature('trades', {
             var cfg = CF.S('trades');
             if (usd >= bigLimit(cfg) && (cfg.mode === 'fixed' || big.recent.length >= 200)) {
                 big.list.push({ t: Math.floor(d.T / 1000), price: +d.p, usd: usd, buy: !d.m });         // m = buyer is the maker → a sell
-                if (big.list.length > 300) big.list.shift();
+                var ttl = +cfg.ttl, nowS = Date.now() / 1000;
+                while (big.list.length && ((ttl && cfg.group === 'off' && nowS - big.list[0].t > ttl) || big.list.length > 400)) big.list.shift();
                 CF.redraw();
             }
         });
@@ -296,6 +343,7 @@ CF.registerFeature('trades', {
     stop: function () {
         streams.market.unsub(big.name);
         if (big.off) { big.off(); big.off = null; }
+        clearInterval(big.fade); big.fade = null; big.gKey = null;
         big.list = []; big.recent = [];
     }
 });
@@ -561,8 +609,8 @@ function heatRecenter(mid) {
     heatRecolor();
 }
 function heatSample() {
-    if (!Book.has) return;
-    var mid = Book.mid(); if (!mid) return;
+    if (!Book.has) return false;
+    var mid = Book.mid(); if (!mid) return false;
     if (!Heat.cv) heatInit(mid);
     else if (mid < Heat.low + (Heat.high - Heat.low) * 0.2 || mid > Heat.high - (Heat.high - Heat.low) * 0.2) heatRecenter(mid);
     var rows = Heat.ROWS, vals = new Float64Array(rows), idx, i;
@@ -580,21 +628,45 @@ function heatSample() {
     Heat.buf.push(col);
     Heat.cx.putImageData(img, Heat.cols - 1, 0);
     CF.redraw();
+    return true;
 }
 function paintHeat(ctx, w, h) {
     if (!Heat.cv || !Heat.cols) return;
+    var cfg = CF.S('heat');
     var x0 = CF.xOf(Heat.t0), x1 = CF.xOf(Heat.t0 + Heat.cols * Heat.dt), y0 = CF.yOf(Heat.high), y1 = CF.yOf(Heat.low);
     if (x0 == null || x1 == null || y0 == null || y1 == null || x1 <= x0) return;
+    var a = cfg.opacity / 100;
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
-    ctx.imageSmoothingEnabled = false; ctx.globalAlpha = CF.S('heat').opacity / 100;
+    ctx.imageSmoothingEnabled = false;
+    if (cfg.extend) {                                                        // no recorded history here yet: carry the nearest column outward
+        if (x0 > 0) { ctx.globalAlpha = a * 0.55; ctx.drawImage(Heat.cv, 0, 0, 1, Heat.ROWS, 0, y0, x0, y1 - y0); }
+        if (x1 < w) { ctx.globalAlpha = a * 0.75; ctx.drawImage(Heat.cv, Heat.cols - 1, 0, 1, Heat.ROWS, x1, y0, w - x1, y1 - y0); }
+    }
+    ctx.globalAlpha = a;
     ctx.drawImage(Heat.cv, 0, 0, Heat.cols, Heat.ROWS, x0, y0, x1 - x0, y1 - y0);
     ctx.restore();
+    if (cfg.legend) {                                                        // small color key so the layer explains itself
+        var pal = HEAT_PAL[cfg.palette] || HEAT_PAL.fire, gw = 64, gx = 28;      // clear of the rail's collapse handle
+        var volTop = CF.ind.vol ? h * (1 - CF.S('vol').height / 100) : h, gy = Math.max(30, volTop - 22);
+        var g = ctx.createLinearGradient(gx, 0, gx + gw, 0);
+        g.addColorStop(0, 'rgba(0,0,0,0)');
+        pal.forEach(function (st) { g.addColorStop(st[0], 'rgba(' + (st[1] | 0) + ',' + (st[2] | 0) + ',' + (st[3] | 0) + ',' + Math.min(1, st[4] / 255 + 0.15).toFixed(2) + ')'); });
+        ctx.fillStyle = 'rgba(19,23,34,.55)'; ctx.fillRect(gx - 2, gy - 2, gw + 4, 9);
+        ctx.fillStyle = g; ctx.fillRect(gx, gy, gw, 5);
+        tag(ctx, '호가 대기물량  적음 → 많음', gx, gy - 8, '#9aa3b2', 'left');
+    }
 }
 CF.registerFeature('heat', {
+    byInterval: true,                                                          // sampling step follows the candle interval
     start: function () {
+        Heat.dt = clamp(CF.secs() / 30, 1.5, 20);
         Book.start(); Heat.cv = null; Heat.cols = 0; Heat.buf = [];
         Heat.off = CF.layer('bottom', paintHeat);
-        Heat.timer = setInterval(heatSample, Heat.dt * 1000);
+        Heat.last = 0;                                                         // first column as soon as the book is ready, then every dt
+        Heat.timer = setInterval(function () {
+            var n = Date.now();
+            if ((Heat.cols === 0 || n - Heat.last >= Heat.dt * 1000 - 100) && heatSample()) Heat.last = n;
+        }, 1000);
     },
     stop: function () {
         clearInterval(Heat.timer); Heat.timer = null;
@@ -684,6 +756,66 @@ function loadLiqMap() {
 CF.registerFeature('liqmap', {
     start: function () { lmap.off = CF.layer('top', paintLiqMap); loadLiqMap(); lmap.timer = setInterval(loadLiqMap, 5 * 60 * 1000); },
     stop: function () { lmap.seq++; clearInterval(lmap.timer); lmap.timer = null; if (lmap.off) { lmap.off(); lmap.off = null; } lmap.levels = []; }
+});
+
+// =====================================================================================================
+// Bid / Ask: best bid and best ask from the public book-ticker stream (free), drawn as two thin lines with tags.
+// =====================================================================================================
+var ba = { bid: 0, ask: 0, bq: 0, aq: 0, off: null, name: null, rafT: 0, legT: 0 };
+function paintBidAsk(ctx, w, h) {
+    if (!ba.bid || !ba.ask) return;
+    var cfg = CF.S('bidask'); if (!cfg.lines && !cfg.tags) return;
+    var yb = CF.yOf(ba.bid), ya = CF.yOf(ba.ask);
+    var dash = cfg.style === 'solid' ? [] : cfg.style === 'dashed' ? [6, 4] : [1.5, 3];
+    var rx = w - 6 - (CF.ind.depth && CF.S('depth').bars ? w * CF.S('depth').barW / 100 : 0);       // stay clear of the depth bars
+    function one(y, col, text, above) {
+        if (y == null || y < -4 || y > h + 4) return;
+        if (cfg.lines) {
+            ctx.strokeStyle = CF.hexA(col, 0.85); ctx.lineWidth = cfg.width; ctx.setLineDash(dash);
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); ctx.setLineDash([]);
+        }
+        if (cfg.tags) tag(ctx, text, rx, y + (above ? -7 : 7), col, 'right');
+    }
+    one(ya, DOWN(), 'Ask ' + CF.fmtPrice(ba.ask) + '  ×' + CF.fmtVol(ba.aq), true);
+    one(yb, UP(), 'Bid ' + CF.fmtPrice(ba.bid) + '  ×' + CF.fmtVol(ba.bq), false);
+}
+// share of resting bid liquidity within ±0.5 % of the market (only when the order book is running for walls/heatmap)
+function bookImbalance() {
+    if (!Book.has) return null;
+    var q = Book.quotes(); if (!q) return null;
+    var lo = q.bid * 0.995, hi = q.ask * 1.005, b = 0, a = 0;
+    Book.bids.forEach(function (qty, p) { if (p >= lo) b += p * qty; });
+    Book.asks.forEach(function (qty, p) { if (p <= hi) a += p * qty; });
+    return b + a > 0 ? b / (a + b) : null;
+}
+CF.registerFeature('bidask', {
+    legend: function () {
+        if (!ba.bid) return '';
+        var cfg = CF.S('bidask'), h = '<span style="color:' + UP() + '">Bid ' + CF.fmtPrice(ba.bid) + ' ×' + CF.fmtVol(ba.bq) + '</span> <span style="color:' + DOWN() + '">Ask ' + CF.fmtPrice(ba.ask) + ' ×' + CF.fmtVol(ba.aq) + '</span>';
+        if (cfg.spread) {
+            h += ' <span style="color:#B2B5BE">스프레드 ' + CF.fmtPrice(ba.ask - ba.bid) + '</span>';
+            var im = bookImbalance();
+            if (im != null) h += ' <span style="color:' + (im >= 0.5 ? UP() : DOWN()) + '">호가 ' + (im >= 0.5 ? '매수' : '매도') + ' 우세 ' + Math.round(Math.max(im, 1 - im) * 100) + '%</span>';
+        }
+        return h;
+    },
+    start: function () {
+        var sym = CF.symbol();
+        ba.name = sym.toLowerCase() + '@bookTicker'; ba.bid = ba.ask = 0;
+        ba.off = CF.layer('top', paintBidAsk);
+        streams.pub.sub(ba.name, function (d) {
+            if (!d || d.s !== sym) return;
+            ba.bid = +d.b; ba.bq = +d.B; ba.ask = +d.a; ba.aq = +d.A;
+            var now = Date.now();
+            if (!ba.rafT) ba.rafT = setTimeout(function () { ba.rafT = 0; CF.redraw(); }, 120);        // book ticks are very frequent: ≤ ~8 repaints/s
+            if (now - ba.legT > 500) { ba.legT = now; CF.scheduleLegend(); }
+        });
+    },
+    stop: function () {
+        streams.pub.unsub(ba.name);
+        if (ba.off) { ba.off(); ba.off = null; }
+        clearTimeout(ba.rafT); ba.rafT = 0; ba.bid = ba.ask = 0;
+    }
 });
 
 window.__flow = { modelLiq: modelLiq, Book: Book, Heat: Heat, oi: oi, liq: liq, big: big, lmap: lmap, walls: walls, fmtUsd: fmtUsd };
