@@ -70,6 +70,36 @@ class BinanceFuturesClient(
     )
     val dayEvents: SharedFlow<DayTickerEvent> = _dayEvents.asSharedFlow()
 
+    private val _klineEvents = MutableSharedFlow<KlineEvent>(
+        replay = 0,
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val klineEvents: SharedFlow<KlineEvent> = _klineEvents.asSharedFlow()
+
+    // One extra stream on top of the per-symbol ones: the candle stream of the open mini chart (null when none).
+    private var extraStream: String? = null
+
+    fun setExtraStream(stream: String?) {
+        val old: String?
+        synchronized(lock) {
+            old = extraStream
+            if (old == stream) return
+            extraStream = stream
+        }
+        if (old != null) sendStreams("UNSUBSCRIBE", listOf(old))
+        if (stream != null) sendStreams("SUBSCRIBE", listOf(stream))
+    }
+
+    private fun sendStreams(method: String, streams: List<String>) {
+        val ws = webSocket ?: return               // not connected: onOpen subscribes the current extra stream
+        val json = JSONObject()
+        json.put("method", method)
+        json.put("params", JSONArray(streams))
+        json.put("id", requestId.getAndIncrement())
+        ws.send(json.toString())
+    }
+
     private val activeSymbols = mutableSetOf<String>()
     private val lock = Any()
 
@@ -172,6 +202,7 @@ class BinanceFuturesClient(
                 if (currentSymbols.isNotEmpty()) {
                     sendSubscriptionCommand("SUBSCRIBE", currentSymbols)
                 }
+                synchronized(lock) { extraStream }?.let { sendStreams("SUBSCRIBE", listOf(it)) }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -303,7 +334,34 @@ class BinanceFuturesClient(
         }
     }
 
+    fun parseKline(text: String): KlineEvent? {
+        return try {
+            val json = JSONObject(text)
+            val data = json.optJSONObject("data") ?: json
+            if (data.optString("e", "") != "kline") return null
+            val k = data.getJSONObject("k")
+            KlineEvent(
+                symbol = k.getString("s"),
+                interval = k.getString("i"),
+                item = KlineItem(
+                    openTime = k.getLong("t"),
+                    open = k.getString("o").toFloat(),
+                    high = k.getString("h").toFloat(),
+                    low = k.getString("l").toFloat(),
+                    close = k.getString("c").toFloat(),
+                    volume = k.getString("v").toFloat()
+                )
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun handleMessage(text: String) {
+        if (text.contains("\"e\":\"kline\"")) {
+            parseKline(text)?.let { _klineEvents.tryEmit(it) }
+            return
+        }
         // cheap pre-check instead of parsing every message twice
         if (text.contains("\"24hrMiniTicker\"")) {
             parseDayTicker(text)?.let { _dayEvents.tryEmit(it) }

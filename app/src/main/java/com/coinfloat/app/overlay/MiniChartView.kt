@@ -363,6 +363,10 @@ class MiniChartView(
         chartView.setError(message)
     }
 
+    fun applyKline(item: KlineItem) {
+        chartView.applyKline(item)
+    }
+
     fun updateLivePrice(price: Float) {
         chartView.updateLastPrice(price)
     }

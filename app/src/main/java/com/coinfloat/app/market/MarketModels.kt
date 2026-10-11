@@ -26,6 +26,9 @@ fun MarketPrice.dayChangePercent(): Float? {
     return ((p.toDouble() - o.toDouble()) / o.toDouble() * 100.0).toFloat()
 }
 
+/** Live candle from the kline stream (several per second while a mini chart is open). */
+data class KlineEvent(val symbol: String, val interval: String, val item: KlineItem)
+
 /** Mini-ticker (1/s per symbol): only what the app uses. */
 data class DayTickerEvent(val symbol: String, val open: String)
 

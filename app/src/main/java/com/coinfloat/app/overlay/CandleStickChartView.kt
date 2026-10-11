@@ -143,6 +143,26 @@ class CandleStickChartView @JvmOverloads constructor(
         if (touchedCandleIndex == null) invalidate()
     }
 
+    /** Exact candle from the kline stream: replaces the matching candle (or opens the next one), volume included. */
+    fun applyKline(item: KlineItem) {
+        if (klines.isEmpty() || isLoading || errorMessage != null) return
+        val last = klines[klines.size - 1]
+        when {
+            item.openTime == last.openTime -> klines[klines.size - 1] = item
+            item.openTime > last.openTime -> {
+                klines.add(item)
+                if (klines.size > MAX_CANDLES) klines.removeAt(0)
+            }
+            else -> {
+                // a candle opened locally from the price stream a moment ago: correct it in place
+                val i = klines.indexOfLast { it.openTime == item.openTime }
+                if (i >= 0) klines[i] = item else return
+            }
+        }
+        currentLivePrice = item.close
+        if (touchedCandleIndex == null) invalidate()
+    }
+
     // ---- geometry shared by drawing and touch ----------------------------------------------------------------------
     private val padLeft get() = 4f * density
     private val padRight get() = 44f * density

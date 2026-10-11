@@ -33,6 +33,14 @@ class MarketDataRepository(
 
     val connectionState: StateFlow<ConnectionState> = binanceClient.connectionState
 
+    /** Live candles of the floating mini chart's symbol/interval (see [setMiniChartStream]). */
+    val klineEvents = binanceClient.klineEvents
+
+    /** The mini chart that is open (or null): its candle stream is subscribed only while it is on screen. */
+    fun setMiniChartStream(symbol: String?, interval: String?) {
+        binanceClient.setExtraStream(if (symbol != null && interval != null) "${symbol.lowercase()}@kline_$interval" else null)
+    }
+
     private val priceCache = java.util.concurrent.ConcurrentHashMap<String, MarketPrice>()
     private val dayOpenCache = java.util.concurrent.ConcurrentHashMap<String, BigDecimal>()
 

@@ -61,6 +61,17 @@ class OverlayController(private val context: Context) {
     private var isDragging = false
     private var onPositionSavedListener: ((Int, Int) -> Unit)? = null
     var onMiniChartResizedListener: ((Int, Int) -> Unit)? = null
+    /** Tells the feed which candle stream the open mini chart needs (null, null when it closes). */
+    var onChartStreamChanged: ((symbol: String?, interval: String?) -> Unit)? = null
+
+    /** A live candle from the kline stream: authoritative OHLC + volume for the forming candle. */
+    fun onKline(event: com.coinfloat.app.market.KlineEvent) {
+        runOnMainThread {
+            if (isMiniChartShowing && event.symbol == currentChartSymbol && event.interval == currentChartInterval) {
+                miniChartView?.applyKline(event.item)
+            }
+        }
+    }
 
     fun isShowing(): Boolean = (isOverlayAttached && overlayView != null) || (isMiniChartShowing && miniChartView != null)
 
@@ -549,6 +560,7 @@ class OverlayController(private val context: Context) {
             chartLoadJob?.cancel()
             chartLoadJob = null
             stopChartRefreshLoop()
+            if (isMiniChartShowing) onChartStreamChanged?.invoke(null, null)
             val chart = miniChartView
             if (chart != null) {
                 try {
@@ -581,6 +593,7 @@ class OverlayController(private val context: Context) {
         chartLoadJob?.cancel()
         val symbol = currentChartSymbol
         val interval = currentChartInterval
+        onChartStreamChanged?.invoke(symbol, interval)
         chartLoadJob = coroutineScope?.launch(Dispatchers.IO) {
             try {
                 val klines = klineFetcher?.invoke(symbol, interval) ?: emptyList()
@@ -626,7 +639,7 @@ class OverlayController(private val context: Context) {
         chartRefreshJob?.cancel()
         chartRefreshJob = coroutineScope?.launch(Dispatchers.IO) {
             while (isMiniChartShowing && isScreenOn) {
-                delay(60_000L)
+                delay(300_000L)
                 if (!isMiniChartShowing || !isScreenOn) break
                 try {
                     val symbol = currentChartSymbol

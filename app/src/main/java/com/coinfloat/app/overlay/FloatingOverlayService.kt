@@ -102,6 +102,7 @@ class FloatingOverlayService : Service() {
             klineFetcher = { symbol, interval ->
                 marketDataRepository.fetchKlines(symbol, interval, limit = 80)
             }
+            onChartStreamChanged = { symbol, interval -> marketDataRepository.setMiniChartStream(symbol, interval) }
             onMiniChartResizedListener = { wDp, hDp ->
                 serviceScope.launch {
                     settingsRepository.updateCustomChartSize(wDp, hDp)
@@ -134,6 +135,11 @@ class FloatingOverlayService : Service() {
                 overlayController.setLive(state == ConnectionState.CONNECTED)
                 updateNotification(state)
             }
+        }
+
+        // Live candles for the open mini chart
+        serviceScope.launch {
+            marketDataRepository.klineEvents.collect { overlayController.onKline(it) }
         }
 
         // Preload exchangeInfo in background
@@ -369,6 +375,7 @@ class FloatingOverlayService : Service() {
             unregisterReceiver(screenStateReceiver)
         } catch (_: Exception) {}
         overlayController.hide()
+        marketDataRepository.setMiniChartStream(null, null)
         marketDataRepository.stop()
         priceUpdateJob?.cancel()
         serviceScope.cancel()

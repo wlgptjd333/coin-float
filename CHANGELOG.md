@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.1] - 2026-10-11
+
+### Changed
+- **Mini chart candles are fully live.** While a mini chart is open it subscribes to Binance's candle stream for that coin
+  and interval (a few updates per second), so the forming candle's volume and exact high/low are live too. 1.9.0 built the
+  candle from the price stream only, so volume and the extreme wicks waited for the once-a-minute REST refresh. The stream
+  is dropped as soon as the chart closes; REST now only loads the history and runs as a 5-minute safety refresh.
+
 ## [1.9.0] - 2026-10-11
 
 ### Floating window
