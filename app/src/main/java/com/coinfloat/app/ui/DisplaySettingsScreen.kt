@@ -104,7 +104,7 @@ fun SettingsContent(
             }
             GroupDivider()
             ControlBlock("글자 색") {
-                ColorRow(TEXT_COLORS, settings.textColorHex, onTextColorChange)
+                ColorRow(TEXT_COLORS, settings.textColorHex, "글자 색", onTextColorChange)
             }
             GroupDivider()
             ControlBlock("글자 진하기", "${(settings.textOpacity * 100).toInt()}%") {
@@ -112,7 +112,7 @@ fun SettingsContent(
             }
             GroupDivider()
             ControlBlock("배경 색") {
-                ColorRow(BG_COLORS, settings.backgroundColorHex, onBackgroundColorChange)
+                ColorRow(BG_COLORS, settings.backgroundColorHex, "배경 색", onBackgroundColorChange)
             }
             GroupDivider()
             ControlBlock("배경 진하기", "${(settings.backgroundOpacity * 100).toInt()}%") {
@@ -238,10 +238,10 @@ private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Preset swatches plus a small custom-hex field. */
+/** Preset swatches plus "직접", which opens the full color picker. */
 @Composable
-private fun ColorRow(presets: List<String>, current: String, onPick: (String) -> Unit) {
-    var custom by rememberSaveable { mutableStateOf(false) }
+private fun ColorRow(presets: List<String>, current: String, title: String, onPick: (String) -> Unit) {
+    var showPicker by rememberSaveable { mutableStateOf(false) }
     Row(
         modifier = Modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -262,43 +262,32 @@ private fun ColorRow(presets: List<String>, current: String, onPick: (String) ->
                     .clickable { onPick(hex) }
             )
         }
+        // a custom color shows as its own swatch next to the "직접" button
         val isCustom = presets.none { it.equals(current, ignoreCase = true) }
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(if (isCustom || custom) Cf.AccentSoft else Cf.Bg)
-                .border(1.dp, if (isCustom) Cf.Accent else Cf.Line, RoundedCornerShape(8.dp))
-                .clickable { custom = !custom }
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-            Text("직접", style = MaterialTheme.typography.labelMedium, color = Cf.TextMuted)
-        }
-    }
-    if (custom) {
-        Spacer(Modifier.height(10.dp))
-        var text by remember(current) { mutableStateOf(current) }
         Row(
             Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(Cf.Bg)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (isCustom) Cf.AccentSoft else Cf.Bg)
+                .border(1.dp, if (isCustom) Cf.Accent else Cf.Line, RoundedCornerShape(8.dp))
+                .clickable { showPicker = true }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("HEX", style = MaterialTheme.typography.labelMedium, color = Cf.TextFaint)
-            Spacer(Modifier.width(10.dp))
-            BasicTextField(
-                value = text,
-                onValueChange = { v ->
-                    text = v
-                    val hex = if (v.startsWith("#")) v else "#$v"
-                    if ((hex.length == 7 || hex.length == 9) && runCatching { android.graphics.Color.parseColor(hex) }.isSuccess) onPick(hex)
-                },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = Cf.Text, fontFamily = FontFamily.Monospace),
-                cursorBrush = SolidColor(Cf.Accent),
-                modifier = Modifier.weight(1f)
-            )
+            if (isCustom) {
+                val c = runCatching { Color(android.graphics.Color.parseColor(current)) }.getOrDefault(Color.Gray)
+                Box(Modifier.size(14.dp).clip(CircleShape).background(c).border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape))
+                Spacer(Modifier.width(6.dp))
+            }
+            Text("직접", style = MaterialTheme.typography.labelMedium, color = if (isCustom) Cf.Text else Cf.TextMuted)
         }
+    }
+    if (showPicker) {
+        com.coinfloat.app.ui.components.ColorPickerSheet(
+            title = title,
+            initialHex = current,
+            presets = presets,
+            onPick = onPick,
+            onDismiss = { showPicker = false }
+        )
     }
 }

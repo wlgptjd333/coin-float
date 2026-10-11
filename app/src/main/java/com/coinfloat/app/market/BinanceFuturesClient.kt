@@ -89,8 +89,9 @@ class BinanceFuturesClient(
             if (old == stream) return
             extraStream = stream
         }
-        if (old != null) sendStreams("UNSUBSCRIBE", listOf(old))
-        if (stream != null) sendStreams("SUBSCRIBE", listOf(stream))
+        val base = synchronized(lock) { activeSymbols.map { priceStream(it) }.toSet() }
+        if (old != null && old !in base) sendStreams("UNSUBSCRIBE", listOf(old))
+        if (stream != null && stream !in base) sendStreams("SUBSCRIBE", listOf(stream))
     }
 
     private fun sendStreams(method: String, streams: List<String>) {
@@ -206,7 +207,9 @@ class BinanceFuturesClient(
                 if (currentSymbols.isNotEmpty()) {
                     sendSubscriptionCommand("SUBSCRIBE", currentSymbols)
                 }
-                synchronized(lock) { extraStream }?.let { sendStreams("SUBSCRIBE", listOf(it)) }
+                synchronized(lock) { extraStream }?.let { extra ->
+                    if (extra !in synchronized(lock) { activeSymbols.map { priceStream(it) } }) sendStreams("SUBSCRIBE", listOf(extra))
+                }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -310,12 +313,28 @@ class BinanceFuturesClient(
         webSocket = null
     }
 
+    // Price source. Every trade (aggTrade) arrives as its own message: a handful per second when the market is calm,
+    // dozens to hundreds when it moves, while the floating window only redraws a few times a second. The 1m candle
+    // stream carries the latest price at most every 250 ms whatever the activity, so it is used unless the user picked
+    // the fastest (10 FPS) refresh.
+    @Volatile
+    var fastTrades = false
+        private set
+
+    private fun priceStream(symbol: String) = symbol.lowercase() + if (fastTrades) "@aggTrade" else "@kline_1m"
+
+    fun setFastTrades(fast: Boolean) {
+        if (fast == fastTrades) return
+        fastTrades = fast
+        reconnectNow()                 // resubscribe with the other stream; harmless when not connected
+    }
+
     fun buildSubscriptionPayload(method: String, symbols: List<String>, id: Int): String {
         val json = JSONObject()
         json.put("method", method)
         val params = JSONArray()
         for (symbol in symbols) {
-            params.put("${symbol.lowercase()}@aggTrade")
+            params.put(priceStream(symbol))
             // one message per second with the rolling 24 h open: live 24 h change for the floating window and home
             params.put("${symbol.lowercase()}@miniTicker")
         }
@@ -382,6 +401,7 @@ class BinanceFuturesClient(
             KlineEvent(
                 symbol = k.getString("s"),
                 interval = k.getString("i"),
+                closeText = k.getString("c"),
                 item = KlineItem(
                     openTime = k.getLong("t"),
                     open = k.getString("o").toFloat(),
@@ -398,7 +418,12 @@ class BinanceFuturesClient(
 
     private fun handleMessage(text: String) {
         if (text.contains("\"e\":\"kline\"")) {
-            parseKline(text)?.let { _klineEvents.tryEmit(it) }
+            val k = parseKline(text) ?: return
+            _klineEvents.tryEmit(k)
+            if (!fastTrades && k.interval == "1m" && k.closeText.isNotEmpty()) {
+                val now = System.currentTimeMillis()
+                _tradeEvents.tryEmit(AggTradeEvent("kline", now, k.symbol, k.closeText, now))
+            }
             return
         }
         // cheap pre-check instead of parsing every message twice

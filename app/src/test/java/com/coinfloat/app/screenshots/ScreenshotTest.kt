@@ -2,6 +2,7 @@ package com.coinfloat.app.screenshots
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -59,6 +60,17 @@ class ScreenshotTest {
     private fun shot(content: @Composable () -> Unit) = paparazzi.snapshot {
         CoinFloatTheme {
             Box(Modifier.background(Cf.Bg).verticalScroll(rememberScrollState())) { content() }
+        }
+    }
+
+    @Test
+    fun colorPicker() = shot {
+        androidx.compose.foundation.layout.Column(Modifier.background(Cf.Surface).padding(androidx.compose.ui.unit.Dp(20f))) {
+            com.coinfloat.app.ui.components.ColorPickerPanel(
+                com.coinfloat.app.ui.components.HsvColor("#40C4FF"),
+                "#65D69A",
+                listOf("#65D69A", "#00E676", "#FFFFFF", "#FF5252", "#FFD600", "#40C4FF")
+            )
         }
     }
 

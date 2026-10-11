@@ -21,6 +21,7 @@ class KlineStreamTest {
         assertEquals(83050.5f, event.item.high, 0.01f)
         assertEquals(82990.0f, event.item.low, 0.01f)
         assertEquals(123.456f, event.item.volume, 0.001f)
+        assertEquals("83021.1", event.closeText)       // exact price text, used as the price feed
     }
 
     @Test

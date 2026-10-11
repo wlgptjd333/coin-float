@@ -24,11 +24,11 @@ class SubscriptionBuilderTest {
 
         val params = json.getJSONArray("params")
         assertEquals(6, params.length())
-        assertEquals("btcusdt@aggTrade", params.getString(0))
+        assertEquals("btcusdt@kline_1m", params.getString(0))
         assertEquals("btcusdt@miniTicker", params.getString(1))
-        assertEquals("ethusdt@aggTrade", params.getString(2))
+        assertEquals("ethusdt@kline_1m", params.getString(2))
         assertEquals("ethusdt@miniTicker", params.getString(3))
-        assertEquals("solusdt@aggTrade", params.getString(4))
+        assertEquals("solusdt@kline_1m", params.getString(4))
         assertEquals("solusdt@miniTicker", params.getString(5))
     }
 
@@ -47,7 +47,16 @@ class SubscriptionBuilderTest {
 
         val params = json.getJSONArray("params")
         assertEquals(2, params.length())
-        assertEquals("ethusdt@aggTrade", params.getString(0))
+        assertEquals("ethusdt@kline_1m", params.getString(0))
         assertEquals("ethusdt@miniTicker", params.getString(1))
+    }
+
+    @Test
+    fun fastestRefreshUsesEveryTrade() {
+        val client = BinanceFuturesClient(CoroutineScope(Dispatchers.Unconfined))
+        client.setFastTrades(true)
+        val params = JSONObject(client.buildSubscriptionPayload("SUBSCRIBE", listOf("BTCUSDT"), 1)).getJSONArray("params")
+        assertEquals("btcusdt@aggTrade", params.getString(0))
+        assertEquals("btcusdt@miniTicker", params.getString(1))
     }
 }

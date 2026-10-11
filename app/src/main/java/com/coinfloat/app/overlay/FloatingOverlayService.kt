@@ -241,6 +241,7 @@ class FloatingOverlayService : Service() {
             settingsRepository.updateServiceEnabled(true)
             settingsRepository.updateOverlayVisible(true)
             val currentSettings = saved.copy(isServiceEnabled = true, isOverlayVisible = true)
+            marketDataRepository.setFastTrades(currentSettings.refreshRateProfile == com.coinfloat.app.settings.RefreshRateProfile.FPS_10)
 
             updateNotification(marketDataRepository.connectionState.value)
             marketDataRepository.start(currentSettings.selectedSymbols)
@@ -330,6 +331,7 @@ class FloatingOverlayService : Service() {
 
     private fun handleSettingsChanged(settings: OverlaySettings) {
         if (!isServiceRunning) return
+        marketDataRepository.setFastTrades(settings.refreshRateProfile == com.coinfloat.app.settings.RefreshRateProfile.FPS_10)
 
         // Update WebSocket subscriptions only when the symbol list changes (not on every style tweak / slider tick)
         if (settings.selectedSymbols != lastSubscribedSymbols) {

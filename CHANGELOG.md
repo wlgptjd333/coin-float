@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.6] - 2026-10-11
+
+### Added
+- **Color picker.** "직접" next to the text / background swatches opens a sheet with a saturation-brightness pad, a hue
+  bar, before/after preview, HEX field and the presets (it was only a HEX text field). A custom color shows as its own
+  swatch.
+- **Up / down colors** (settings › 상승 · 하락 색): green-up/red-down or red-up/blue-down (Korean style), applied to the
+  floating window's 24h change, the mini chart (candles, volume, price, change), the home watchlist and the chart header.
+  The chart page keeps its own palette setting.
+
+### Battery
+- **The price feed uses the 1m candle stream** (latest price at most every 250 ms) instead of one message per trade. Calm
+  markets differ little (BTC 1.5 vs 1.2 messages/s when measured), but busy ones send dozens to hundreds of trades per
+  second per coin (ETH 9.5 vs 1.9/s even on a quiet Sunday) while the window redraws only a few times a second. The
+  per-trade stream is still used when the fastest (10 FPS) refresh is selected.
+
 ## [1.9.5] - 2026-10-11
 
 ### Changed

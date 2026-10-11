@@ -27,7 +27,7 @@ fun MarketPrice.dayChangePercent(): Float? {
 }
 
 /** Live candle from the kline stream (several per second while a mini chart is open). */
-data class KlineEvent(val symbol: String, val interval: String, val item: KlineItem)
+data class KlineEvent(val symbol: String, val interval: String, val item: KlineItem, val closeText: String = "")
 
 /** Mini-ticker (1/s per symbol): only what the app uses. */
 data class DayTickerEvent(val symbol: String, val open: String)

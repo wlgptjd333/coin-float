@@ -36,6 +36,9 @@ class MarketDataRepository(
     /** Live candles of the floating mini chart's symbol/interval (see [setMiniChartStream]). */
     val klineEvents = binanceClient.klineEvents
 
+    /** true: every trade (fastest, most messages); false: latest price every 250 ms (default, far fewer messages). */
+    fun setFastTrades(fast: Boolean) = binanceClient.setFastTrades(fast)
+
     /** Drops the current socket and connects again right away (network changed). No-op while paused/stopped. */
     fun reconnectNow() = binanceClient.reconnectNow()
 
