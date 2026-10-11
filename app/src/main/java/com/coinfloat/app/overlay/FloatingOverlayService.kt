@@ -100,7 +100,7 @@ class FloatingOverlayService : Service() {
         overlayController = OverlayController(this).apply {
             coroutineScope = serviceScope
             klineFetcher = { symbol, interval ->
-                marketDataRepository.fetchKlines(symbol, interval, limit = 30)
+                marketDataRepository.fetchKlines(symbol, interval, limit = 80)
             }
             onMiniChartResizedListener = { wDp, hDp ->
                 serviceScope.launch {

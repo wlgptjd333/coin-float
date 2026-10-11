@@ -329,6 +329,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun updateShow24hChange(show: Boolean) {
+        viewModelScope.launch { settingsRepository.updateShow24hChange(show) }
+    }
+
     fun updateTextColor(colorHex: String) {
         viewModelScope.launch {
             settingsRepository.updateTextColor(colorHex)

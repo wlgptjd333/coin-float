@@ -13,8 +13,11 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import com.coinfloat.app.market.KlineItem
-import com.coinfloat.app.market.PriceFormatter
+import java.util.Locale
 import kotlin.math.abs
 
 @SuppressLint("ViewConstructor")
@@ -38,10 +41,10 @@ class MiniChartView(
     private val bgDrawable: GradientDrawable
 
     private var currentInterval = "15m"
-    private var lastPriceStr: String? = null
     private var lastPriceFloat: Float? = null
-    private var lastColor: Int = Color.parseColor("#0ECB81")
-    private var isScrubbing = false
+    private var lastColor: Int = UP
+    private var shownSymbol: String? = null
+    private var shownPrice: String? = null
 
     // Moving window callbacks
     var onMoveStart: (() -> Unit)? = null
@@ -185,20 +188,6 @@ class MiniChartView(
                 0,
                 1f
             )
-            // Connect touch inspection callback
-            onCandleTouched = { candle ->
-                if (candle != null) {
-                    isScrubbing = true
-                    val isUp = candle.close >= candle.open
-                    val col = if (isUp) Color.parseColor("#0ECB81") else Color.parseColor("#F6465D")
-                    tvPrice.setTextColor(col)
-                    tvPrice.text = "C:${formatPriceShort(candle.close)} H:${formatPriceShort(candle.high)} L:${formatPriceShort(candle.low)}"
-                } else {
-                    isScrubbing = false
-                    tvPrice.setTextColor(lastColor)
-                    tvPrice.text = lastPriceStr ?: "—"
-                }
-            }
         }
         contentLayout.addView(chartView)
 
@@ -303,30 +292,36 @@ class MiniChartView(
         }
     }
 
-    fun updateHeader(symbol: String, priceStr: String?, currentPrice: Float? = null) {
-        tvSymbol.text = symbol
-        lastPriceStr = priceStr
-        if (!isScrubbing) {
-            tvPrice.text = priceStr ?: "—"
+    // Called on every price tick: only touches the TextViews when what they show changed (setText re-lays them out).
+    fun updateHeader(symbol: String, priceStr: String?, currentPrice: Float? = null, changePercent: Float? = null) {
+        if (symbol != shownSymbol) {
+            shownSymbol = symbol
+            tvSymbol.text = "$symbol ›"          // tap the name to switch to the next coin
+            lastPriceFloat = null
         }
         if (currentPrice != null) {
             val prev = lastPriceFloat
             if (prev != null) {
-                if (currentPrice > prev) {
-                    lastColor = Color.parseColor("#0ECB81")
-                } else if (currentPrice < prev) {
-                    lastColor = Color.parseColor("#F6465D")
-                }
-                if (!isScrubbing) {
-                    tvPrice.setTextColor(lastColor)
-                }
+                if (currentPrice > prev) lastColor = UP else if (currentPrice < prev) lastColor = DOWN
             }
             lastPriceFloat = currentPrice
+        }
+        val price = priceStr ?: "—"
+        val key = price + "|" + lastColor + "|" + (changePercent?.let { String.format(Locale.US, "%+.2f%%", it) } ?: "")
+        if (key == shownPrice) return
+        shownPrice = key
+        tvPrice.setTextColor(lastColor)
+        tvPrice.text = if (changePercent == null) price else SpannableStringBuilder(price).apply {
+            append("  ")
+            val start = length
+            append(String.format(Locale.US, "%+.2f%%", changePercent))
+            setSpan(ForegroundColorSpan(if (changePercent >= 0f) UP else DOWN), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     }
 
     fun setActiveInterval(interval: String) {
         currentInterval = interval
+        chartView.setInterval(interval)
         updateTabStyles()
         val btn = intervalButtons[interval]
         if (btn != null) {
@@ -378,7 +373,7 @@ class MiniChartView(
         } catch (_: Exception) {
             Color.parseColor("#1E2024")
         }
-        val alpha = (opacity.coerceIn(0.1f, 1.0f) * 255).toInt().coerceIn(0, 255)
+        val alpha = (opacity.coerceIn(0.92f, 1.0f) * 255).toInt().coerceIn(0, 255)
         val bgWithAlpha = Color.argb(
             alpha,
             Color.red(baseColor),
@@ -388,5 +383,8 @@ class MiniChartView(
         bgDrawable.setColor(bgWithAlpha)
     }
 
-    private fun formatPriceShort(price: Float): String = PriceFormatter.formatLabelPrice(price)
+    private companion object {
+        val UP = Color.parseColor("#0ECB81")
+        val DOWN = Color.parseColor("#F6465D")
+    }
 }

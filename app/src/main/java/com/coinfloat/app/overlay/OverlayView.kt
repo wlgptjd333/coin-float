@@ -10,7 +10,12 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import com.coinfloat.app.market.MarketPrice
+import com.coinfloat.app.market.dayChangePercent
+import java.util.Locale
 import com.coinfloat.app.market.PriceFormatter
 import com.coinfloat.app.market.SymbolInfo
 import com.coinfloat.app.settings.OverlaySettings
@@ -40,6 +45,7 @@ class OverlayView(context: Context) : LinearLayout(context) {
     fun applySettings(settings: OverlaySettings, infoMap: Map<String, SymbolInfo>) {
         this.currentSettings = settings
         this.symbolInfoMap = infoMap
+        rendered.clear()          // display options may have changed: every row is redrawn once
 
         // Set padding scaling directly with paddingDp for fine box size control
         val hPadPx = TypedValue.applyDimension(
@@ -182,6 +188,23 @@ class OverlayView(context: Context) : LinearLayout(context) {
     // instance is reused for unchanged symbols, so identical input skips the formatting and layout work entirely.
     private val rendered = HashMap<String, Triple<MarketPrice?, SymbolInfo?, SymbolDisplayMode>>()
 
+    /** Symbol of the row at [y] (view coordinates), so a tap opens the mini chart of the coin that was tapped. */
+    fun symbolAt(y: Float): String? {
+        var best: String? = null
+        var bestDist = Float.MAX_VALUE
+        for ((symbol, tv) in rowViews) {
+            val center = (tv.top + tv.bottom) / 2f
+            val d = kotlin.math.abs(y - center)
+            if (d < bestDist) { bestDist = d; best = symbol }
+        }
+        return best
+    }
+
+    private fun changeColor(change: Float): Int {
+        val alpha = (currentSettings.textOpacity.coerceIn(0.1f, 1f) * 255).toInt()
+        return if (change >= 0f) Color.argb(alpha, 0x0E, 0xCB, 0x81) else Color.argb(alpha, 0xF6, 0x46, 0x5D)
+    }
+
     private fun renderPrices() {
         for (symbol in currentSettings.selectedSymbols) {
             val tv = rowViews[symbol] ?: continue
@@ -200,13 +223,20 @@ class OverlayView(context: Context) : LinearLayout(context) {
                 mode = currentSettings.symbolDisplayMode
             )
 
-            val text = if (currentSettings.symbolDisplayMode == SymbolDisplayMode.HIDDEN) {
+            val base = if (currentSettings.symbolDisplayMode == SymbolDisplayMode.HIDDEN) {
                 formattedPrice
             } else {
                 "$formattedSymbol $formattedPrice"
             }
+            val change = if (currentSettings.show24hChange) marketPrice?.dayChangePercent() else null
+            val text: CharSequence = if (change == null) base else SpannableStringBuilder(base).apply {
+                append(' ')
+                val start = length
+                append(String.format(Locale.US, "%+.2f%%", change))
+                setSpan(ForegroundColorSpan(changeColor(change)), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
 
-            if (tv.text != text) {
+            if (tv.text.toString() != text.toString()) {
                 tv.text = text
             }
         }

@@ -34,6 +34,7 @@ class MarketDataRepository(
     val connectionState: StateFlow<ConnectionState> = binanceClient.connectionState
 
     private val priceCache = java.util.concurrent.ConcurrentHashMap<String, MarketPrice>()
+    private val dayOpenCache = java.util.concurrent.ConcurrentHashMap<String, BigDecimal>()
 
     private val _marketPrices = MutableStateFlow<Map<String, MarketPrice>>(emptyMap())
     val marketPrices: StateFlow<Map<String, MarketPrice>> = _marketPrices.asStateFlow()
@@ -76,9 +77,21 @@ class MarketDataRepository(
                         symbol = event.symbol,
                         price = bdPrice,
                         eventTime = event.eventTime,
-                        isStale = false
+                        isStale = false,
+                        dayOpen = dayOpenCache[event.symbol]
                     )
                     publishPending.trySend(Unit)
+                }
+            }
+            launch {
+                binanceClient.dayEvents.collect { event ->
+                    val open = event.open.toBigDecimalOrNull() ?: return@collect
+                    if (dayOpenCache.put(event.symbol, open) == open) return@collect     // unchanged: nothing to redraw
+                    val current = priceCache[event.symbol]
+                    if (current != null) {
+                        priceCache[event.symbol] = current.copy(dayOpen = open)
+                        publishPending.trySend(Unit)
+                    }
                 }
             }
 

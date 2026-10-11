@@ -63,9 +63,65 @@ class ScreenshotTest {
     }
 
     @Test
+    fun overlayWindow() {
+        val ctx = paparazzi.context
+        val density = ctx.resources.displayMetrics.density
+        fun box(settings: OverlaySettings) = com.coinfloat.app.overlay.OverlayView(ctx).apply {
+            applySettings(settings, info)
+            updatePrices(
+                mapOf(
+                    "BTCUSDT" to MarketPrice("BTCUSDT", BigDecimal("83021.10"), dayOpen = BigDecimal("82208.00")),
+                    "ETHUSDT" to MarketPrice("ETHUSDT", BigDecimal("2483.72"), dayOpen = BigDecimal("2519.50"))
+                ),
+                info
+            )
+        }
+        val host = android.widget.LinearLayout(ctx).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.parseColor("#2B3A55"))
+            setPadding((16 * density).toInt(), (16 * density).toInt(), 0, 0)
+            val base = OverlaySettings(selectedSymbols = listOf("BTCUSDT", "ETHUSDT"))
+            addView(box(base), android.widget.LinearLayout.LayoutParams(-2, -2))
+            addView(box(base.copy(show24hChange = true)), android.widget.LinearLayout.LayoutParams(-2, -2).apply { topMargin = (16 * density).toInt() })
+        }
+        paparazzi.snapshot(host)
+    }
+
+    @Test
+    fun miniChart() {
+        val ctx = paparazzi.context
+        val density = ctx.resources.displayMetrics.density
+        val chart = com.coinfloat.app.overlay.MiniChartView(ctx, {}, {}, {}, {})
+        chart.applyBackgroundStyle("#1E2024", 0.85f)
+        chart.setActiveInterval("15m")
+        // deterministic random walk ending "now", so the live candle logic sees a current period
+        val now = System.currentTimeMillis() / 900_000L * 900_000L
+        var price = 83000f
+        val rnd = java.util.Random(7)
+        val items = (0 until 80).map { i ->
+            val open = price
+            val close = open + (rnd.nextGaussian().toFloat() * 60f)
+            val high = maxOf(open, close) + rnd.nextFloat() * 40f
+            val low = minOf(open, close) - rnd.nextFloat() * 40f
+            price = close
+            com.coinfloat.app.market.KlineItem(now - (79 - i) * 900_000L, open, high, low, close, 50f + rnd.nextFloat() * 400f)
+        }
+        chart.setChartData(items)
+        chart.updateHeader("BTCUSDT", "83,021.1", price, 0.99f)
+        chart.updateLivePrice(price)
+        val host = android.widget.FrameLayout(ctx).apply {
+            setBackgroundColor(android.graphics.Color.parseColor("#2B3A55"))
+            addView(chart, android.widget.FrameLayout.LayoutParams((300 * density).toInt(), (190 * density).toInt()).apply {
+                leftMargin = (16 * density).toInt(); topMargin = (16 * density).toInt()
+            })
+        }
+        paparazzi.snapshot(host)
+    }
+
+    @Test
     fun home() = shot {
         HomeContent(
-            settings = OverlaySettings(selectedSymbols = symbols, isServiceEnabled = true),
+            settings = OverlaySettings(selectedSymbols = symbols, isServiceEnabled = true, show24hChange = true),
             isServiceActive = true, connectionState = ConnectionState.CONNECTED,
             hasOverlayPermission = true, hasNotificationPermission = true,
             prices = prices, tickers = tickers, symbolInfo = info,
@@ -109,7 +165,7 @@ class ScreenshotTest {
                 SettingsContent(
                     settings = OverlaySettings(selectedSymbols = symbols),
                     appVersion = "1.8.0",
-                    onSymbolDisplayModeChange = {}, onFontSizeChange = {}, onTextColorChange = {}, onTextOpacityChange = {},
+                    onSymbolDisplayModeChange = {}, onShow24hChangeChange = {}, onFontSizeChange = {}, onTextColorChange = {}, onTextOpacityChange = {},
                     onBackgroundColorChange = {}, onBackgroundOpacityChange = {}, onPaddingChange = {}, onChartEnabledChange = {},
                     onChartIntervalChange = {}, onChartSizeProfileChange = {}, onCustomChartSizeChange = { _, _ -> },
                     onRefreshRateProfileChange = {}, onOpenAppInfo = {}, onShowStabilityHelp = {}, onShowLicenses = {}, onShowPrivacy = {}
@@ -123,7 +179,7 @@ class ScreenshotTest {
         SettingsContent(
             settings = OverlaySettings(selectedSymbols = symbols),
             appVersion = "1.8.0",
-            onSymbolDisplayModeChange = {}, onFontSizeChange = {}, onTextColorChange = {}, onTextOpacityChange = {},
+            onSymbolDisplayModeChange = {}, onShow24hChangeChange = {}, onFontSizeChange = {}, onTextColorChange = {}, onTextOpacityChange = {},
             onBackgroundColorChange = {}, onBackgroundOpacityChange = {}, onPaddingChange = {}, onChartEnabledChange = {},
             onChartIntervalChange = {}, onChartSizeProfileChange = {}, onCustomChartSizeChange = { _, _ -> },
             onRefreshRateProfileChange = {}, onOpenAppInfo = {}, onShowStabilityHelp = {}, onShowLicenses = {}, onShowPrivacy = {}

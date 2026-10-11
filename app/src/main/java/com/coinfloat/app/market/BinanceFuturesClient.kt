@@ -63,6 +63,13 @@ class BinanceFuturesClient(
     )
     val tradeEvents: SharedFlow<AggTradeEvent> = _tradeEvents.asSharedFlow()
 
+    private val _dayEvents = MutableSharedFlow<DayTickerEvent>(
+        replay = 0,
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val dayEvents: SharedFlow<DayTickerEvent> = _dayEvents.asSharedFlow()
+
     private val activeSymbols = mutableSetOf<String>()
     private val lock = Any()
 
@@ -239,6 +246,8 @@ class BinanceFuturesClient(
         val params = JSONArray()
         for (symbol in symbols) {
             params.put("${symbol.lowercase()}@aggTrade")
+            // one message per second with the rolling 24 h open: live 24 h change for the floating window and home
+            params.put("${symbol.lowercase()}@miniTicker")
         }
         json.put("params", params)
         json.put("id", id)
@@ -283,7 +292,23 @@ class BinanceFuturesClient(
         }
     }
 
+    fun parseDayTicker(text: String): DayTickerEvent? {
+        return try {
+            val json = JSONObject(text)
+            val data = json.optJSONObject("data") ?: json
+            if (data.optString("e", "") != "24hrMiniTicker") return null
+            DayTickerEvent(symbol = data.getString("s"), open = data.getString("o"))
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun handleMessage(text: String) {
+        // cheap pre-check instead of parsing every message twice
+        if (text.contains("\"24hrMiniTicker\"")) {
+            parseDayTicker(text)?.let { _dayEvents.tryEmit(it) }
+            return
+        }
         val event = parseAggTrade(text)
         if (event != null) {
             _tradeEvents.tryEmit(event)

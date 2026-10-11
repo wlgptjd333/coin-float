@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.0] - 2026-10-11
+
+### Floating window
+- **24h change next to the price** (setting "24시간 등락률 함께 표시"), colored up/down. The option already existed in
+  the saved settings but nothing showed it. It comes live from Binance's mini-ticker stream (1 message/s per coin, far
+  lighter than the trade stream), and the home watchlist uses the same live value.
+- **Tapping a row opens that coin's mini chart** (it always opened the first coin); tapping another row while the chart is
+  open switches coins, tapping the same one closes it.
+- Dropped near a screen edge, the window snaps flush to it.
+
+### Mini chart
+- **The forming candle rolls over live**: a new candle opens from the price stream when its period starts, instead of the
+  last candle stretching until the next REST refresh.
+- Volume bars under the candles, and as many candles as the window is wide (80 loaded, about 5 dp each).
+- Touching a candle shows time and OHLC inside the chart; the header keeps the live price and 24h change.
+- The chart window keeps a nearly opaque background so it stays readable with a see-through price box.
+- The header only redraws when its text changes; "BTCUSDT ›" hints that a tap switches coins.
+
+### Battery
+- The mini chart refreshes from REST once a minute instead of every 15 s (the live candle no longer depends on it).
+- The home screen's REST 24h snapshot runs every 5 minutes instead of every minute (the stream keeps it live).
+
+### Developer
+- Screenshot tests also render the floating price window and the mini chart.
+
 ## [1.8.0] - 2026-10-11
 
 ### Changed - redesigned app

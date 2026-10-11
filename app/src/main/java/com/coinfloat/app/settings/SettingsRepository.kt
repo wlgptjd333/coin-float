@@ -265,6 +265,12 @@ class SettingsRepository(
         }
     }
 
+    suspend fun updateShow24hChange(show: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_SHOW_24H_CHANGE] = show
+        }
+    }
+
     suspend fun updateRefreshRateProfile(profile: RefreshRateProfile) {
         context.dataStore.edit { preferences ->
             preferences[KEY_REFRESH_RATE_PROFILE] = profile.name

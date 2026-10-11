@@ -18,6 +18,7 @@ import com.coinfloat.app.market.KlineItem
 import com.coinfloat.app.market.MarketPrice
 import com.coinfloat.app.market.PriceFormatter
 import com.coinfloat.app.market.SymbolInfo
+import com.coinfloat.app.market.dayChangePercent
 import com.coinfloat.app.settings.OverlaySettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -258,7 +259,7 @@ class OverlayController(private val context: Context) {
                 val info = symbolInfoMap[currentChartSymbol] ?: symbolInfoMap[currentChartSymbol.uppercase()]
                 val formattedPrice = PriceFormatter.formatPrice(marketPrice?.price, info?.tickSize)
                 val livePrice = marketPrice?.price?.toFloat()
-                miniChartView?.updateHeader(currentChartSymbol, formattedPrice, livePrice)
+                miniChartView?.updateHeader(currentChartSymbol, formattedPrice, livePrice, marketPrice?.dayChangePercent())
 
                 if (livePrice != null && livePrice > 0f) {
                     miniChartView?.updateLivePrice(livePrice)
@@ -289,6 +290,7 @@ class OverlayController(private val context: Context) {
         var initialY = 0
         var initialTouchX = 0f
         var initialTouchY = 0f
+        var downY = 0f
         var downTime = 0L
 
         val dm = context.resources.displayMetrics
@@ -301,6 +303,7 @@ class OverlayController(private val context: Context) {
                     initialY = params.y
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
+                    downY = event.y
                     downTime = System.currentTimeMillis()
                     isDragging = false
                     true
@@ -335,11 +338,12 @@ class OverlayController(private val context: Context) {
                 MotionEvent.ACTION_UP -> {
                     if (isDragging) {
                         isDragging = false
+                        snapToEdge(view, params)
                         onPositionSavedListener?.invoke(params.x, params.y)
                     } else {
                         val duration = System.currentTimeMillis() - downTime
                         if (duration < 350) {
-                            handleOverlayClick()
+                            handleOverlayClick(view.symbolAt(downY))
                         }
                     }
                     true
@@ -353,13 +357,34 @@ class OverlayController(private val context: Context) {
         }
     }
 
-    private fun handleOverlayClick() {
+    // Dropped close to a side: snap flush to it, like system bubbles; elsewhere the window stays where it was dropped.
+    private fun snapToEdge(view: OverlayView, params: WindowManager.LayoutParams) {
+        val density = context.resources.displayMetrics.density
+        val (screenWidth, _) = getRealScreenSize()
+        val snap = (24 * density).toInt()
+        val viewW = if (view.width > 0) view.width else return
+        val target = when {
+            params.x < snap -> 0
+            screenWidth - (params.x + viewW) < snap -> (screenWidth - viewW).coerceAtLeast(0)
+            else -> return
+        }
+        if (target == params.x) return
+        params.x = target
+        try {
+            windowManager.updateViewLayout(view, params)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error snapping overlay: ${e.message}")
+        }
+    }
+
+    private fun handleOverlayClick(tappedSymbol: String?) {
         if (!latestSettings.isChartEnabled) return
+        val symbol = tappedSymbol ?: latestSettings.selectedSymbols.firstOrNull() ?: "BTCUSDT"
         if (isMiniChartShowing) {
-            hideMiniChart()
+            // tapping the coin that is already open closes the chart; another coin switches to it
+            if (symbol == currentChartSymbol) hideMiniChart() else { currentChartSymbol = symbol; loadChartData() }
         } else {
-            val firstSymbol = latestSettings.selectedSymbols.firstOrNull() ?: "BTCUSDT"
-            currentChartSymbol = firstSymbol
+            currentChartSymbol = symbol
             currentChartInterval = latestSettings.defaultChartInterval
             showMiniChart()
         }
@@ -547,7 +572,8 @@ class OverlayController(private val context: Context) {
         val info = latestSymbolInfoMap[currentChartSymbol] ?: latestSymbolInfoMap[currentChartSymbol.uppercase()]
         val formattedPrice = PriceFormatter.formatPrice(marketPrice?.price, info?.tickSize)
         val livePrice = marketPrice?.price?.toFloat()
-        chart.updateHeader(currentChartSymbol, formattedPrice, livePrice)
+        chart.updateHeader(currentChartSymbol, formattedPrice, livePrice, marketPrice?.dayChangePercent())
+        chart.setActiveInterval(currentChartInterval)
         chart.setChartLoading()
 
         // A newer request (user switched symbol/interval) supersedes this one: cancel it and, as
@@ -600,7 +626,7 @@ class OverlayController(private val context: Context) {
         chartRefreshJob?.cancel()
         chartRefreshJob = coroutineScope?.launch(Dispatchers.IO) {
             while (isMiniChartShowing && isScreenOn) {
-                delay(15_000L)
+                delay(60_000L)
                 if (!isMiniChartShowing || !isScreenOn) break
                 try {
                     val symbol = currentChartSymbol

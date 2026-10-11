@@ -13,8 +13,21 @@ data class MarketPrice(
     val symbol: String,
     val price: BigDecimal?,
     val eventTime: Long? = null,
-    val isStale: Boolean = false
+    val isStale: Boolean = false,
+    /** Price 24 h ago (Binance rolling 24 h window), from the mini-ticker stream; null until the first one arrives. */
+    val dayOpen: BigDecimal? = null
 )
+
+/** 24 h change in percent, or null while the 24 h open price is not known yet. */
+fun MarketPrice.dayChangePercent(): Float? {
+    val p = price ?: return null
+    val o = dayOpen ?: return null
+    if (o.signum() == 0) return null
+    return ((p.toDouble() - o.toDouble()) / o.toDouble() * 100.0).toFloat()
+}
+
+/** Mini-ticker (1/s per symbol): only what the app uses. */
+data class DayTickerEvent(val symbol: String, val open: String)
 
 data class SymbolInfo(
     val symbol: String,

@@ -23,10 +23,13 @@ class SubscriptionBuilderTest {
         assertEquals(42, json.getInt("id"))
 
         val params = json.getJSONArray("params")
-        assertEquals(3, params.length())
+        assertEquals(6, params.length())
         assertEquals("btcusdt@aggTrade", params.getString(0))
-        assertEquals("ethusdt@aggTrade", params.getString(1))
-        assertEquals("solusdt@aggTrade", params.getString(2))
+        assertEquals("btcusdt@miniTicker", params.getString(1))
+        assertEquals("ethusdt@aggTrade", params.getString(2))
+        assertEquals("ethusdt@miniTicker", params.getString(3))
+        assertEquals("solusdt@aggTrade", params.getString(4))
+        assertEquals("solusdt@miniTicker", params.getString(5))
     }
 
     @Test
@@ -43,7 +46,8 @@ class SubscriptionBuilderTest {
         assertEquals(99, json.getInt("id"))
 
         val params = json.getJSONArray("params")
-        assertEquals(1, params.length())
+        assertEquals(2, params.length())
         assertEquals("ethusdt@aggTrade", params.getString(0))
+        assertEquals("ethusdt@miniTicker", params.getString(1))
     }
 }

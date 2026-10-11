@@ -28,7 +28,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.withStyle
+import com.coinfloat.app.market.dayChangePercent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,14 +81,14 @@ fun HomeContent(
     onEditSymbols: () -> Unit,
     onRefreshTickers: () -> Unit
 ) {
-    // 24h change for the watchlist: refreshed while the home screen is on screen.
+    // 24h change for the watchlist: a REST snapshot seeds it; the live stream keeps it current afterwards.
     val refresh by rememberUpdatedState(onRefreshTickers)
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(settings.selectedSymbols) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
                 refresh()
-                delay(60_000L)
+                delay(300_000L)
             }
         }
     }
@@ -178,7 +182,7 @@ private fun Watchlist(
             val info = symbolInfo[upper]
             val base = info?.baseAsset ?: upper.removeSuffix("USDT")
             val price = prices[upper]?.price
-            val change = tickers[upper]?.priceChangePercent
+            val change = prices[upper]?.dayChangePercent() ?: tickers[upper]?.priceChangePercent
             ListRow(
                 title = base,
                 subtitle = "${info?.quoteAsset ?: "USDT"} 무기한",
@@ -262,14 +266,26 @@ fun OverlayPreview(settings: OverlaySettings, modifier: Modifier = Modifier) {
                 .padding(horizontal = (settings.paddingDp * 1.5f + 4f).dp, vertical = (settings.paddingDp + 2f).dp)
         ) {
             Column {
-                listOf(Triple("BTCUSDT", "BTC", "85,136.70"), Triple("ETHUSDT", "ETH", "3,240.20")).forEach { (full, short, p) ->
+                listOf(
+                    Triple("BTCUSDT", "BTC", "85,136.70") to 0.99f,
+                    Triple("ETHUSDT", "ETH", "3,240.20") to -1.42f
+                ).forEach { (row, change) ->
+                    val (full, short, p) = row
                     val label = when (settings.symbolDisplayMode) {
                         SymbolDisplayMode.FULL -> "$full "
                         SymbolDisplayMode.SHORT -> "$short "
                         SymbolDisplayMode.HIDDEN -> ""
                     }
+                    val line = buildAnnotatedString {
+                        append("$label$p")
+                        if (settings.show24hChange) {
+                            withStyle(SpanStyle(color = (if (change >= 0f) Cf.Up else Cf.Down).copy(alpha = text.alpha))) {
+                                append(" %+.2f%%".format(change))
+                            }
+                        }
+                    }
                     Text(
-                        "$label$p",
+                        line,
                         color = text,
                         fontSize = settings.fontSizeSp.sp,
                         fontFamily = FontFamily.Monospace,

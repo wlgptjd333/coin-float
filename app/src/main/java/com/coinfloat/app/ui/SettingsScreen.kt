@@ -141,6 +141,7 @@ fun SettingsScreen(
                             settings = settings,
                             appVersion = appVersion,
                             onSymbolDisplayModeChange = viewModel::updateSymbolDisplayMode,
+                            onShow24hChangeChange = viewModel::updateShow24hChange,
                             onFontSizeChange = viewModel::updateFontSize,
                             onTextColorChange = viewModel::updateTextColor,
                             onTextOpacityChange = viewModel::updateTextOpacity,

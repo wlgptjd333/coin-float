@@ -59,6 +59,7 @@ fun SettingsContent(
     settings: OverlaySettings,
     appVersion: String,
     onSymbolDisplayModeChange: (SymbolDisplayMode) -> Unit,
+    onShow24hChangeChange: (Boolean) -> Unit,
     onFontSizeChange: (Float) -> Unit,
     onTextColorChange: (String) -> Unit,
     onTextOpacityChange: (Float) -> Unit,
@@ -89,6 +90,13 @@ fun SettingsContent(
                     onSelect = onSymbolDisplayModeChange
                 )
             }
+            GroupDivider()
+            SwitchRow(
+                title = "24시간 등락률 함께 표시",
+                subtitle = "가격 옆에 +1.23% 처럼 상승·하락 색으로",
+                checked = settings.show24hChange,
+                onCheckedChange = onShow24hChangeChange
+            )
             GroupDivider()
             ControlBlock("글자 크기", "${settings.fontSizeSp.toInt()}sp") {
                 SmoothSlider(settings.fontSizeSp, { onFontSizeChange(it.toInt().toFloat()) }, 3f..24f, steps = 20)
