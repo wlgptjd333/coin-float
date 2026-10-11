@@ -377,7 +377,8 @@ class MiniChartView(
         } catch (_: Exception) {
             Color.parseColor("#1E2024")
         }
-        val alpha = (opacity.coerceIn(0.92f, 1.0f) * 255).toInt().coerceIn(0, 255)
+        // same color and opacity as the floating price box (the chart window follows the user's style)
+        val alpha = (opacity.coerceIn(0f, 1.0f) * 255).toInt().coerceIn(0, 255)
         val bgWithAlpha = Color.argb(
             alpha,
             Color.red(baseColor),

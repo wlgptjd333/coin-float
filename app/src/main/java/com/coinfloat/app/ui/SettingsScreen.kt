@@ -21,6 +21,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -69,6 +70,9 @@ fun SettingsScreen(
     val activeChartSymbol by viewModel.activeChartSymbol.collectAsState()
 
     var isChartFullscreen by rememberSaveable { mutableStateOf(false) }
+    // the chart page survives tab switches; it is torn down with the activity
+    val chartWeb = remember { ChartWebHolder() }
+    DisposableEffect(Unit) { onDispose { chartWeb.destroy() } }
     var infoSheet by rememberSaveable { mutableStateOf<InfoSheet?>(null) }
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     // Fullscreen and landscape give the chart the whole window (no navigation bar).
@@ -119,6 +123,7 @@ fun SettingsScreen(
                     onRefreshFunding = viewModel::loadFundingInfo,
                     isFullscreen = isChartFullscreen,
                     onToggleFullscreen = { isChartFullscreen = !isChartFullscreen },
+                    webHolder = chartWeb,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {

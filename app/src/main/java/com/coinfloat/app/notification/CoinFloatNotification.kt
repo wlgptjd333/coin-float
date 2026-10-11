@@ -53,6 +53,18 @@ object CoinFloatNotification {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // the "설정" button opens the settings tab itself (tapping the notification just opens the app)
+        val settingsTabIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_TARGET_TAB, com.coinfloat.app.ui.SettingsViewModel.TAB_SETTINGS)
+        }
+        val settingsTabPendingIntent = PendingIntent.getActivity(
+            context,
+            4,
+            settingsTabIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val stopIntent = Intent(context, FloatingOverlayService::class.java).apply {
             action = FloatingOverlayService.ACTION_STOP
         }
@@ -109,7 +121,7 @@ object CoinFloatNotification {
         builder.addAction(
             0,
             context.getString(R.string.action_settings),
-            openSettingsPendingIntent
+            settingsTabPendingIntent
         )
         builder.addAction(
             0,

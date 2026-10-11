@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.2] - 2026-10-11
+
+### Fixed
+- **Chart tab no longer reloads every time you come back.** Leaving the tab destroyed the chart page; returning rebuilt it
+  and refetched 1,000 candles and every order-flow feed, and lost zoom/scroll. The page now stays alive while the app is
+  open and is only paused (sockets and timers stop) when another tab is shown.
+- **No more holes in the chart after a pause.** On resume the chart refetched only the last 60 candles, so being away for
+  longer than 60 candles (e.g. 2 hours on 1m) left a gap that indicators then bridged. It now fetches everything that was
+  missed, or starts over if more than a full page was missed.
+- Changing any display setting (even dragging a slider) re-synced the price subscriptions and re-published every price;
+  it now only does that when the coin list changes.
+- The notification's "설정" button opens the settings tab (it opened whatever tab was last shown).
+- **Mini chart background matches the floating price box again** (same color and opacity). 1.9.0 forced it to be
+  nearly opaque, which turned it into a solid (light) panel with a light background color.
+
+### Changed
+- Chart header: the 24h change is live from the stream; the REST stats poll every 30 s only while the stats row is open
+  (every 5 minutes otherwise).
+
 ## [1.9.1] - 2026-10-11
 
 ### Changed

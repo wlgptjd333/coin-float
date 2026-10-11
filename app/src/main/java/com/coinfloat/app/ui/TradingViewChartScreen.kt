@@ -64,6 +64,8 @@ import androidx.compose.ui.unit.Density
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.SideEffect
+import com.coinfloat.app.market.dayChangePercent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -137,6 +139,7 @@ fun TradingViewChartScreen(
     onRefreshFunding: (String) -> Unit = {},
     isFullscreen: Boolean = false,
     onToggleFullscreen: () -> Unit = {},
+    webHolder: ChartWebHolder,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -160,12 +163,13 @@ fun TradingViewChartScreen(
             while (true) {
                 refreshTicker(currentSymbol)
                 if (statsExpanded) refreshFunding(currentSymbol)
-                delay(TICKER_REFRESH_MS)
+                // the header's 24h change is live from the stream; the REST stats only matter while the row is open
+                delay(if (statsExpanded) TICKER_REFRESH_MS else 300_000L)
             }
         }
     }
 
-    val webViewHolder = remember { WebViewHolder() }
+    val webViewHolder = webHolder
 
     // The page stops its sockets/timers (and the WebView itself is frozen) whenever the app is not in the foreground.
     DisposableEffect(lifecycleOwner) {
@@ -292,6 +296,7 @@ private fun LiveChartHeader(
 ) {
     val prices by marketPrices.collectAsState()
     val currentPrice = prices[symbol]?.price
+    val liveChange = prices[symbol]?.dayChangePercent() ?: ticker24h?.priceChangePercent
     val formattedPrice = PriceFormatter.formatPrice(currentPrice, tickSize)
     val livePriceFloat = currentPrice?.toFloat() ?: 0f
 
@@ -315,6 +320,7 @@ private fun LiveChartHeader(
         symbol = symbol,
         formattedPrice = formattedPrice,
         priceColor = animatedPriceColor,
+        changePercent = liveChange,
         ticker24h = ticker24h,
         fundingInfo = fundingInfo,
         tickSize = tickSize,
@@ -335,6 +341,7 @@ private fun ChartHeader(
     symbol: String,
     formattedPrice: String,
     priceColor: Color,
+    changePercent: Float?,
     ticker24h: Ticker24h?,
     fundingInfo: FundingInfo?,
     tickSize: String?,
@@ -347,7 +354,7 @@ private fun ChartHeader(
     // The one-line header is dense by design; a large system font scale would truncate the symbol.
     val density = LocalDensity.current
     CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = minOf(density.fontScale, 1.0f))) {
-        ChartHeaderContent(symbol, formattedPrice, priceColor, ticker24h, fundingInfo, tickSize, statsExpanded, onToggleStats, onSymbolClick, onRotate, onFullscreen)
+        ChartHeaderContent(symbol, formattedPrice, priceColor, changePercent, ticker24h, fundingInfo, tickSize, statsExpanded, onToggleStats, onSymbolClick, onRotate, onFullscreen)
     }
 }
 
@@ -356,6 +363,7 @@ private fun ChartHeaderContent(
     symbol: String,
     formattedPrice: String,
     priceColor: Color,
+    changePercent: Float?,
     ticker24h: Ticker24h?,
     fundingInfo: FundingInfo?,
     tickSize: String?,
@@ -402,9 +410,9 @@ private fun ChartHeaderContent(
                     fontFamily = FontFamily.Monospace,
                     maxLines = 1
                 )
-                if (ticker24h != null) {
+                if (changePercent != null) {
                     Spacer(Modifier.width(8.dp))
-                    ChangeBadge(ticker24h.priceChangePercent)
+                    ChangeBadge(changePercent)
                 }
                 Spacer(Modifier.weight(1f))
                 HeaderIconButton(
@@ -678,8 +686,24 @@ private fun SymbolSearchSheet(
 // WebView
 // ---------------------------------------------------------------------------------------------------
 
-private class WebViewHolder {
+/**
+ * Keeps the chart WebView alive while the app is open: leaving the chart tab only pauses the page, so coming back is
+ * instant and keeps zoom, scroll, drawings and loaded data (it used to rebuild the page and refetch everything). The
+ * page's callbacks go through this holder, so a re-created chart screen never talks to a disposed one.
+ */
+class ChartWebHolder {
     var view: WebView? = null
+    var symbol: () -> String = { "BTCUSDT" }
+    var interval: () -> String = { ChartInterval.DEFAULT }
+    var immersive: () -> Boolean = { false }
+    var onOpenSearch: () -> Unit = {}
+    var onExitImmersive: () -> Unit = {}
+    var onBackState: (Boolean) -> Unit = {}
+
+    fun destroy() {
+        view?.destroyChart()
+        view = null
+    }
 }
 
 @Composable
@@ -687,7 +711,7 @@ private fun ChartWebView(
     symbol: String,
     defaultInterval: String,
     immersive: Boolean,
-    holder: WebViewHolder,
+    holder: ChartWebHolder,
     onOpenSymbolSearch: () -> Unit,
     onExitImmersive: () -> Unit,
     onBackState: (Boolean) -> Unit,
@@ -703,6 +727,16 @@ private fun ChartWebView(
     val latestExit by rememberUpdatedState(onExitImmersive)
     val latestBackState by rememberUpdatedState(onBackState)
 
+    // the (long-lived) page always calls back into the screen that is showing it now
+    SideEffect {
+        holder.symbol = { latestSymbol }
+        holder.interval = { latestInterval }
+        holder.immersive = { latestImmersive }
+        holder.onOpenSearch = { latestOpenSearch() }
+        holder.onExitImmersive = { latestExit() }
+        holder.onBackState = { latestBackState(it) }
+    }
+
     LaunchedEffect(immersive, generation) {
         holder.view?.evaluateJavascript("window.setImmersive && window.setImmersive($immersive);", null)
     }
@@ -711,16 +745,31 @@ private fun ChartWebView(
         AndroidView(
             modifier = modifier,
             factory = { ctx ->
-                createChartWebView(
-                    ctx = ctx,
-                    symbol = { latestSymbol },
-                    defaultInterval = { latestInterval },
-                    immersive = { latestImmersive },
-                    onOpenSymbolSearch = { latestOpenSearch() },
-                    onExitImmersive = { latestExit() },
-                    onBackState = { latestBackState(it) },
-                    onRendererGone = { generation++; latestBackState(false) }
-                ).also { holder.view = it }
+                val kept = holder.view
+                if (kept != null) {
+                    (kept.parent as? ViewGroup)?.removeView(kept)
+                    kept.onResume()
+                    kept.resumeTimers()
+                    kept.evaluateJavascript("window.setActive && window.setActive(true);", null)
+                    kept
+                } else {
+                    createChartWebView(
+                        ctx = ctx,
+                        symbol = { holder.symbol() },
+                        defaultInterval = { holder.interval() },
+                        immersive = { holder.immersive() },
+                        onOpenSymbolSearch = { holder.onOpenSearch() },
+                        onExitImmersive = { holder.onExitImmersive() },
+                        onBackState = { holder.onBackState(it) },
+                        onRendererGone = {
+                            // the renderer died: throw this WebView away and build a fresh one
+                            holder.view?.destroyChart()
+                            holder.view = null
+                            generation++
+                            holder.onBackState(false)
+                        }
+                    ).also { holder.view = it }
+                }
             },
             update = { webView ->
                 if (webView.tag != symbol) {
@@ -729,8 +778,14 @@ private fun ChartWebView(
                 }
             },
             onRelease = { webView ->
-                if (holder.view === webView) holder.view = null
-                webView.destroyChart()
+                // leaving the chart tab: pause the page (sockets, timers), keep it for next time
+                if (holder.view === webView) {
+                    runCatching {
+                        webView.evaluateJavascript("window.setActive && window.setActive(false);", null)
+                        webView.onPause()
+                        webView.pauseTimers()
+                    }
+                }
             }
         )
     }

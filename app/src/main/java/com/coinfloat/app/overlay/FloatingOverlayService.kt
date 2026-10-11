@@ -48,6 +48,7 @@ class FloatingOverlayService : Service() {
     private lateinit var notificationManager: NotificationManager
 
     private var priceUpdateJob: Job? = null
+    private var lastSubscribedSymbols: List<String>? = null
     private var isServiceRunning = false
 
     // The market feed only has a consumer while the screen is on AND the overlay is visible. Keeping the socket
@@ -228,6 +229,7 @@ class FloatingOverlayService : Service() {
 
         updateNotification(marketDataRepository.connectionState.value)
         marketDataRepository.start(currentSettings.selectedSymbols)
+        lastSubscribedSymbols = currentSettings.selectedSymbols
         feedRunning = true
         syncFeed()
         showOverlay(currentSettings)
@@ -297,8 +299,11 @@ class FloatingOverlayService : Service() {
     private fun handleSettingsChanged(settings: OverlaySettings) {
         if (!isServiceRunning) return
 
-        // Update WebSocket subscriptions when symbol list changes
-        marketDataRepository.updateSymbols(settings.selectedSymbols)
+        // Update WebSocket subscriptions only when the symbol list changes (not on every style tweak / slider tick)
+        if (settings.selectedSymbols != lastSubscribedSymbols) {
+            lastSubscribedSymbols = settings.selectedSymbols
+            marketDataRepository.updateSymbols(settings.selectedSymbols)
+        }
 
         // Update overlay view with new styling/symbols
         if (settings.isOverlayVisible) {

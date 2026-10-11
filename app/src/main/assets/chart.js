@@ -1691,13 +1691,19 @@ function subscribeKline() {
 }
 
 // fill the gap after a pause/reconnect with the most recent candles
+// (after a pause/reconnect): fetch every candle missed since the last one we have, so there is never a hole in the
+// series. Away longer than a full page of history: start over from the latest candles.
 function resync() {
-    var seq = loadSeq;
-    return fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=60')
+    if (!candles.length) return;
+    var seq = loadSeq, missed = Math.ceil((Date.now() / 1000 - candles[candles.length - 1].time) / curSec());
+    if (missed > 990) { reload(false); return; }
+    var limit = Math.max(60, missed + 5);
+    return fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=' + limit)
         .then(function (r) { return r.ok ? r.json() : []; })
         .then(function (raw) {
             if (seq !== loadSeq || !Array.isArray(raw) || !raw.length || !candles.length) return;
             var rows = parseRows(raw).rows, firstNew = rows[0].time, cut = candles.length;
+            if (firstNew > candles[candles.length - 1].time + curSec() * 1.5 && interval !== '1M') { reload(false); return; }   // still a gap: start over
             while (cut > 0 && candles[cut - 1].time >= firstNew) cut--;
             candles = candles.slice(0, cut).concat(rows);
             if (candles.length > MAX_BARS + 600) candles = candles.slice(candles.length - MAX_BARS);
