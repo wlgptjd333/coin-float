@@ -104,7 +104,7 @@ CF.defineSettings('heat', {
         { k: 'gain', t: 'range', label: '민감도 (높을수록 작은 물량도 진하게)', def: 5, min: 1, max: 10, step: 1 },
         { k: 'opacity', t: 'range', label: '전체 진하기', def: 100, min: 20, max: 100, step: 1, unit: '%' },
         { k: 'extend', t: 'bool', label: '현재 호가를 좌우로 연장해 표시', sub: '쌓인 기록이 없는 구간을 현재 대기 물량으로 채웁니다', def: true },
-        { k: 'legend', t: 'bool', label: '색상 안내 막대', def: true },
+        { k: 'legend', t: 'bool', label: '켤 때 색상 안내 잠깐 보여주기', def: true },
         { t: 'note', label: '호가창에 쌓여 있는 대기 주문 물량을 색으로 보여줍니다. 밝고 뜨거운 색일수록 대기 물량이 많아 지지·저항이 되기 쉬운 가격대입니다. 앱을 켜 둔 동안 기록이 쌓이며, 봉 주기에 맞춰 기록 간격이 자동 조절됩니다.' }
     ]
 });
@@ -655,7 +655,7 @@ function paintHeat(ctx, w, h) {
     ctx.globalAlpha = a;
     ctx.drawImage(Heat.cv, 0, 0, Heat.cols, Heat.ROWS, x0, y0, x1 - x0, y1 - y0);
     ctx.restore();
-    if (cfg.legend) {                                                        // small color key so the layer explains itself
+    if (cfg.legend && Date.now() - Heat.startedAt < 8000) {                 // color key for a few seconds after switching on
         var pal = HEAT_PAL[cfg.palette] || HEAT_PAL.fire, gw = 64, gx = 28;      // clear of the rail's collapse handle
         var volTop = CF.ind.vol ? h * (1 - CF.S('vol').height / 100) : h, gy = Math.max(30, volTop - 22);
         var g = ctx.createLinearGradient(gx, 0, gx + gw, 0);
@@ -672,7 +672,8 @@ CF.registerFeature('heat', {
         Heat.dt = clamp(CF.secs() / 30, 1.5, 20);
         Book.start(); Heat.cv = null; Heat.cols = 0; Heat.buf = [];
         Heat.off = CF.layer('bottom', paintHeat);
-        Heat.last = 0;                                                         // first column as soon as the book is ready, then every dt
+        Heat.last = 0; Heat.startedAt = Date.now();                            // first column as soon as the book is ready, then every dt
+        setTimeout(function () { CF.redraw(); }, 8100);                          // repaint once to clear the color key
         Heat.timer = setInterval(function () {
             var n = Date.now();
             if ((Heat.cols === 0 || n - Heat.last >= Heat.dt * 1000 - 100) && heatSample()) Heat.last = n;

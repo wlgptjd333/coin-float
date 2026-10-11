@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.0] - 2026-10-11
+
+### Changed - redesigned app
+- **One dark design for the whole app**, matching the chart: the screens used Material You wallpaper colors and the
+  system light/dark mode, so on most phones they were white with random accent colors next to a dark chart and a dark
+  status bar. The window is dark from the first frame (no white flash at launch).
+- **Bottom navigation** (홈 · 차트 · 종목 · 설정) instead of five top tabs; the guide tab is now part of settings.
+- **Home**: status pill (실시간 / 연결 중 / 꺼짐), switches for the floating window and its visibility, and a watchlist
+  with live prices, 24h change and coin badges; tap a coin to open its chart. Prices now stream on the home screen even
+  while the floating window is off.
+- **Symbols**: search field with results and one-tap add; your list with reorder and remove.
+- **Settings**: grouped list with a live preview of the floating window, segmented controls instead of long radio lists,
+  color swatches with a custom HEX option, refresh rate with a plain-language hint, mini chart, a stability guide
+  (Samsung / Android 13+) and app info (version, licenses, privacy) as dialogs.
+- Permission notices are calm amber cards with a short "허용이 안 될 때" guide instead of a red error box.
+- Prices use tabular digits, so they do not jitter while ticking.
+- Chart: the header is flush with the chart; lower-pane tags show only the name (tap for settings / close); the heatmap
+  color key appears for a few seconds after switching it on instead of staying on screen.
+
+### Fixed
+- Switching tabs could open a tab already scrolled down (all tabs shared one scroll position).
+
+### Developer
+- Paparazzi screenshot tests render every screen on the JVM (`./gradlew :app:recordPaparazziDebug`), so the UI can be
+  reviewed without a device.
+
 ## [1.7.0] - 2026-10-11
 
 ### Battery / heat

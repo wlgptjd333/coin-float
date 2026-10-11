@@ -81,8 +81,11 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 .lg-t { pointer-events: auto; color: #B2B5BE; font-size: 10px; line-height: 14px; padding: 1px 8px; margin-left: 6px; border-radius: 9px; border: 1px solid var(--line); background: rgba(30, 34, 45, .9); vertical-align: 1px; }
 #pane_tags { position: absolute; inset: 0 60px 0 0; z-index: 6; pointer-events: none; }
 .ptag-row { position: absolute; left: 6px; display: flex; gap: 4px; }
-.ptag { pointer-events: auto; display: flex; align-items: center; height: 20px; padding: 0 2px 0 7px; border-radius: 5px; background: rgba(30, 34, 45, .82); font-size: 10.5px; font-weight: 600; }
-.ptag button { color: var(--muted); font-size: 11px; padding: 0 4px; height: 20px; }
+.ptag { pointer-events: auto; display: flex; align-items: center; height: 20px; border-radius: 5px; background: rgba(19, 23, 34, .55); font-size: 10.5px; font-weight: 600; opacity: .8; }
+.ptag.open { background: rgba(30, 34, 45, .95); opacity: 1; }
+.ptag .pname { color: inherit; font: inherit; padding: 0 7px; height: 20px; }
+.ptag .pbtn { display: none; color: var(--muted); font-size: 11px; padding: 0 5px; height: 20px; }
+.ptag.open .pbtn { display: inline-block; }
 #cd_tag { position: absolute; right: 0; z-index: 6; display: none; text-align: center; font-size: 10px; font-weight: 600; color: #fff; padding: 1px 0; border-radius: 3px; pointer-events: none; font-variant-numeric: tabular-nums; }
 #legend b { color: var(--text); font-weight: 600; }
 .up { color: var(--up); } .down { color: var(--down); }

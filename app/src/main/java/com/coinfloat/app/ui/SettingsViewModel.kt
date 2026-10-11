@@ -31,9 +31,12 @@ import kotlinx.coroutines.launch
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private companion object {
-        const val UI_PRICE_SAMPLE_MS = 250L
-        const val CHART_TAB_INDEX = 1
+    companion object {
+        private const val UI_PRICE_SAMPLE_MS = 250L
+        const val TAB_HOME = 0
+        const val TAB_CHART = 1
+        const val TAB_SYMBOLS = 2
+        const val TAB_SETTINGS = 3
     }
 
     private val settingsRepository = SettingsRepository.getInstance(application)
@@ -69,19 +72,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private var isAppForeground = false
 
-    /** The chart's symbol only needs a live feed while the chart tab is what the user is looking at. */
+    /** Symbols the visible screen shows live: the chart's symbol on the chart tab, the watchlist on the home tab. */
     private fun publishAppActive() {
-        val chartVisible = _selectedTabIndex.value == CHART_TAB_INDEX
-        marketDataRepository.setAppActive(
-            active = isAppForeground,
-            currentChartSymbol = if (chartVisible) _activeChartSymbol.value else null
-        )
+        val symbols = when (_selectedTabIndex.value) {
+            TAB_CHART -> listOf(_activeChartSymbol.value)
+            TAB_HOME -> settings.value.selectedSymbols
+            else -> emptyList()
+        }
+        marketDataRepository.setAppActive(active = isAppForeground, appSymbols = symbols)
     }
 
     fun selectTab(index: Int) {
-        _selectedTabIndex.value = index
+        // 1.x builds had a separate "guide" tab (4); it now lives in the settings tab.
+        val tab = index.coerceIn(TAB_HOME, TAB_SETTINGS)
+        _selectedTabIndex.value = tab
         publishAppActive()
-        if (index == CHART_TAB_INDEX) {
+        if (tab == TAB_CHART) {
             load24hTicker(_activeChartSymbol.value)
             loadFundingInfo(_activeChartSymbol.value)
         }
@@ -98,10 +104,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun setAppForegroundActive(active: Boolean) {
         isAppForeground = active
         publishAppActive()
-        if (active && _selectedTabIndex.value == CHART_TAB_INDEX) {
+        if (active && _selectedTabIndex.value == TAB_CHART) {
             load24hTicker(_activeChartSymbol.value)
             loadFundingInfo(_activeChartSymbol.value)
         }
+    }
+
+    /** Opens the chart tab on a symbol (watchlist rows). */
+    fun openChart(symbol: String) {
+        selectChartSymbol(symbol)
+        selectTab(TAB_CHART)
+    }
+
+    /** 24h change for every watchlist symbol (home screen). */
+    fun refreshWatchlistTickers() {
+        settings.value.selectedSymbols.forEach { load24hTicker(it) }
     }
 
     fun load24hTicker(symbol: String) {
@@ -304,6 +321,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             settings.collectLatest { s ->
+                if (_selectedTabIndex.value == TAB_HOME) publishAppActive()     // watchlist edits change what the home screen streams
                 if (s.isServiceEnabled && !FloatingOverlayService.isServiceActive.value && !isStartingService && checkOverlayPermission()) {
                     startService()
                 }

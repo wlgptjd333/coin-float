@@ -559,16 +559,24 @@ function layoutPaneTags() {
         var el = ps[pi] && ps[pi].getHTMLElement && ps[pi].getHTMLElement(); if (!el) return;
         var top = el.getBoundingClientRect().top - base + 3;
         html += '<div class="ptag-row" style="top:' + top.toFixed(0) + 'px">' + rows[pi].map(function (k) {
-            return '<span class="ptag" style="color:' + paneTagColor(k) + '">' + (PANE_NAME[k] || k) +
-                '<button data-k="' + k + '" data-a="cfg" aria-label="설정">⚙</button><button data-k="' + k + '" data-a="x" aria-label="닫기">✕</button></span>';
+            // quiet by default: just the name; a tap reveals settings / close for a few seconds
+            return '<span class="ptag' + (openTag === k ? ' open' : '') + '" style="color:' + paneTagColor(k) + '"><button class="pname" data-k="' + k + '" data-a="name">' + (PANE_NAME[k] || k) + '</button>' +
+                '<button class="pbtn" data-k="' + k + '" data-a="cfg" aria-label="설정">⚙</button><button class="pbtn" data-k="' + k + '" data-a="x" aria-label="닫기">✕</button></span>';
         }).join('') + '</div>';
     });
     box.innerHTML = html;
 }
+var openTag = null, openTagT = 0;
 $('pane_tags').addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('button'); if (!b) return;
-    var k = b.getAttribute('data-k');
-    if (b.getAttribute('data-a') === 'cfg') openSettings(k);
+    var k = b.getAttribute('data-k'), act = b.getAttribute('data-a');
+    if (act === 'name') {
+        openTag = openTag === k ? null : k; clearTimeout(openTagT);
+        if (openTag) openTagT = setTimeout(function () { openTag = null; layoutPaneTags(); }, 4000);
+        layoutPaneTags(); return;
+    }
+    openTag = null;
+    if (act === 'cfg') openSettings(k);
     else if (b.getAttribute('data-a') === 'x') { ind[k] = false; LS.set('ind', ind); applyIndicators(); }
 });
 if (window.ResizeObserver) new ResizeObserver(function () { scheduleTags(); scheduleCd(); }).observe($('chart'));

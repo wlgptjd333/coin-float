@@ -9,4 +9,6 @@
     <color name="white">#FFFFFFFF</color>
     <color name="coinfloat_green">#65D69A</color>
     <color name="coinfloat_bg">#EDEFF2</color>
+    <color name="cf_bg">#0E1116</color>
+    <color name="cf_surface">#161A21</color>
 </resources>

@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,41 +14,50 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.coinfloat.app.market.PriceFormatter
 import com.coinfloat.app.settings.ChartSizeProfile
 import com.coinfloat.app.settings.OverlaySettings
 import com.coinfloat.app.settings.RefreshRateProfile
 import com.coinfloat.app.settings.SymbolDisplayMode
+import com.coinfloat.app.ui.components.Caption
+import com.coinfloat.app.ui.components.Chevron
+import com.coinfloat.app.ui.components.ControlBlock
+import com.coinfloat.app.ui.components.Group
+import com.coinfloat.app.ui.components.GroupDivider
+import com.coinfloat.app.ui.components.ListRow
+import com.coinfloat.app.ui.components.ScreenHeader
+import com.coinfloat.app.ui.components.SectionLabel
+import com.coinfloat.app.ui.components.Segmented
+import com.coinfloat.app.ui.components.SmoothSlider
+import com.coinfloat.app.ui.components.SwitchRow
+import com.coinfloat.app.ui.theme.Cf
+
+private val TEXT_COLORS = listOf("#65D69A", "#00E676", "#FFFFFF", "#FF5252", "#FFD600", "#40C4FF")
+private val BG_COLORS = listOf("#1E2024", "#0B0E11", "#131722", "#000000", "#181A20", "#1E293B", "#1A1D24", "#EDEFF2")
+private val MINI_INTERVALS = listOf("1m" to "1분", "3m" to "3분", "5m" to "5분", "15m" to "15분", "30m" to "30분", "1h" to "1시간", "4h" to "4시간", "1d" to "1일")
 
 @Composable
-fun DisplaySettingsContent(
+fun SettingsContent(
     settings: OverlaySettings,
+    appVersion: String,
     onSymbolDisplayModeChange: (SymbolDisplayMode) -> Unit,
     onFontSizeChange: (Float) -> Unit,
     onTextColorChange: (String) -> Unit,
@@ -57,662 +65,220 @@ fun DisplaySettingsContent(
     onBackgroundColorChange: (String) -> Unit,
     onBackgroundOpacityChange: (Float) -> Unit,
     onPaddingChange: (Int) -> Unit,
-    onChartEnabledChange: (Boolean) -> Unit = {},
-    onChartIntervalChange: (String) -> Unit = {},
-    onChartSizeProfileChange: (ChartSizeProfile) -> Unit = {},
-    onCustomChartSizeChange: (widthDp: Int, heightDp: Int) -> Unit = { _, _ -> },
-    onRefreshRateProfileChange: (RefreshRateProfile) -> Unit = {},
-    modifier: Modifier = Modifier
+    onChartEnabledChange: (Boolean) -> Unit,
+    onChartIntervalChange: (String) -> Unit,
+    onChartSizeProfileChange: (ChartSizeProfile) -> Unit,
+    onCustomChartSizeChange: (widthDp: Int, heightDp: Int) -> Unit,
+    onRefreshRateProfileChange: (RefreshRateProfile) -> Unit,
+    onOpenAppInfo: () -> Unit,
+    onShowStabilityHelp: () -> Unit,
+    onShowLicenses: () -> Unit,
+    onShowPrivacy: () -> Unit
 ) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Overlay Preview Card
-        OverlayPreviewCard(settings = settings)
+    Column {
+        ScreenHeader("설정")
 
-        // Symbol Display Mode
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "심볼 이름 표시",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+        SectionLabel("시세창 모양")
+        Group {
+            OverlayPreview(settings, Modifier.padding(12.dp))
+            GroupDivider(startInset = 0)
+            ControlBlock("종목 이름") {
+                Segmented(
+                    options = listOf(SymbolDisplayMode.SHORT to "짧게 (BTC)", SymbolDisplayMode.FULL to "전체", SymbolDisplayMode.HIDDEN to "숨김"),
+                    selected = settings.symbolDisplayMode,
+                    onSelect = onSymbolDisplayModeChange
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                listOf(
-                    SymbolDisplayMode.SHORT to "짧은 이름 (BTC 118,250.50)",
-                    SymbolDisplayMode.FULL to "전체 이름 (BTCUSDT 118,250.50)",
-                    SymbolDisplayMode.HIDDEN to "이름 숨김 (118,250.50)"
-                ).forEach { (mode, label) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSymbolDisplayModeChange(mode) }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = settings.symbolDisplayMode == mode,
-                            onClick = { onSymbolDisplayModeChange(mode) }
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = label, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
+            }
+            GroupDivider()
+            ControlBlock("글자 크기", "${settings.fontSizeSp.toInt()}sp") {
+                SmoothSlider(settings.fontSizeSp, { onFontSizeChange(it.toInt().toFloat()) }, 3f..24f, steps = 20)
+            }
+            GroupDivider()
+            ControlBlock("글자 색") {
+                ColorRow(TEXT_COLORS, settings.textColorHex, onTextColorChange)
+            }
+            GroupDivider()
+            ControlBlock("글자 진하기", "${(settings.textOpacity * 100).toInt()}%") {
+                SmoothSlider(settings.textOpacity, onTextOpacityChange, 0.1f..1f)
+            }
+            GroupDivider()
+            ControlBlock("배경 색") {
+                ColorRow(BG_COLORS, settings.backgroundColorHex, onBackgroundColorChange)
+            }
+            GroupDivider()
+            ControlBlock("배경 진하기", "${(settings.backgroundOpacity * 100).toInt()}%") {
+                SmoothSlider(settings.backgroundOpacity, onBackgroundOpacityChange, 0f..1f)
+            }
+            GroupDivider()
+            ControlBlock("여백", "${settings.paddingDp}dp") {
+                SmoothSlider(settings.paddingDp.toFloat(), { onPaddingChange(it.toInt()) }, 0f..16f, steps = 15)
             }
         }
 
-        // Font Size (Ultra-wide range from 3sp to 24sp)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "글자 크기 (초소형 3sp ~ 24sp)",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "${settings.fontSizeSp.toInt()} sp",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                SmoothSlider(
-                    value = settings.fontSizeSp,
-                    onValueChange = { onFontSizeChange(it.toInt().toFloat()) },
-                    valueRange = 3f..24f,
-                    steps = 20
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(text = "3sp (초소형)", style = MaterialTheme.typography.labelSmall)
-                    Text(text = "11sp (기본)", style = MaterialTheme.typography.labelSmall)
-                    Text(text = "24sp", style = MaterialTheme.typography.labelSmall)
-                }
-            }
-        }
-
-        // Text Color & Text Opacity
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "글자 색상 및 투명도",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val textColors = listOf(
-                    "#65D69A" to "기본 민트",
-                    "#00E676" to "네온 그린",
-                    "#FFFFFF" to "화이트",
-                    "#FF5252" to "레드",
-                    "#FFD600" to "골드",
-                    "#40C4FF" to "스카이"
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    textColors.forEach { (hex, _) ->
-                        val parsedColor = try {
-                            Color(android.graphics.Color.parseColor(hex))
-                        } catch (_: Exception) {
-                            Color.White
-                        }
-                        val isSelected = settings.textColorHex.equals(hex, ignoreCase = true)
-
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(parsedColor)
-                                .border(
-                                    width = if (isSelected) 3.dp else 1.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
-                                    shape = CircleShape
-                                )
-                                .clickable { onTextColorChange(hex) }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                var hexInput by remember(settings.textColorHex) { mutableStateOf(settings.textColorHex) }
-                OutlinedTextField(
-                    value = hexInput,
-                    onValueChange = {
-                        hexInput = it
-                        if (it.startsWith("#") && (it.length == 7 || it.length == 9)) {
-                            onTextColorChange(it)
-                        }
-                    },
-                    label = { Text("HEX 색상 코드") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "글자 투명도", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        text = "${(settings.textOpacity * 100).toInt()}%",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                SmoothSlider(
-                    value = settings.textOpacity,
-                    onValueChange = onTextOpacityChange,
-                    valueRange = 0.1f..1.0f
+        SectionLabel("갱신 속도")
+        Group {
+            ControlBlock("초당 갱신 횟수") {
+                Segmented(
+                    options = listOf(
+                        RefreshRateProfile.FPS_10 to "10회",
+                        RefreshRateProfile.FPS_5 to "5회",
+                        RefreshRateProfile.FPS_2 to "2회",
+                        RefreshRateProfile.FPS_1 to "1회"
+                    ),
+                    selected = settings.refreshRateProfile,
+                    onSelect = onRefreshRateProfileChange
                 )
             }
         }
-
-        // Background Color & Opacity
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "배경 색상 및 투명도",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val bgColors = listOf(
-                    "#1E2024" to "슬레이트",
-                    "#0B0E11" to "바이낸스",
-                    "#131722" to "트레이딩뷰",
-                    "#000000" to "트루블랙",
-                    "#181A20" to "차콜",
-                    "#1E293B" to "네이비",
-                    "#1A1D24" to "매트",
-                    "#EDEFF2" to "라이트"
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    bgColors.forEach { (hex, _) ->
-                        val parsedColor = try {
-                            Color(android.graphics.Color.parseColor(hex))
-                        } catch (_: Exception) {
-                            Color.DarkGray
-                        }
-                        val isSelected = settings.backgroundColorHex.equals(hex, ignoreCase = true)
-
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(parsedColor)
-                                .border(
-                                    width = if (isSelected) 3.dp else 1.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
-                                    shape = CircleShape
-                                )
-                                .clickable { onBackgroundColorChange(hex) }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                var bgHexInput by remember(settings.backgroundColorHex) { mutableStateOf(settings.backgroundColorHex) }
-                OutlinedTextField(
-                    value = bgHexInput,
-                    onValueChange = {
-                        bgHexInput = it
-                        if (it.startsWith("#") && (it.length == 7 || it.length == 9)) {
-                            try {
-                                android.graphics.Color.parseColor(it)
-                                onBackgroundColorChange(it)
-                            } catch (_: Exception) {}
-                        }
-                    },
-                    label = { Text("배경 HEX 색상 코드 (예: #1E2024, #000000)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "배경 투명도", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        text = "${(settings.backgroundOpacity * 100).toInt()}%",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                SmoothSlider(
-                    value = settings.backgroundOpacity,
-                    onValueChange = onBackgroundOpacityChange,
-                    valueRange = 0f..1f
-                )
-                Text(
-                    text = "* 글자와 배경의 투명도를 각각 독립적으로 조절할 수 있습니다.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        Caption(
+            when (settings.refreshRateProfile) {
+                RefreshRateProfile.FPS_10 -> "가장 빠르지만 화면을 자주 다시 그려 발열과 배터리 소모가 늘어요."
+                RefreshRateProfile.FPS_5 -> "추천 · 실시간으로 느껴지면서 발열이 적어요."
+                RefreshRateProfile.FPS_2 -> "배터리 절약 · 0.5초마다 갱신해요."
+                RefreshRateProfile.FPS_1 -> "최대 절약 · 1초마다 갱신해요."
             }
-        }
+        )
 
-        // Box Size & Padding Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "박스 크기 & 여백 조절",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "내부 여백 (패딩)", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        text = "${settings.paddingDp} dp",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                SmoothSlider(
-                    value = settings.paddingDp.toFloat(),
-                    onValueChange = { onPaddingChange(it.toInt()) },
-                    valueRange = 0f..16f,
-                    steps = 15
-                )
-                Text(
-                    text = "* 0dp로 설정하면 화면 점유를 최소화하는 극초소형 모드가 됩니다.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // Mini Chart Settings
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "미니 차트 팝업",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "오버레이를 탭하면 그 자리에 캔들스틱 차트를 펼칩니다.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = settings.isChartEnabled,
-                        onCheckedChange = onChartEnabledChange
-                    )
-                }
-
-                if (settings.isChartEnabled) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = "기본 차트 주기 (미니 차트 · 앱 차트 시작 주기)",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    val row1 = listOf(
-                        "1m" to "1분",
-                        "3m" to "3분",
-                        "5m" to "5분",
-                        "15m" to "15분"
-                    )
-                    val row2 = listOf(
-                        "30m" to "30분",
-                        "1h" to "1시간",
-                        "4h" to "4시간",
-                        "1d" to "1일"
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        row1.forEach { (interval, label) ->
-                            val isSelected = settings.defaultChartInterval == interval
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { onChartIntervalChange(interval) },
-                                label = { Text(label, fontSize = 12.sp) },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        row2.forEach { (interval, label) ->
-                            val isSelected = settings.defaultChartInterval == interval
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { onChartIntervalChange(interval) },
-                                label = { Text(label, fontSize = 12.sp) },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "기본 창 사이즈 프로필",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    listOf(
-                        ChartSizeProfile.SMALL to "작은 사이즈 (200 × 135 dp)",
-                        ChartSizeProfile.MEDIUM to "보통 사이즈 (260 × 170 dp) [권장]",
-                        ChartSizeProfile.LARGE to "큰 사이즈 (320 × 220 dp)",
-                        ChartSizeProfile.CUSTOM to "커스텀 프로필 (${settings.customChartWidthDp} × ${settings.customChartHeightDp} dp)"
-                    ).forEach { (profile, label) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onChartSizeProfileChange(profile) }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = settings.chartSizeProfile == profile,
-                                onClick = { onChartSizeProfileChange(profile) }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = label, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-
-                    if (settings.chartSizeProfile == ChartSizeProfile.CUSTOM) {
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Custom Width Slider
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "커스텀 가로 너비", style = MaterialTheme.typography.bodySmall)
-                            Text(
-                                text = "${settings.customChartWidthDp} dp",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        SmoothSlider(
-                            value = settings.customChartWidthDp.toFloat(),
-                            onValueChange = {
-                                onCustomChartSizeChange(it.toInt(), settings.customChartHeightDp)
-                            },
-                            valueRange = 160f..400f,
-                            steps = 23
-                        )
-
-                        // Custom Height Slider
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "커스텀 세로 높이", style = MaterialTheme.typography.bodySmall)
-                            Text(
-                                text = "${settings.customChartHeightDp} dp",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        SmoothSlider(
-                            value = settings.customChartHeightDp.toFloat(),
-                            onValueChange = {
-                                onCustomChartSizeChange(settings.customChartWidthDp, it.toInt())
-                            },
-                            valueRange = 110f..350f,
-                            steps = 23
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "💡 플로팅 차트 우측 하단의 손잡이(⇲)를 터치 드래그하면 화면에서 바로 실시간 크기 조절이 가능하며 커스텀 프로필에 자동 저장됩니다. 상단 헤더를 드래그하여 차트 창 위치도 자유롭게 이동할 수 있습니다.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
-        // Floating Window Refresh Rate (FPS & Battery Optimization)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "플로팅 윈도우 갱신 주기 & 프레임 (FPS)",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "가격 갱신 빈도를 조절하여 눈의 피로도와 스마트폰 배터리/발열을 최적화합니다.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
-                listOf(
-                    RefreshRateProfile.FPS_10,
-                    RefreshRateProfile.FPS_5,
-                    RefreshRateProfile.FPS_2,
-                    RefreshRateProfile.FPS_1
-                ).forEach { profile ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onRefreshRateProfileChange(profile) }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = settings.refreshRateProfile == profile,
-                            onClick = { onRefreshRateProfileChange(profile) }
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = profile.label,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = if (settings.refreshRateProfile == profile) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun OverlayPreviewCard(settings: OverlaySettings) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "오버레이 미리보기",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        SectionLabel("미니 차트")
+        Group {
+            SwitchRow(
+                title = "시세창을 누르면 미니 차트",
+                subtitle = "그 자리에 캔들 차트를 펼쳐요",
+                checked = settings.isChartEnabled,
+                onCheckedChange = onChartEnabledChange
             )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            val parsedBg = try {
-                val c = android.graphics.Color.parseColor(settings.backgroundColorHex)
-                Color(
-                    red = android.graphics.Color.red(c) / 255f,
-                    green = android.graphics.Color.green(c) / 255f,
-                    blue = android.graphics.Color.blue(c) / 255f,
-                    alpha = settings.backgroundOpacity.coerceIn(0f, 1f)
-                )
-            } catch (_: Exception) {
-                Color(0x1AEDEFF2)
-            }
-
-            val parsedText = try {
-                val c = android.graphics.Color.parseColor(settings.textColorHex)
-                Color(
-                    red = android.graphics.Color.red(c) / 255f,
-                    green = android.graphics.Color.green(c) / 255f,
-                    blue = android.graphics.Color.blue(c) / 255f,
-                    alpha = settings.textOpacity.coerceIn(0.1f, 1.0f)
-                )
-            } catch (_: Exception) {
-                Color(0xFF65D69A).copy(alpha = settings.textOpacity.coerceIn(0.1f, 1.0f))
-            }
-
-            val strokeAlpha = (settings.backgroundOpacity.coerceIn(0f, 1f) * 1.5f).coerceIn(0.2f, 0.85f)
-            val strokeColor = try {
-                val c = android.graphics.Color.parseColor(settings.backgroundColorHex)
-                Color(
-                    red = android.graphics.Color.red(c) / 255f,
-                    green = android.graphics.Color.green(c) / 255f,
-                    blue = android.graphics.Color.blue(c) / 255f,
-                    alpha = strokeAlpha
-                )
-            } catch (_: Exception) {
-                Color.LightGray.copy(alpha = 0.5f)
-            }
-
-            // Preview box representing the overlay on top of screen content
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(parsedBg)
-                    .border(1.dp, strokeColor, RoundedCornerShape(6.dp))
-                    .padding(
-                        horizontal = (settings.paddingDp * 1.5f + 4f).dp,
-                        vertical = (settings.paddingDp + 2f).dp
-                    )
-            ) {
-                Column {
-                    listOf(
-                        "BTCUSDT" to "BTC" to "85,136.70",
-                        "ETHUSDT" to "ETH" to "3,240.20"
-                    ).forEach { (pair, mockPrice) ->
-                        val (fullSym, shortSym) = pair
-                        val label = when (settings.symbolDisplayMode) {
-                            SymbolDisplayMode.FULL -> "$fullSym "
-                            SymbolDisplayMode.SHORT -> "$shortSym "
-                            SymbolDisplayMode.HIDDEN -> ""
+            if (settings.isChartEnabled) {
+                GroupDivider()
+                ControlBlock("기본 봉 주기") {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        MINI_INTERVALS.forEach { (value, label) ->
+                            Chip(label, settings.defaultChartInterval == value) { onChartIntervalChange(value) }
                         }
-                        Text(
-                            text = "$label$mockPrice",
-                            color = parsedText,
-                            fontSize = settings.fontSizeSp.sp,
-                            fontFamily = FontFamily.Monospace,
-                            lineHeight = settings.fontSizeSp.sp * 1.25f
-                        )
+                    }
+                }
+                GroupDivider()
+                ControlBlock("창 크기") {
+                    Segmented(
+                        options = listOf(ChartSizeProfile.SMALL to "작게", ChartSizeProfile.MEDIUM to "보통", ChartSizeProfile.LARGE to "크게", ChartSizeProfile.CUSTOM to "직접"),
+                        selected = settings.chartSizeProfile,
+                        onSelect = onChartSizeProfileChange
+                    )
+                }
+                if (settings.chartSizeProfile == ChartSizeProfile.CUSTOM) {
+                    ControlBlock("가로", "${settings.customChartWidthDp}dp") {
+                        SmoothSlider(settings.customChartWidthDp.toFloat(), { onCustomChartSizeChange(it.toInt(), settings.customChartHeightDp) }, 160f..400f, steps = 23)
+                    }
+                    ControlBlock("세로", "${settings.customChartHeightDp}dp") {
+                        SmoothSlider(settings.customChartHeightDp.toFloat(), { onCustomChartSizeChange(settings.customChartWidthDp, it.toInt()) }, 110f..350f, steps = 23)
                     }
                 }
             }
         }
+        if (settings.isChartEnabled) Caption("미니 차트 오른쪽 아래 손잡이를 끌면 크기를, 위쪽을 끌면 위치를 바꿀 수 있어요.")
+
+        SectionLabel("안정적으로 사용하기")
+        Group {
+            ListRow(
+                title = "시세창이 꺼지거나 권한이 풀릴 때",
+                subtitle = "삼성 · Android 13 이상 설정 안내",
+                onClick = onShowStabilityHelp,
+                trailing = { Chevron() }
+            )
+            GroupDivider()
+            ListRow(title = "앱 정보 열기", subtitle = "배터리 · 권한 · 제한된 설정", onClick = onOpenAppInfo, trailing = { Chevron() })
+        }
+
+        SectionLabel("정보")
+        Group {
+            ListRow(title = "버전", trailing = { Text("v$appVersion", style = MaterialTheme.typography.bodyMedium, color = Cf.TextMuted) })
+            GroupDivider()
+            ListRow(title = "오픈소스 라이선스", onClick = onShowLicenses, trailing = { Chevron() })
+            GroupDivider()
+            ListRow(title = "개인정보 처리방침", subtitle = "개인정보를 수집하지 않아요", onClick = onShowPrivacy, trailing = { Chevron() })
+        }
+        Caption(
+            "Binance 선물 공개 시세를 사용하며 로그인·API 키·주문 기능이 없어요. 표시되는 시세·지표·추정치는 정보 제공용이며 " +
+                "투자 권유가 아니에요. 데이터는 지연되거나 틀릴 수 있어요."
+        )
+        Spacer(Modifier.height(28.dp))
     }
 }
 
-/**
- * Slider that keeps its thumb in local state while being dragged. Binding the thumb straight to a
- * value that is written to DataStore and read back (async) makes it lag and jump during a drag;
- * changes are still pushed out immediately so the live preview keeps working.
- */
 @Composable
-private fun SmoothSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    modifier: Modifier = Modifier,
-    steps: Int = 0
-) {
-    var local by remember { mutableFloatStateOf(value) }
-    var dragging by remember { mutableStateOf(false) }
-    // Follow the persisted value, but never fight the user's finger mid-drag.
-    LaunchedEffect(value) {
-        if (!dragging) local = value
+private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) Cf.AccentSoft else Cf.Bg)
+            .border(1.dp, if (selected) Cf.Accent else Cf.Line, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = if (selected) Cf.Text else Cf.TextMuted)
     }
-    Slider(
-        value = local,
-        onValueChange = {
-            dragging = true
-            local = it
-            onValueChange(it)
-        },
-        onValueChangeFinished = { dragging = false },
-        valueRange = valueRange,
-        steps = steps,
-        modifier = modifier
-    )
+}
+
+/** Preset swatches plus a small custom-hex field. */
+@Composable
+private fun ColorRow(presets: List<String>, current: String, onPick: (String) -> Unit) {
+    var custom by rememberSaveable { mutableStateOf(false) }
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        presets.forEach { hex ->
+            val color = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color.Gray)
+            val on = current.equals(hex, ignoreCase = true)
+            Box(
+                Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .border(2.dp, if (on) Cf.Accent else Color.Transparent, CircleShape)
+                    .padding(3.dp)
+                    .clip(CircleShape)
+                    .background(color)
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+                    .clickable { onPick(hex) }
+            )
+        }
+        val isCustom = presets.none { it.equals(current, ignoreCase = true) }
+        Box(
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (isCustom || custom) Cf.AccentSoft else Cf.Bg)
+                .border(1.dp, if (isCustom) Cf.Accent else Cf.Line, RoundedCornerShape(8.dp))
+                .clickable { custom = !custom }
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            Text("직접", style = MaterialTheme.typography.labelMedium, color = Cf.TextMuted)
+        }
+    }
+    if (custom) {
+        Spacer(Modifier.height(10.dp))
+        var text by remember(current) { mutableStateOf(current) }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Cf.Bg)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("HEX", style = MaterialTheme.typography.labelMedium, color = Cf.TextFaint)
+            Spacer(Modifier.width(10.dp))
+            BasicTextField(
+                value = text,
+                onValueChange = { v ->
+                    text = v
+                    val hex = if (v.startsWith("#")) v else "#$v"
+                    if ((hex.length == 7 || hex.length == 9) && runCatching { android.graphics.Color.parseColor(hex) }.isSuccess) onPick(hex)
+                },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = Cf.Text, fontFamily = FontFamily.Monospace),
+                cursorBrush = SolidColor(Cf.Accent),
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
 }

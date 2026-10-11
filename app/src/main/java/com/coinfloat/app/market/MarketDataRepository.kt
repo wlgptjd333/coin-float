@@ -53,7 +53,7 @@ class MarketDataRepository(
     // Multi-consumer state
     private val lock = Any()
     private val overlaySymbols = mutableSetOf<String>()
-    private var appActiveSymbol: String? = null
+    private val appSymbols = mutableSetOf<String>()
     private var isOverlayRunning = false
     private var isOverlayPaused = false
     private var isAppActive = false
@@ -102,7 +102,7 @@ class MarketDataRepository(
             }
             if (isAppActive) {
                 set.addAll(overlaySymbols)
-                appActiveSymbol?.let { set.add(it.uppercase()) }
+                set.addAll(appSymbols)
             }
             neededSymbols = set.toList()
             shouldBeConnected = neededSymbols.isNotEmpty()
@@ -160,27 +160,18 @@ class MarketDataRepository(
         reconcileSubscriptions()
     }
 
-    // Called by in-app screens (TradingViewChartScreen / SettingsViewModel).
-    // [currentChartSymbol] is the symbol the app itself needs a live feed for; null when no in-app
-    // screen is showing one (so it is not subscribed needlessly).
-    fun setAppActive(active: Boolean, currentChartSymbol: String? = null) {
-        synchronized(lock) {
-            isAppActive = active
-            appActiveSymbol = currentChartSymbol?.uppercase()
-        }
-        reconcileSubscriptions()
-    }
-
-    fun setAppActiveSymbol(symbol: String) {
+    // Called by the app's screens: [appSymbols] are the symbols the visible screen shows live (chart symbol, watchlist);
+    // empty when the visible screen needs none, so nothing is subscribed needlessly.
+    fun setAppActive(active: Boolean, appSymbols: Collection<String> = emptyList()) {
         val changed: Boolean
         synchronized(lock) {
-            val upper = symbol.uppercase()
-            changed = appActiveSymbol != upper
-            appActiveSymbol = upper
+            val next = appSymbols.map { it.uppercase() }.toSet()
+            changed = isAppActive != active || appSymbols.size != this.appSymbols.size || next != this.appSymbols
+            isAppActive = active
+            this.appSymbols.clear()
+            this.appSymbols.addAll(next)
         }
-        if (changed) {
-            reconcileSubscriptions()
-        }
+        if (changed) reconcileSubscriptions()
     }
 
     // Legacy / direct methods

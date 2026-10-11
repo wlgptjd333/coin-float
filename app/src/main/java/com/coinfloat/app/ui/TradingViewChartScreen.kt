@@ -106,7 +106,7 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 
 private val ChartBg = Color(0xFF131722)
-private val PanelBg = Color(0xFF1E222D)
+private val PanelBg = Color(0xFF131722)       // same as the chart page: header and chart read as one surface
 private val LineColor = Color(0xFF2A2E39)
 private val MutedText = Color(0xFF848E9C)
 private val MainText = Color(0xFFD1D4DC)

@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.CoinFloat" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">#1A1C1E</item>
-        <item name="android:navigationBarColor">#1A1C1E</item>
+    <!-- Dark window from the first frame (no white flash before Compose draws); bar colors match the app palette. -->
+    <style name="Theme.CoinFloat" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/cf_bg</item>
+        <item name="android:colorBackground">@color/cf_bg</item>
+        <item name="android:statusBarColor">@color/cf_bg</item>
+        <item name="android:navigationBarColor">@color/cf_surface</item>
+        <item name="android:colorAccent">#4C8DFF</item>
     </style>
 </resources>
