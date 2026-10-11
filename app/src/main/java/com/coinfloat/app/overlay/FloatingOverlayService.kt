@@ -74,7 +74,15 @@ class FloatingOverlayService : Service() {
                     overlayController.onScreenStateChanged(false)
                 }
                 Intent.ACTION_SCREEN_ON -> {
-                    Log.d(TAG, "Screen ON detected: resuming market data")
+                    // Behind the lock screen the overlay is invisible: keep the feed paused until the user unlocks.
+                    val locked = isKeyguardLocked()
+                    Log.d(TAG, "Screen ON detected (locked=$locked)")
+                    overlayController.onScreenStateChanged(!locked)
+                    feedScreenOn = !locked
+                    syncFeed()
+                }
+                Intent.ACTION_USER_PRESENT -> {
+                    Log.d(TAG, "Unlocked: resuming market data")
                     overlayController.onScreenStateChanged(true)
                     feedScreenOn = true
                     syncFeed()
@@ -102,13 +110,14 @@ class FloatingOverlayService : Service() {
         }
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         // The service can be (re)started while the screen is off; no screen event will arrive to tell us.
-        feedScreenOn = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive
+        feedScreenOn = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive && !isKeyguardLocked()
 
         CoinFloatNotification.createNotificationChannel(this)
 
         val screenFilter = android.content.IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
         }
         registerReceiver(screenStateReceiver, screenFilter)
 
@@ -365,6 +374,9 @@ class FloatingOverlayService : Service() {
         serviceScope.cancel()
         super.onDestroy()
     }
+
+    private fun isKeyguardLocked(): Boolean =
+        (getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager)?.isKeyguardLocked == true
 
     override fun onBind(intent: Intent?): IBinder? = null
 }

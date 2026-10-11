@@ -61,6 +61,9 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -123,7 +126,7 @@ fun TradingViewChartScreen(
     selectedSymbols: List<String>,
     activeSymbol: String,
     onSymbolSelected: (String) -> Unit,
-    marketPrices: Map<String, MarketPrice> = emptyMap(),
+    marketPrices: StateFlow<Map<String, MarketPrice>> = MutableStateFlow(emptyMap()),
     symbolInfoMap: Map<String, SymbolInfo> = emptyMap(),
     ticker24hMap: Map<String, Ticker24h> = emptyMap(),
     fundingInfoMap: Map<String, FundingInfo> = emptyMap(),
@@ -145,28 +148,6 @@ fun TradingViewChartScreen(
     val currentSymbol = activeSymbol.ifBlank { selectedSymbols.firstOrNull() ?: "BTCUSDT" }.uppercase()
     val tickSize = symbolInfoMap[currentSymbol]?.tickSize
     val chartInterval = remember(defaultInterval) { ChartInterval.normalize(defaultInterval) }
-
-    // --- live price (native 100 ms stream) -------------------------------------------------------
-    val currentPrice = marketPrices[currentSymbol]?.price
-    val formattedPrice = PriceFormatter.formatPrice(currentPrice, tickSize)
-    val livePriceFloat = currentPrice?.toFloat() ?: 0f
-
-    var prevPrice by remember(currentSymbol) { mutableFloatStateOf(0f) }
-    var priceColor by remember(currentSymbol) { mutableStateOf(Color.White) }
-    LaunchedEffect(livePriceFloat) {
-        if (livePriceFloat > 0f) {
-            if (prevPrice > 0f) {
-                if (livePriceFloat > prevPrice) priceColor = UpColor
-                else if (livePriceFloat < prevPrice) priceColor = DownColor
-            }
-            prevPrice = livePriceFloat
-        }
-    }
-    val animatedPriceColor by animateColorAsState(
-        targetValue = priceColor,
-        animationSpec = tween(durationMillis = 180),
-        label = "PriceColor"
-    )
 
     // --- 24h change always; the funding details only while the stats row is open ------------------------------------
     var statsExpanded by rememberSaveable { mutableStateOf(false) }
@@ -251,10 +232,9 @@ fun TradingViewChartScreen(
             .background(ChartBg)
     ) {
         if (!immersive) {
-            ChartHeader(
+            LiveChartHeader(
                 symbol = currentSymbol,
-                formattedPrice = formattedPrice,
-                priceColor = animatedPriceColor,
+                marketPrices = marketPrices,
                 ticker24h = ticker24h,
                 fundingInfo = fundingInfo,
                 tickSize = tickSize,
@@ -294,6 +274,56 @@ fun TradingViewChartScreen(
             onDismiss = { showSearchSheet = false }
         )
     }
+}
+
+// The live price is collected here, so a price tick recomposes only the header, never the chart screen or its WebView.
+@Composable
+private fun LiveChartHeader(
+    symbol: String,
+    marketPrices: StateFlow<Map<String, MarketPrice>>,
+    ticker24h: Ticker24h?,
+    fundingInfo: FundingInfo?,
+    tickSize: String?,
+    statsExpanded: Boolean,
+    onToggleStats: () -> Unit,
+    onSymbolClick: () -> Unit,
+    onRotate: () -> Unit,
+    onFullscreen: () -> Unit
+) {
+    val prices by marketPrices.collectAsState()
+    val currentPrice = prices[symbol]?.price
+    val formattedPrice = PriceFormatter.formatPrice(currentPrice, tickSize)
+    val livePriceFloat = currentPrice?.toFloat() ?: 0f
+
+    var prevPrice by remember(symbol) { mutableFloatStateOf(0f) }
+    var priceColor by remember(symbol) { mutableStateOf(Color.White) }
+    LaunchedEffect(livePriceFloat) {
+        if (livePriceFloat > 0f) {
+            if (prevPrice > 0f) {
+                if (livePriceFloat > prevPrice) priceColor = UpColor
+                else if (livePriceFloat < prevPrice) priceColor = DownColor
+            }
+            prevPrice = livePriceFloat
+        }
+    }
+    val animatedPriceColor by animateColorAsState(
+        targetValue = priceColor,
+        animationSpec = tween(durationMillis = 180),
+        label = "PriceColor"
+    )
+    ChartHeader(
+        symbol = symbol,
+        formattedPrice = formattedPrice,
+        priceColor = animatedPriceColor,
+        ticker24h = ticker24h,
+        fundingInfo = fundingInfo,
+        tickSize = tickSize,
+        statsExpanded = statsExpanded,
+        onToggleStats = onToggleStats,
+        onSymbolClick = onSymbolClick,
+        onRotate = onRotate,
+        onFullscreen = onFullscreen
+    )
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -766,7 +796,6 @@ private fun createChartWebView(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         )
-        setLayerType(View.LAYER_TYPE_HARDWARE, null)
         setBackgroundColor(android.graphics.Color.parseColor("#131722"))
         overScrollMode = View.OVER_SCROLL_NEVER
         isLongClickable = false

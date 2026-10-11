@@ -8,7 +8,7 @@ class ChartIntervalTest {
 
     @Test
     fun acceptsKnownIntervals() {
-        listOf("1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w").forEach {
+        listOf("1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "3d", "1w", "1M").forEach {
             assertEquals(it, ChartInterval.normalize(it))
         }
     }
@@ -17,6 +17,13 @@ class ChartIntervalTest {
     fun isCaseAndWhitespaceTolerant() {
         assertEquals("1h", ChartInterval.normalize(" 1H "))
         assertEquals("1d", ChartInterval.normalize("1D"))
+    }
+
+    @Test
+    fun monthAndMinuteStayDistinct() {
+        assertEquals("1M", ChartInterval.normalize("1M"))
+        assertEquals("1m", ChartInterval.normalize("1m"))
+        assertEquals("1w", ChartInterval.normalize("1W"))
     }
 
     @Test

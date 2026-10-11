@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-10-11
+
+### Battery / heat
+- **App screens no longer redraw 10 times a second.** The live price was read at the top of the whole settings screen, so
+  every tick recomposed the entire UI (chart tab included). Prices now reach the screens at most 4 times a second and only
+  the card or header that shows them updates; nothing flows while no screen is visible.
+- **Overlay default refresh is 5 FPS** (was 10). It still reads as live, but the always-on window is redrawn half as often.
+  An explicit choice in the display settings is kept.
+- **The feed stays paused on the lock screen.** It used to resume on screen-on even though the overlay cannot be seen
+  behind the lock screen; it now waits for the unlock.
+- Chart WebView: removed a forced hardware layer that added an extra GPU copy to every frame.
+- Chart page: repaints caused by data feeds are merged (at most 4 per second), the forming candle is applied at most every
+  0.4 s, the legend and countdown only touch the DOM when their text changes, depth bars are re-binned only when the book or
+  the visible range changes, and large-trade sizes use a ring buffer instead of shifting a 2,000-item array per trade.
+- **Bid/Ask uses the top-5 book (2 updates/s)** instead of the book ticker, which sends about 250 messages per second for
+  BTC that the page had to parse.
+
+### Added
+- **Volume profile (매물대)**: volume by price for the visible (or all loaded) candles, buy/sell split, POC line and 70 %
+  value area, with its own settings.
+- Intervals **6h, 12h, 3D, 1M** (month candles count down to the real month end).
+- Drawing tools **ray (연장선)** and **vertical line (수직선)**.
+
+### Fixed
+- Heatmap colors were scaled against the median row; the dense rows next to the price then saturated and covered the
+  candles. They are now relative to the 90th percentile and never fully opaque, so only real walls turn warm.
+- Lower panes kept snapping back to their default height whenever any setting changed.
+- The drawing rail was cut off in landscape; it scrolls now.
+
 ## [1.6.0] - 2026-10-10
 
 ### Added

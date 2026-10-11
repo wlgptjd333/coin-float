@@ -7,7 +7,8 @@
 var C = { up: '#0ECB81', down: '#F6465D', bg: '#131722', grid: '#1E222D', text: '#848E9C', border: '#2A2E39', accent: '#2962FF', gold: '#F0B90B' };
 var INTERVALS = [
     ['1m', '1m', 60], ['3m', '3m', 180], ['5m', '5m', 300], ['15m', '15m', 900], ['30m', '30m', 1800],
-    ['1h', '1h', 3600], ['2h', '2h', 7200], ['4h', '4h', 14400], ['1d', '1D', 86400], ['1w', '1W', 604800]
+    ['1h', '1h', 3600], ['2h', '2h', 7200], ['4h', '4h', 14400], ['6h', '6h', 21600], ['12h', '12h', 43200],
+    ['1d', '1D', 86400], ['3d', '3D', 259200], ['1w', '1W', 604800], ['1M', '1M', 2592000]
 ];
 var SEC = {}; INTERVALS.forEach(function (i) { SEC[i[0]] = i[2]; });
 var REST = 'https://fapi.binance.com/fapi/v1/klines';
@@ -138,6 +139,20 @@ defineSettings('boll', {
         { k: 'fillA', t: 'range', label: '채우기 진하기', def: 10, min: 2, max: 40, step: 1, unit: '%', showIf: function (c) { return c.fill; } }
     ]
 });
+defineSettings('vp', {
+    title: '볼륨 프로파일 (매물대) 설정', onChange: function () { vpCache.key = ''; DR.redraw(); scheduleLegend(); },
+    fields: [
+        { k: 'range', t: 'sel', label: '계산 구간', def: 'visible', opts: [['visible', '화면에 보이는 봉'], ['all', '불러온 전체 봉']] },
+        { k: 'rows', t: 'range', label: '가격 구간 수', def: 48, min: 16, max: 120, step: 4 },
+        { k: 'side', t: 'sel', label: '위치', def: 'left', opts: [['left', '왼쪽'], ['right', '오른쪽 (호가 막대와 겹침)']] },
+        { k: 'width', t: 'range', label: '막대 최대 길이', def: 26, min: 10, max: 50, step: 1, unit: '%' },
+        { k: 'opacity', t: 'range', label: '진하기', def: 30, min: 10, max: 80, step: 1, unit: '%' },
+        { k: 'split', t: 'bool', label: '매수 · 매도 체결 나눠 보기', def: true },
+        { k: 'va', t: 'bool', label: '가치 영역(거래량 70%) 강조', def: true },
+        { k: 'poc', t: 'bool', label: 'POC (최대 거래 가격) 선', def: true },
+        { t: 'note', label: '가격대별 거래량입니다. 막대가 긴 가격대(매물대)는 지지·저항이 되기 쉽습니다. 각 봉의 거래량을 고가~저가 구간에 고르게 나눠 계산합니다.' }
+    ]
+});
 defineSettings('rsi', {
     title: 'RSI 설정', onChange: calcChanged,
     fields: [
@@ -182,7 +197,7 @@ var interval = normInterval(LS.get('interval', '15m'));
 var chartType = LS.get('type', 'candle');                       // candle | ha | line | area
 var ind = Object.assign({
     vol: true, ma: true, ema: false, boll: false, rsi: false, macd: false,
-    cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false, bidask: false
+    cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: false
 }, LS.get('ind', {}));
 var railOpen = LS.get('rail', false);
 var active = true, immersive = false, started = false;
@@ -192,7 +207,13 @@ var candles = [];            // { time(sec), open, high, low, close, volume, buy
 var haBars = [];             // heikin-ashi view of candles (same indexes)
 var loadSeq = 0, loadingOlder = false, noMoreOlder = false;
 
-function normInterval(v) { v = String(v || '').toLowerCase(); return SEC[v] ? v : '15m'; }
+function normInterval(v) { v = String(v || '').trim(); if (SEC[v]) return v; v = v.toLowerCase(); return SEC[v] ? v : '15m'; }
+// open time of the candle after the one opening at t (months have different lengths)
+function nextOpen(t) {
+    if (interval !== '1M') return t + curSec();
+    var d = new Date(t * 1000);
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) / 1000;
+}
 function curSec() { return SEC[interval] || 900; }
 
 // =====================================================================================================
@@ -403,14 +424,15 @@ function applySubs() {
         if (on && !subLive[key]) {
             var host = -1;                              // merged mode: join the pane a previous indicator already opened
             if (merged) Object.keys(subLive).forEach(function (k) { if (host < 0 && subShared[k]) host = paneOf(k); });
-            subLive[key] = host >= 0 ? SUBS[key].create(host, 'm_' + key) : SUBS[key].create(chart.panes().length);
+            var newPane = chart.panes().length;
+            subLive[key] = host >= 0 ? SUBS[key].create(host, 'm_' + key) : SUBS[key].create(newPane);
+            if (host < 0) { try { chart.panes()[newPane].setStretchFactor(0.3); } catch (e) { /* pane not created */ } }
             subShared[key] = merged;
             if (host >= 0) eachSeries(subLive[key], function (se) { try { se.priceScale().applyOptions({ scaleMargins: { top: 0.15, bottom: 0.12 } }); } catch (e) { /* ignore */ } });
         } else if (!on && subLive[key]) { removeSubSeries(subLive[key]); delete subLive[key]; delete subShared[key]; }
     });
     var ps = chart.panes();
     for (var i = 1; i < ps.length; i++) {
-        ps[i].setStretchFactor(0.3);
         try { chart.priceScale('right', i).applyOptions({ scaleMargins: { top: 0.12, bottom: 0.1 } }); } catch (e) { /* older engine */ }
     }
     Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); });
@@ -720,6 +742,14 @@ function attachLayers(series) {
     layerPrims.forEach(function (p) { series.attachPrimitive(p); });
 }
 function redrawLayers() { layerPrims.forEach(function (p) { if (p._req) p._req(); }); }
+// Feeds (order book, heatmap, bubbles) only need a few frames per second; each repaint redraws the whole pane, so
+// their requests are merged into at most one repaint every DATA_REDRAW_MS, and none while the chart is hidden.
+var DATA_REDRAW_MS = 250, dataRedrawT = 0, lastDataRedraw = 0;
+function requestDataRedraw() {
+    if (dataRedrawT || !active) return;
+    var wait = Math.max(0, DATA_REDRAW_MS - (Date.now() - lastDataRedraw));
+    dataRedrawT = setTimeout(function () { dataRedrawT = 0; lastDataRedraw = Date.now(); redrawLayers(); }, wait);
+}
 function addLayer(z, fn) { layers[z].push(fn); redrawLayers(); return function () { var i = layers[z].indexOf(fn); if (i >= 0) layers[z].splice(i, 1); redrawLayers(); }; }
 
 function px(a) { var x = xOf(a.time), y = yOf(a.price); return (x == null || y == null) ? null : { x: x, y: y }; }
@@ -748,8 +778,16 @@ function paint(ctx, d, selected, w, h) {
         ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(0, a.y); ctx.lineTo(w, a.y); ctx.stroke();
         label(ctx, fmtPrice(d.a.price), w - 4, a.y - 11, col, '#1a1a1a', 'right');
         if (selected) handle(ctx, { x: Math.min(40, w / 3), y: a.y });
+    } else if (d.type === 'vline') {
+        ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(a.x, 0); ctx.lineTo(a.x, h); ctx.stroke();
+        label(ctx, crosshairTimeFmt(d.a.time), a.x + 4, h - 12, col, '#1a1a1a');
+        if (selected) handle(ctx, { x: a.x, y: Math.max(20, h - 40) });
     } else if (d.type === 'trend' && b) {
         ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        if (selected) { handle(ctx, a); handle(ctx, b); }
+    } else if (d.type === 'ray' && b) {
+        var e = rayEnd(a, b, w, h);
+        ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(e.x, e.y); ctx.stroke();
         if (selected) { handle(ctx, a); handle(ctx, b); }
     } else if (d.type === 'rect' && b) {
         var x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), rw = Math.abs(a.x - b.x), rh = Math.abs(a.y - b.y);
@@ -785,6 +823,80 @@ function paint(ctx, d, selected, w, h) {
         var tw = ctx.measureText(txt).width + 12, lx = Math.max(2, Math.min(w - tw - 2, cx - tw / 2));
         label(ctx, txt, lx, Math.max(11, Math.min(h - 11, cy)), col, '#0b0e11');
     }
+}
+// ---- volume profile -----------------------------------------------------------------------------------------
+var vpCache = { key: '', rows: null };
+function vpCompute() {
+    var c = S('vp'), n = candles.length; if (!n) return null;
+    var a = 0, z = n - 1;
+    if (c.range === 'visible') {
+        var r = chart.timeScale().getVisibleLogicalRange(); if (!r) return null;
+        a = Math.max(0, Math.floor(r.from)); z = Math.min(n - 1, Math.ceil(r.to));
+        if (z - a < 2) return null;
+    }
+    var last = candles[n - 1], key = a + '|' + z + '|' + c.rows + '|' + n + '|' + last.volume + '|' + last.high + '|' + last.low;
+    if (vpCache.key === key) return vpCache.res;
+    var lo = Infinity, hi = -Infinity, i, j;
+    for (i = a; i <= z; i++) { if (candles[i].low < lo) lo = candles[i].low; if (candles[i].high > hi) hi = candles[i].high; }
+    if (!(hi > lo)) return null;
+    var rows = c.rows, step = (hi - lo) / rows, buy = new Float64Array(rows), sell = new Float64Array(rows);
+    for (i = a; i <= z; i++) {
+        var k = candles[i], span = k.high - k.low, b0 = Math.min(rows - 1, Math.floor((k.low - lo) / step)), b1 = Math.min(rows - 1, Math.floor((k.high - lo) / step));
+        var bv = k.buy, sv = Math.max(0, k.volume - k.buy);
+        if (!(span > 0) || b0 === b1) { buy[b0] += bv; sell[b0] += sv; continue; }
+        for (j = b0; j <= b1; j++) {                                     // share of the candle's range inside this row
+            var top = Math.min(k.high, lo + (j + 1) * step), bot = Math.max(k.low, lo + j * step), f = Math.max(0, top - bot) / span;
+            buy[j] += bv * f; sell[j] += sv * f;
+        }
+    }
+    var tot = 0, poc = 0, max = 0;
+    for (j = 0; j < rows; j++) { var v = buy[j] + sell[j]; tot += v; if (v > max) { max = v; poc = j; } }
+    // value area: grow from the POC towards the heavier neighbour until 70 % of the volume is inside
+    var vaLo = poc, vaHi = poc, acc = buy[poc] + sell[poc];
+    while (acc < tot * 0.7 && (vaLo > 0 || vaHi < rows - 1)) {
+        var up = vaHi < rows - 1 ? buy[vaHi + 1] + sell[vaHi + 1] : -1, dn = vaLo > 0 ? buy[vaLo - 1] + sell[vaLo - 1] : -1;
+        if (up >= dn) { vaHi++; acc += up; } else { vaLo--; acc += dn; }
+    }
+    var res = { lo: lo, step: step, rows: rows, buy: buy, sell: sell, max: max, poc: poc, vaLo: vaLo, vaHi: vaHi };
+    vpCache = { key: key, res: res };
+    return res;
+}
+addLayer('bottom', function (ctx, w, h) {
+    if (!ind.vp) return;
+    var c = S('vp'), vp = vpCompute(); if (!vp || !vp.max) return;
+    var maxW = w * c.width / 100, right = c.side === 'right', base = c.opacity / 100;
+    for (var j = 0; j < vp.rows; j++) {
+        var v = vp.buy[j] + vp.sell[j]; if (!v) continue;
+        var yTop = yOf(vp.lo + (j + 1) * vp.step), yBot = yOf(vp.lo + j * vp.step);
+        if (yTop == null || yBot == null || yBot < 0 || yTop > h) continue;
+        var hh = Math.max(1, yBot - yTop - 1), len = v / vp.max * maxW, inVa = !c.va || (j >= vp.vaLo && j <= vp.vaHi);
+        var al = base * (inVa ? 1 : 0.45);
+        if (c.split) {
+            var lb = vp.buy[j] / v * len;
+            ctx.fillStyle = hexA(C.up, al); ctx.fillRect(right ? w - len : 0, yTop, lb, hh);
+            ctx.fillStyle = hexA(C.down, al); ctx.fillRect(right ? w - len + lb : lb, yTop, len - lb, hh);
+        } else {
+            ctx.fillStyle = 'rgba(178,181,190,' + al.toFixed(3) + ')'; ctx.fillRect(right ? w - len : 0, yTop, len, hh);
+        }
+    }
+    if (c.poc) {
+        var py = yOf(vp.lo + (vp.poc + 0.5) * vp.step);
+        if (py != null && py >= 0 && py <= h) {
+            ctx.strokeStyle = 'rgba(240,185,11,.85)'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+            ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke(); ctx.setLineDash([]);
+            ctx.font = '600 10px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle';
+            ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.9)'; ctx.textAlign = right ? 'right' : 'left';
+            var tx = right ? w - maxW - 6 : maxW + 6;
+            ctx.strokeText('POC', tx, py - 8); ctx.fillStyle = '#F0B90B'; ctx.fillText('POC', tx, py - 8); ctx.textAlign = 'start';
+        }
+    }
+});
+// a ray starts at a, goes through b and runs on to the edge of the pane
+function rayEnd(a, b, w, h) {
+    var dx = b.x - a.x, dy = b.y - a.y;
+    if (!dx && !dy) return b;
+    var k = 4 * (w + h) / Math.max(1e-6, Math.hypot(dx, dy));
+    return { x: a.x + dx * k, y: a.y + dy * k };
 }
 function drawingColor(d) { return d.col || (d.type === 'hline' ? C.gold : C.accent); }
 function hexA(hex, a) {
@@ -826,8 +938,10 @@ function distTo(d, p) {
     var a = px(d.a), b = d.b ? px(d.b) : null;
     if (!a) return Infinity;
     if (d.type === 'hline') return Math.abs(p.y - a.y);
+    if (d.type === 'vline') return Math.abs(p.x - a.x);
     if (!b) return Infinity;
     if (d.type === 'trend') return segDist(p, a, b);
+    if (d.type === 'ray') { var ps0 = chart.paneSize(0); return segDist(p, a, rayEnd(a, b, ps0.width, ps0.height)); }
     if (d.type === 'rect') {
         var x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x), y1 = Math.min(a.y, b.y), y2 = Math.max(a.y, b.y);
         return Math.min(segDist(p, { x: x1, y: y1 }, { x: x2, y: y1 }), segDist(p, { x: x2, y: y1 }, { x: x2, y: y2 }),
@@ -844,6 +958,7 @@ function distTo(d, p) {
 function handlesOf(d) {
     var a = px(d.a), b = d.b ? px(d.b) : null, ps = chart.paneSize(0);
     if (d.type === 'hline') return a ? [{ k: 'a', x: Math.min(40, ps.width / 3), y: a.y }] : [];
+    if (d.type === 'vline') return a ? [{ k: 'a', x: a.x, y: Math.max(20, ps.height - 40) }] : [];
     return [a && { k: 'a', x: a.x, y: a.y }, b && { k: 'b', x: b.x, y: b.y }].filter(Boolean);
 }
 var HIT_PX = 18;
@@ -891,7 +1006,7 @@ function cloneA(a) { return { time: a.time, price: a.price }; }
 function setTool(t) {
     if (t && DR.hidden) { DR.hidden = false; LS.set('drHidden', false); }
     DR.tool = t; DR.draft = null;
-    var hints = { trend: '시작점을 누르세요', hline: '가격 위치를 누르세요', fib: '시작점을 누르세요', rect: '한쪽 모서리를 누르세요', measure: '시작점을 누르세요' };
+    var hints = { trend: '시작점을 누르세요', ray: '시작점을 누르세요', vline: '시간 위치를 누르세요', hline: '가격 위치를 누르세요', fib: '시작점을 누르세요', rect: '한쪽 모서리를 누르세요', measure: '시작점을 누르세요' };
     showHint(t ? hints[t] : '');
     refreshRail(); DR.redraw();
 }
@@ -906,7 +1021,7 @@ function onDown(e) {
     if (DR.tool) {
         var a = anchorAt(p, true); if (!a) return;
         if (DR.draft && DR.draft.awaiting) { DR.draft.b = a; DR.draft.awaiting = false; gesture = { mode: 'create', startP: p, moved: true }; }
-        else if (DR.tool === 'hline') { DR.draft = { id: 0, type: 'hline', a: a }; gesture = { mode: 'create', startP: p, moved: true }; }
+        else if (DR.tool === 'hline' || DR.tool === 'vline') { DR.draft = { id: 0, type: DR.tool, a: a }; gesture = { mode: 'create', startP: p, moved: true }; }
         else { DR.draft = { id: 0, type: DR.tool, a: a, b: cloneA(a) }; gesture = { mode: 'create', startP: p, moved: false }; }
     } else {
         if (DR.hidden) return;
@@ -936,14 +1051,17 @@ function onMove(e) {
     if (!gesture.moved && Math.hypot(p.x - gesture.startP.x, p.y - gesture.startP.y) > 8) gesture.moved = true;
     if (gesture.mode === 'create') {
         var a = anchorAt(p, true); if (!a) return;
-        if (DR.draft.type === 'hline') DR.draft.a = a; else if (gesture.moved) DR.draft.b = a;
+        if (DR.draft.type === 'hline' || DR.draft.type === 'vline') DR.draft.a = a; else if (gesture.moved) DR.draft.b = a;
     } else if (gesture.mode === 'handle' && gesture.moved) {
         var ah = anchorAt(p, true); if (!ah) return;
-        if (gesture.d.type === 'hline') gesture.d.a.price = ah.price; else gesture.d[gesture.which] = ah;
+        if (gesture.d.type === 'hline') gesture.d.a.price = ah.price;
+        else if (gesture.d.type === 'vline') gesture.d.a.time = ah.time;
+        else gesture.d[gesture.which] = ah;
     } else if (gesture.mode === 'move' && gesture.moved) {
         var dx = p.x - gesture.startP.x, dy = p.y - gesture.startP.y, d = gesture.d;
         var na = anchorAt({ x: gesture.orig.a.x + dx, y: gesture.orig.a.y + dy }, false);
         if (d.type === 'hline') { if (na) d.a.price = na.price; }
+        else if (d.type === 'vline') { if (na) d.a.time = na.time; }
         else if (na && gesture.orig.b) {
             var nb = anchorAt({ x: gesture.orig.b.x + dx, y: gesture.orig.b.y + dy }, false);
             if (nb) { d.a = na; d.b = nb; }
@@ -957,7 +1075,7 @@ function onUp(e) {
     var g = gesture; gesture = null; swallowUntil = Date.now() + 350;
     if (g.mode === 'create') {
         var dr = DR.draft;
-        if (dr.type !== 'hline' && !g.moved) { dr.awaiting = true; showHint('끝점을 누르세요'); DR.redraw(); return; }       // tap-tap flow
+        if (dr.type !== 'hline' && dr.type !== 'vline' && !g.moved) { dr.awaiting = true; showHint('끝점을 누르세요'); DR.redraw(); return; }       // tap-tap flow
         DR.draft = null;
         if (dr.type === 'measure') { DR.measure = dr; setTool(null); return; }
         dr.id = DR.nextId++; delete dr.awaiting;
@@ -1001,6 +1119,8 @@ var ICON = {
     cursor: '<svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2 4 7-3 1-4-7-5 4z"/></svg>',
     trend: '<svg viewBox="0 0 24 24"><path d="M5 19L19 5"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/></svg>',
     hline: '<svg viewBox="0 0 24 24"><path d="M3 12h18"/><circle cx="7" cy="12" r="2"/></svg>',
+    ray: '<svg viewBox="0 0 24 24"><path d="M5 19L21 3" stroke-dasharray="0"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="12" r="2"/></svg>',
+    vline: '<svg viewBox="0 0 24 24"><path d="M12 3v18"/><circle cx="12" cy="8" r="2"/></svg>',
     fib: '<svg viewBox="0 0 24 24"><path d="M4 5h16M4 10h16M4 14h16M4 19h16"/></svg>',
     rect: '<svg viewBox="0 0 24 24"><rect x="5" y="7" width="14" height="10" rx="1"/></svg>',
     measure: '<svg viewBox="0 0 24 24"><path d="M4 16l12-12 4 4L8 20z"/><path d="M8 12l2 2M11 9l2 2M14 6l2 2"/></svg>',
@@ -1011,7 +1131,7 @@ var ICON = {
     line: '<svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 8-10"/></svg>',
     area: '<svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 8-10v12H3z"/></svg>'
 };
-var TOOLS = [['cursor', '선택'], ['trend', '추세선'], ['hline', '수평선'], ['fib', '피보나치'], ['rect', '사각형'], ['measure', '측정']];
+var TOOLS = [['cursor', '선택'], ['trend', '추세선'], ['ray', '연장선'], ['hline', '수평선'], ['vline', '수직선'], ['fib', '피보나치'], ['rect', '사각형'], ['measure', '측정']];
 var trashArmed = null;
 
 function buildRail() {
@@ -1286,6 +1406,7 @@ function openIndicators() {
         switchRow('이동평균선', maLines, 'ma', true),
         switchRow('지수이동평균', 'EMA ' + S('ema').lines.map(function (l) { return l.p; }).join(' · '), 'ema', true),
         switchRow('볼린저 밴드', b.period + ', ' + b.mult, 'boll', true),
+        switchRow('볼륨 프로파일 (매물대)', '가격대별 거래량 · POC · 가치 영역', 'vp', true),
         switchRow('RSI', r.period + ' · 별도 창', 'rsi', true),
         switchRow('MACD', m.fast + ', ' + m.slow + ', ' + m.signal + ' · 별도 창', 'macd', true),
         sectionTitle('오더플로우'),
@@ -1335,11 +1456,12 @@ function indexOfTime(t) {
     return -1;
 }
 function val(arr, i, dig) { return arr[i] == null ? null : (dig == null ? fmtPrice(arr[i]) : arr[i].toFixed(dig)); }
-var legendOpen = LS.get('legendOpen', false);
+var legendOpen = LS.get('legendOpen', false), legendHtml = '';
+function setLegend(html) { if (html !== legendHtml) { legendHtml = html; $('legend').innerHTML = html; } }
 function renderLegend() {
-    var n = candles.length; if (!n) { $('legend').innerHTML = ''; placeCd(); return; }
+    var n = candles.length; if (!n) { setLegend(''); placeCd(); return; }
     var mode = S('chart').legend;
-    if (mode === 'off') { $('legend').innerHTML = ''; placeCd(); return; }
+    if (mode === 'off') { setLegend(''); placeCd(); return; }
     var i = crossTime != null ? indexOfTime(crossTime) : -1; if (i < 0) i = n - 1;
     var c = candles[i], b = chartType === 'ha' && haBars[i] ? haBars[i] : c;
     var cls = c.close >= c.open ? 'up' : 'down', chg = c.open ? (c.close - c.open) / c.open * 100 : 0;
@@ -1357,6 +1479,11 @@ function renderLegend() {
             var bc = S('boll');
             parts.push('<span style="color:' + bc.cMid + '">BOLL ' + fmtPrice(D.bMid[i]) + '</span> <span style="color:' + bc.cBand + '">' + fmtPrice(D.bUp[i]) + ' / ' + fmtPrice(D.bLo[i]) + '</span>');
         }
+        if (ind.vp && vpCache.res) {
+            var vr = vpCache.res;
+            parts.push('<span style="color:#F0B90B">POC ' + fmtPrice(vr.lo + (vr.poc + 0.5) * vr.step) + '</span> <span style="color:#B2B5BE">VA ' +
+                fmtPrice(vr.lo + vr.vaLo * vr.step) + ' – ' + fmtPrice(vr.lo + (vr.vaHi + 1) * vr.step) + '</span>');
+        }
         Object.keys(subLive).forEach(function (key) { var h = SUBS[key].legend && SUBS[key].legend(i, c); if (h) parts.push(h); });
         Object.keys(features).forEach(function (key) {
             var f = features[key]; if (!f.running || !f.legend) return;
@@ -1364,7 +1491,7 @@ function renderLegend() {
         });
     }
     var l2 = parts.length ? '<div class="row">' + parts.join(' &nbsp;') + '</div>' : '';
-    $('legend').innerHTML = l1 + l2;
+    setLegend(l1 + l2);
     placeCd();
 }
 $('legend').addEventListener('click', function (e) {
@@ -1379,14 +1506,17 @@ function placeCd() {
     if (!candles.length || !active) { el.style.display = 'none'; return; }
     var last = candles[candles.length - 1], y = mainSeries().priceToCoordinate(last.close), ph = chart.paneSize(0).height;
     if (y == null || y + 26 > ph || y < 0 || !S('chart').lastLine) { el.style.display = 'none'; return; }
-    var left = last.time + curSec() - Math.floor(Date.now() / 1000);
+    var left = nextOpen(last.time) - Math.floor(Date.now() / 1000);
     if (left < 0) left = 0;
     var hh = Math.floor(left / 3600), mm = Math.floor(left % 3600 / 60), ss = left % 60, pw = chart.priceScale('right').width();
+    var key = Math.round(y) + '|' + pw + '|' + (last.close >= last.open) + '|' + left;
+    if (key === cdKey && el.style.display === 'block') return;
+    cdKey = key;
     el.style.display = 'block'; el.style.top = (y + 10) + 'px'; if (pw > 0) el.style.width = pw + 'px';
     el.style.background = hexA(last.close >= last.open ? C.up : C.down, 0.85);
     el.textContent = (hh ? hh + ':' + pad2(mm) : pad2(mm)) + ':' + pad2(ss);
 }
-var cdRaf = 0;
+var cdRaf = 0, cdKey = '';
 function scheduleCd() { if (cdRaf) return; cdRaf = requestAnimationFrame(function () { cdRaf = 0; placeCd(); }); }
 function updateCountdown() { placeCd(); }
 var cdTimer = null;
@@ -1541,7 +1671,10 @@ var streams = { market: new Stream('market/stream'), pub: new Stream('public/str
 streams.market.hooks.push(function () { resync(); });
 
 var klineName = null;
-function unsubKline() { if (klineName) { streams.market.unsub(klineName); klineName = null; } }
+function unsubKline() {
+    clearTimeout(klineTimer); klineTimer = 0; klinePending = null;
+    if (klineName) { streams.market.unsub(klineName); klineName = null; }
+}
 function subscribeKline() {
     unsubKline();
     klineName = symbol.toLowerCase() + '@kline_' + interval;
@@ -1566,14 +1699,33 @@ function resync() {
         })
         .catch(function () { /* the websocket will keep us going */ });
 }
+var KLINE_MIN_MS = 400, klinePending = null, klineTimer = 0, klineLast = 0;
 function onKline(k) {
+    var n = candles.length; if (!n) return;
+    var t = Math.floor(k.t / 1000), last = candles[n - 1];
+    if (t < last.time) return;
+    if (t > last.time && klinePending) flushKline();                 // finish the previous candle before opening the next
+    var now = Date.now();
+    if (t === last.time && !k.x && now - klineLast < KLINE_MIN_MS) {
+        klinePending = k;
+        if (!klineTimer) klineTimer = setTimeout(flushKline, KLINE_MIN_MS - (now - klineLast));
+        return;
+    }
+    applyKline(k);
+}
+function flushKline() {
+    clearTimeout(klineTimer); klineTimer = 0;
+    var k = klinePending; klinePending = null;
+    if (k) applyKline(k);
+}
+function applyKline(k) {
+    klineLast = Date.now();
     var t = Math.floor(k.t / 1000), n = candles.length, last = candles[n - 1];
     var bar = { time: t, open: +k.o, high: +k.h, low: +k.l, close: +k.c, volume: +k.v, buy: +k.V };
     if (t === last.time) candles[n - 1] = bar;
     else if (t > last.time) candles.push(bar);
     else return;
     pushLast();
-    var prev = n > 1 ? candles[candles.length - 2].close : bar.open;
     showPrice(bar.close, bar.close === last.close ? 0 : (bar.close > last.close ? 1 : -1));
     if (crossTime == null) scheduleLegend();
 }
@@ -1613,10 +1765,10 @@ document.addEventListener('visibilitychange', function () { window.setActive(!do
 window.CF = {
     LW: LW, chart: chart, C: C, ind: ind, streams: streams, D: function () { return D; },
     candles: function () { return candles; }, symbol: function () { return symbol; }, interval: function () { return interval; },
-    secs: curSec, precision: function () { return precision; }, active: function () { return active; },
+    secs: curSec, nextOpen: nextOpen, precision: function () { return precision; }, active: function () { return active; },
     fmtPrice: fmtPrice, fmtVol: fmtVol, pad2: pad2, LS: LS, mainSeries: mainSeries,
     xOf: xOf, yOf: yOf, priceAt: function (y) { return mainSeries().coordinateToPrice(y); }, logicalOfTime: logicalOfTime,
-    layer: addLayer, redraw: redrawLayers, toast: toast, label: label,
+    layer: addLayer, redraw: requestDataRedraw, redrawNow: redrawLayers, toast: toast, label: label,
     registerSub: function (key, def) { SUBS[key] = def; },
     registerFeature: function (key, def) { features[key] = def; def.running = false; },
     subSeries: function (key) { return subLive[key]; },

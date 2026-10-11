@@ -83,11 +83,11 @@ class SettingsRepository(
                 ChartSizeProfile.MEDIUM
             }
 
-            val rateStr = preferences[KEY_REFRESH_RATE_PROFILE] ?: RefreshRateProfile.FPS_10.name
+            val rateStr = preferences[KEY_REFRESH_RATE_PROFILE] ?: RefreshRateProfile.FPS_5.name
             val rate = try {
                 RefreshRateProfile.valueOf(rateStr)
             } catch (_: Exception) {
-                RefreshRateProfile.FPS_10
+                RefreshRateProfile.FPS_5
             }
 
             OverlaySettings(

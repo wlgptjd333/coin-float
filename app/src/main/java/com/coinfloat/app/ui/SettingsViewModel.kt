@@ -25,12 +25,14 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private companion object {
+        const val UI_PRICE_SAMPLE_MS = 250L
         const val CHART_TAB_INDEX = 1
     }
 
@@ -288,7 +290,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    val marketPrices = marketDataRepository.marketPrices
+    // The overlay has its own (configurable) refresh rate; the app screens only need ~4 updates/s, and nothing at all
+    // while no screen is collecting (WhileSubscribed), so the app UI never redraws faster than the eye needs.
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    val marketPrices: StateFlow<Map<String, com.coinfloat.app.market.MarketPrice>> = marketDataRepository.marketPrices
+        .sample(UI_PRICE_SAMPLE_MS)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(1_000), marketDataRepository.marketPrices.value)
     val symbolInfoMap = marketDataRepository.symbolInfoCache
 
     init {

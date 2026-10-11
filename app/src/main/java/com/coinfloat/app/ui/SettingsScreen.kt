@@ -76,7 +76,6 @@ fun SettingsScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val isLoadingSymbols by viewModel.isLoadingSymbols.collectAsState()
-    val marketPrices by viewModel.marketPrices.collectAsState()
     val symbolInfoMap by viewModel.symbolInfoMap.collectAsState()
     val isServiceActive by viewModel.isServiceActive.collectAsState()
     val ticker24hMap by viewModel.ticker24hMap.collectAsState()
@@ -138,7 +137,7 @@ fun SettingsScreen(
                     selectedSymbols = settings.selectedSymbols,
                     activeSymbol = activeChartSymbol,
                     onSymbolSelected = viewModel::selectChartSymbol,
-                    marketPrices = marketPrices,
+                    marketPrices = viewModel.marketPrices,
                     symbolInfoMap = symbolInfoMap,
                     ticker24hMap = ticker24hMap,
                     fundingInfoMap = fundingInfoMap,
@@ -351,6 +350,8 @@ fun SettingsScreen(
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                                     ) {
+                                        // Collected here so only this card recomposes on each price tick.
+                                        val marketPrices by viewModel.marketPrices.collectAsState()
                                         Column(modifier = Modifier.padding(10.dp)) {
                                             Text(
                                                 text = "실시간 바이낸스 체결가 (수신 확인)",

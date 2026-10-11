@@ -26,7 +26,7 @@ function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 function candleStartOf(t) {
     var a = CF.candles(), lo = 0, hi = a.length - 1, best = -1;
     while (lo <= hi) { var m = (lo + hi) >> 1; if (a[m].time <= t) { best = m; lo = m + 1; } else hi = m - 1; }
-    return best >= 0 && t < a[best].time + CF.secs() ? a[best].time : null;
+    return best >= 0 && t < (best + 1 < a.length ? a[best + 1].time : CF.nextOpen(a[best].time)) ? a[best].time : null;
 }
 // small text with a dark halo instead of a filled pill, so labels never hide the bars they describe
 function tag(ctx, text, x, y, color, align) {
@@ -133,8 +133,8 @@ CF.defineSettings('liqmap', {
 // =====================================================================================================
 // Open interest (history from Binance + live polling)
 // =====================================================================================================
-var OI_PERIOD = { '1m': '5m', '3m': '5m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h', '1d': '1d', '1w': '1d' };
-var PERIOD_SEC = { '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '1d': 86400 };
+var OI_PERIOD = { '1m': '5m', '3m': '5m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h', '6h': '6h', '12h': '12h', '1d': '1d', '3d': '1d', '1w': '1d', '1M': '1d' };
+var PERIOD_SEC = { '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '12h': 43200, '1d': 86400 };
 var oi = { pts: [], timer: null, seq: 0, period: '15m' };
 
 function oiVal(p) { return CF.S('oi').unit === 'coin' ? p.coin : p.usd; }
@@ -278,9 +278,9 @@ CF.registerFeature('liq', {
 // =====================================================================================================
 // Large trades (aggTrade) as bubbles. Auto mode: roughly the biggest 0.5 % of recent prints.
 // =====================================================================================================
-var big = { list: [], recent: [], thr: 0, n: 0, off: null, name: null };
+var big = { list: [], recent: new Float64Array(2000), filled: 0, pos: 0, thr: 0, n: 0, off: null, name: null };
 function updateThreshold() {
-    var a = big.recent.slice().sort(function (x, y) { return x - y; });
+    var a = Array.prototype.slice.call(big.recent, 0, big.filled).sort(function (x, y) { return x - y; });
     big.thr = a[Math.floor(a.length * 0.995)] || 0;
 }
 function bigLimit(cfg) { return cfg.mode === 'fixed' ? cfg.fixed : Math.max(cfg.floor, big.thr); }
@@ -323,16 +323,17 @@ CF.registerFeature('trades', {
     start: function () {
         var sym = CF.symbol();
         big.name = sym.toLowerCase() + '@aggTrade';
-        big.list = []; big.recent = []; big.n = 0; big.thr = 15000;
+        big.list = []; big.filled = 0; big.pos = 0; big.n = 0; big.thr = 15000;
         big.off = CF.layer('top', paintBig);
         big.fade = setInterval(function () { var c = CF.S('trades'); if (big.list.length && c.group === 'off' && +c.ttl) CF.redraw(); }, 4000);
         streams.market.sub(big.name, function (d) {
             if (!d || d.s !== sym) return;
             var usd = +d.p * +d.q;
-            big.recent.push(usd); if (big.recent.length > 2000) big.recent.shift();
-            if (++big.n % 150 === 0 || big.recent.length === 200) updateThreshold();
+            big.recent[big.pos] = usd; big.pos = (big.pos + 1) % big.recent.length;
+            if (big.filled < big.recent.length) big.filled++;
+            if (++big.n % 150 === 0 || big.filled === 200) updateThreshold();
             var cfg = CF.S('trades');
-            if (usd >= bigLimit(cfg) && (cfg.mode === 'fixed' || big.recent.length >= 200)) {
+            if (usd >= bigLimit(cfg) && (cfg.mode === 'fixed' || big.filled >= 200)) {
                 big.list.push({ t: Math.floor(d.T / 1000), price: +d.p, usd: usd, buy: !d.m });         // m = buyer is the maker → a sell
                 var ttl = +cfg.ttl, nowS = Date.now() / 1000;
                 while (big.list.length && ((ttl && cfg.group === 'off' && nowS - big.list[0].t > ttl) || big.list.length > 400)) big.list.shift();
@@ -344,7 +345,7 @@ CF.registerFeature('trades', {
         streams.market.unsub(big.name);
         if (big.off) { big.off(); big.off = null; }
         clearInterval(big.fade); big.fade = null; big.gKey = null;
-        big.list = []; big.recent = [];
+        big.list = []; big.filled = 0; big.pos = 0;
     }
 });
 
@@ -360,7 +361,7 @@ function applyDiff(bids, asks, d) {
     for (i = 0; i < d.a.length; i++) { l = d.a[i]; if (+l[1] === 0) asks.delete(+l[0]); else asks.set(+l[0], +l[1]); }
 }
 var Book = {
-    users: 0, bids: new Map(), asks: new Map(), has: false, syncing: false, buf: [], lastU: 0, first: false,
+    users: 0, bids: new Map(), asks: new Map(), has: false, syncing: false, buf: [], lastU: 0, first: false, ver: 0,
     name: null, sym: null, seq: 0, pruneT: 0, snapAt: 0, best: null,
     start: function () {
         if (++this.users > 1) return;
@@ -391,7 +392,7 @@ var Book = {
             });
             if (!ok) { setTimeout(function () { if (seq === self.seq && self.users) self.snapshot(); }, 1200); return; }
             self.bids = nb; self.asks = na; self.lastU = last; self.first = !started;
-            self.buf = []; self.syncing = false; self.has = true; self.best = null;
+            self.buf = []; self.syncing = false; self.has = true; self.best = null; self.ver++;
             CF.redraw();
         }).catch(function () { setTimeout(function () { if (seq === self.seq && self.users) self.snapshot(); }, 3000); });
     },
@@ -411,7 +412,7 @@ var Book = {
         this.afterApply(d);
     },
     afterApply: function (d) {
-        this.best = null;
+        this.best = null; this.ver++;
         var q = this.quotes();
         if (q && q.bid >= q.ask) {                                           // crossed book: drop the stale side, never draw it
             var hiBid = -Infinity, loAsk = Infinity, self = this;
@@ -454,7 +455,8 @@ function niceStep(raw) {
     return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * e;
 }
 function updateWalls(minWall) {
-    var now = Date.now(); if (now - walls.t < 400) return; walls.t = now;
+    var now = Date.now(); if (now - walls.t < 400 || (walls.ver === Book.ver && now - walls.t < 1500)) return;
+    walls.t = now; walls.ver = Book.ver;
     var q = Book.quotes(); if (!q) return;
     var all = [];
     Book.bids.forEach(function (qty, p) { if (p <= q.bid) all.push({ p: p, v: p * qty, bid: true }); });
@@ -503,14 +505,19 @@ function paintDepth(ctx, w, h) {
     var step = niceStep((pTop - pBot) / Math.max(4, h / cfg.rowPx));
     var i0 = Math.floor(pBot / step), n = Math.floor(pTop / step) - i0 + 1;
     if (n < 1 || n > 800) return;
-    var bid = new Float64Array(n), ask = new Float64Array(n), idx;
-    Book.bids.forEach(function (qty, p) { idx = Math.floor(p / step) - i0; if (idx >= 0 && idx < n) bid[idx] += p * qty; });
-    Book.asks.forEach(function (qty, p) { idx = Math.floor(p / step) - i0; if (idx >= 0 && idx < n) ask[idx] += p * qty; });
-    // scale reference: a handful of huge orders must not flatten everything else, and the scale must not jump frame to frame
-    var nz = [], mx = 0;
-    for (k = 0; k < n; k++) { if (bid[k] > 0) nz.push(bid[k]); if (ask[k] > 0) nz.push(ask[k]); }
-    nz.sort(function (a, b) { return a - b; });
-    if (nz.length) mx = Math.min(nz[nz.length - 1], nz[Math.floor(nz.length * 0.9)] * 2.5);
+    var key = Book.ver + '|' + step + '|' + i0 + '|' + n, bins = depthView.bins;
+    if (!bins || bins.key !== key) {
+        var bid = new Float64Array(n), ask = new Float64Array(n), idx;
+        Book.bids.forEach(function (qty, p) { idx = Math.floor(p / step) - i0; if (idx >= 0 && idx < n) bid[idx] += p * qty; });
+        Book.asks.forEach(function (qty, p) { idx = Math.floor(p / step) - i0; if (idx >= 0 && idx < n) ask[idx] += p * qty; });
+        // scale reference: a handful of huge orders must not flatten everything else
+        var nz = [], m0 = 0;
+        for (k = 0; k < n; k++) { if (bid[k] > 0) nz.push(bid[k]); if (ask[k] > 0) nz.push(ask[k]); }
+        nz.sort(function (a, b) { return a - b; });
+        if (nz.length) m0 = Math.min(nz[nz.length - 1], nz[Math.floor(nz.length * 0.9)] * 2.5);
+        bins = depthView.bins = { key: key, bid: bid, ask: ask, mx: m0 };
+    }
+    var bid = bins.bid, ask = bins.ask, mx = bins.mx;
     var now = Date.now(), dt = depthView.t ? now - depthView.t : 0; depthView.t = now;
     depthView.max = Math.max(mx, depthView.max * Math.pow(0.5, dt / 4000), 1);
     var ref = depthView.max;
@@ -556,7 +563,7 @@ function paintDepth(ctx, w, h) {
 }
 var depthOff = null;
 CF.registerFeature('depth', {
-    start: function () { walls.map.clear(); depthView.max = 1; depthView.t = 0; Book.start(); depthOff = CF.layer('top', paintDepth); },
+    start: function () { walls.map.clear(); depthView.max = 1; depthView.t = 0; depthView.bins = null; Book.start(); depthOff = CF.layer('top', paintDepth); },
     stop: function () { if (depthOff) { depthOff(); depthOff = null; } walls.map.clear(); Book.stop(); }
 });
 
@@ -576,21 +583,24 @@ function heatInit(mid) {
     Heat.step = mid * 0.00018; Heat.low = mid - Heat.step * Heat.ROWS / 2; Heat.high = Heat.low + Heat.step * Heat.ROWS;
     Heat.cols = 0; Heat.t0 = 0; Heat.med = 0; Heat.buf = [];
 }
-function heatPixel(q, pal, span, out, o) {                                         // q: intensity*20 (0..255) → rgba into out[o..o+3]
-    var t = clamp((q / 20 - 0.8) / span, 0, 1);
-    if (t < 0.04) { out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 0; return; }
+// q: cell liquidity relative to the book's 90th-percentile cell, ×64 (0..255). Only cells well above that (real walls)
+// get warm colors; the dense band right around the price no longer saturates the whole map.
+function heatSpan(gain) { return 2.3 - 0.17 * gain; }
+function heatPixel(q, pal, span, out, o) {
+    var t = clamp((q / 64 - 0.35) / span, 0, 1);
+    if (t < 0.06) { out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 0; return; }
     for (var i = 1; i < pal.length; i++) {
         if (t <= pal[i][0]) {
             var a = pal[i - 1], b = pal[i], f = (t - a[0]) / (b[0] - a[0]);
-            out[o] = a[1] + (b[1] - a[1]) * f; out[o + 1] = a[2] + (b[2] - a[2]) * f; out[o + 2] = a[3] + (b[3] - a[3]) * f; out[o + 3] = a[4] + (b[4] - a[4]) * f;
+            out[o] = a[1] + (b[1] - a[1]) * f; out[o + 1] = a[2] + (b[2] - a[2]) * f; out[o + 2] = a[3] + (b[3] - a[3]) * f; out[o + 3] = (a[4] + (b[4] - a[4]) * f) * 0.72;
             return;
         }
     }
-    var l = pal[pal.length - 1]; out[o] = l[1]; out[o + 1] = l[2]; out[o + 2] = l[3]; out[o + 3] = l[4];
+    var l = pal[pal.length - 1]; out[o] = l[1]; out[o + 1] = l[2]; out[o + 2] = l[3]; out[o + 3] = l[4] * 0.72;      // never opaque: candles stay readable
 }
 function heatRecolor() {
     if (!Heat.cx || !Heat.buf.length) return;
-    var cfg = CF.S('heat'), pal = HEAT_PAL[cfg.palette] || HEAT_PAL.fire, span = 8 - 0.7 * cfg.gain, rows = Heat.ROWS, n = Heat.buf.length;
+    var cfg = CF.S('heat'), pal = HEAT_PAL[cfg.palette] || HEAT_PAL.fire, span = heatSpan(cfg.gain), rows = Heat.ROWS, n = Heat.buf.length;
     var img = Heat.cx.createImageData(n, rows), c, r;
     for (c = 0; c < n; c++) for (r = 0; r < rows; r++) heatPixel(Heat.buf[c][rows - 1 - r], pal, span, img.data, (r * n + c) * 4);   // canvas row 0 = highest price
     Heat.cx.clearRect(0, 0, Heat.COLS, rows);
@@ -618,10 +628,10 @@ function heatSample() {
     Book.bids.forEach(add); Book.asks.forEach(add);
     // Colors are relative to what is normal for this book: ordinary cells stay transparent, thick resting orders heat up.
     var nz = []; for (i = 0; i < rows; i++) if (vals[i] > 0) nz.push(vals[i]);
-    if (nz.length) { nz.sort(function (a, b) { return a - b; }); var med = nz[nz.length >> 1]; Heat.med = Heat.med ? Heat.med * 0.9 + med * 0.1 : med; }
+    if (nz.length) { nz.sort(function (a, b) { return a - b; }); var ref = nz[Math.floor(nz.length * 0.9)]; Heat.med = Heat.med ? Heat.med * 0.85 + ref * 0.15 : ref; }
     var base = Math.max(Heat.med || 1, 1), col = new Uint8Array(rows);
-    for (i = 0; i < rows; i++) col[i] = Math.min(255, Math.round(vals[i] / base * 20));
-    var cfg = CF.S('heat'), pal = HEAT_PAL[cfg.palette] || HEAT_PAL.fire, span = 8 - 0.7 * cfg.gain, img = Heat.cx.createImageData(1, rows);
+    for (i = 0; i < rows; i++) col[i] = Math.min(255, Math.round(vals[i] / base * 64));
+    var cfg = CF.S('heat'), pal = HEAT_PAL[cfg.palette] || HEAT_PAL.fire, span = heatSpan(cfg.gain), img = Heat.cx.createImageData(1, rows);
     for (var r = 0; r < rows; r++) heatPixel(col[rows - 1 - r], pal, span, img.data, r * 4);
     if (Heat.cols >= Heat.COLS) { Heat.cx.drawImage(Heat.cv, -1, 0); Heat.t0 += Heat.dt; Heat.buf.shift(); }       // scroll left by one column
     else { if (Heat.cols === 0) Heat.t0 = Date.now() / 1000; Heat.cols++; }
@@ -639,8 +649,8 @@ function paintHeat(ctx, w, h) {
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
     ctx.imageSmoothingEnabled = false;
     if (cfg.extend) {                                                        // no recorded history here yet: carry the nearest column outward
-        if (x0 > 0) { ctx.globalAlpha = a * 0.55; ctx.drawImage(Heat.cv, 0, 0, 1, Heat.ROWS, 0, y0, x0, y1 - y0); }
-        if (x1 < w) { ctx.globalAlpha = a * 0.75; ctx.drawImage(Heat.cv, Heat.cols - 1, 0, 1, Heat.ROWS, x1, y0, w - x1, y1 - y0); }
+        if (x0 > 0) { ctx.globalAlpha = a * 0.4; ctx.drawImage(Heat.cv, 0, 0, 1, Heat.ROWS, 0, y0, x0, y1 - y0); }
+        if (x1 < w) { ctx.globalAlpha = a * 0.6; ctx.drawImage(Heat.cv, Heat.cols - 1, 0, 1, Heat.ROWS, x1, y0, w - x1, y1 - y0); }
     }
     ctx.globalAlpha = a;
     ctx.drawImage(Heat.cv, 0, 0, Heat.cols, Heat.ROWS, x0, y0, x1 - x0, y1 - y0);
@@ -759,9 +769,9 @@ CF.registerFeature('liqmap', {
 });
 
 // =====================================================================================================
-// Bid / Ask: best bid and best ask from the public book-ticker stream (free), drawn as two thin lines with tags.
+// Bid / Ask: best bid and best ask from the public top-of-book stream (free), drawn as two thin lines with tags.
 // =====================================================================================================
-var ba = { bid: 0, ask: 0, bq: 0, aq: 0, off: null, name: null, rafT: 0, legT: 0 };
+var ba = { bid: 0, ask: 0, bq: 0, aq: 0, off: null, name: null };
 function paintBidAsk(ctx, w, h) {
     if (!ba.bid || !ba.ask) return;
     var cfg = CF.S('bidask'); if (!cfg.lines && !cfg.tags) return;
@@ -801,20 +811,18 @@ CF.registerFeature('bidask', {
     },
     start: function () {
         var sym = CF.symbol();
-        ba.name = sym.toLowerCase() + '@bookTicker'; ba.bid = ba.ask = 0;
+        ba.name = sym.toLowerCase() + '@depth5@500ms'; ba.bid = ba.ask = 0;
         ba.off = CF.layer('top', paintBidAsk);
         streams.pub.sub(ba.name, function (d) {
-            if (!d || d.s !== sym) return;
-            ba.bid = +d.b; ba.bq = +d.B; ba.ask = +d.a; ba.aq = +d.A;
-            var now = Date.now();
-            if (!ba.rafT) ba.rafT = setTimeout(function () { ba.rafT = 0; CF.redraw(); }, 120);        // book ticks are very frequent: ≤ ~8 repaints/s
-            if (now - ba.legT > 500) { ba.legT = now; CF.scheduleLegend(); }
+            if (!d || d.s !== sym || !d.b || !d.a || !d.b.length || !d.a.length) return;
+            ba.bid = +d.b[0][0]; ba.bq = +d.b[0][1]; ba.ask = +d.a[0][0]; ba.aq = +d.a[0][1];
+            CF.redraw(); CF.scheduleLegend();
         });
     },
     stop: function () {
         streams.pub.unsub(ba.name);
         if (ba.off) { ba.off(); ba.off = null; }
-        clearTimeout(ba.rafT); ba.rafT = 0; ba.bid = ba.ask = 0;
+        ba.bid = ba.ask = 0;
     }
 });
 
