@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.1] - 2026-10-11
+
+### Fixed
+- **Zooming out at the live edge keeps the newest candle at the right.** The new pinch zoomed around the fingers, so a
+  big zoom-out pushed the newest candle to the middle and left the right half of the chart empty. The empty space
+  right of the newest candle now never grows past what it was, as in TradingView.
+- **No jump when older history arrives mid-pinch.** Prepending candles shifted every index under the gesture's anchor.
+
+### Performance
+- **Price labels are formatted ~20x cheaper.** The chart engine formats every axis label on every frame, and each call
+  built a new number formatter; that was the largest single cost of a frame (2.5 s of a 33 s profile with all features
+  on, now 0.1 s). One formatter per precision is reused.
+- **Liquidation pane:** a burst of liquidations (dozens per second in a cascade) rebuilt the pane over every loaded
+  candle each time; rebuilds are now folded into one every 500 ms.
+- **Notification:** every update costs System UI ~30 ms of CPU (measured), plus every app that listens to
+  notifications. While the floating window is on screen (it already shows the live price) the notification's prices
+  refresh every 10 s instead of 2 s; with the window hidden they still refresh every 2 s.
+
 ## [1.10.0] - 2026-10-11
 
 ### Fixed

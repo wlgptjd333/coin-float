@@ -206,6 +206,12 @@ function liqBuckets() {
     });
     return m;
 }
+// The pane is rebuilt over every loaded candle; in a cascade dozens of liquidations arrive per second, so they are
+// folded into one rebuild every 500 ms.
+function liqRefreshSoon() {
+    if (liq.refT) return;
+    liq.refT = setTimeout(function () { liq.refT = null; CF.refreshSub('liq'); }, 500);
+}
 function liqSeriesData() {
     var m = liqBuckets(), longs = [], shorts = [];
     CF.candles().forEach(function (c) {
@@ -263,13 +269,14 @@ CF.registerFeature('liq', {
             // a forced SELL closes a long position, a forced BUY closes a short
             liq.list.push({ t: Math.floor((o.T || Date.now()) / 1000), side: o.S === 'SELL' ? 'L' : 'S', price: price, usd: usd });
             if (liq.list.length > 600) liq.list.splice(0, liq.list.length - 600);
-            liqSave(); CF.redraw(); CF.refreshSub('liq');
+            liqSave(); CF.redraw(); liqRefreshSoon();
         });
     },
     stop: function () {
         streams.market.unsub(liq.name);
         if (liq.off) { liq.off(); liq.off = null; }
         clearInterval(liq.fade); liq.fade = null;
+        clearTimeout(liq.refT); liq.refT = null;
         clearTimeout(liq.saveT); if (liq.list.length) LS.set(liq.key, liq.list.slice(-400));
         liq.list = [];
     }

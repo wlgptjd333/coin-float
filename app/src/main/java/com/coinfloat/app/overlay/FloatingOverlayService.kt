@@ -36,7 +36,11 @@ class FloatingOverlayService : Service() {
         const val ACTION_STOP = "com.coinfloat.app.action.STOP"
         const val ACTION_HIDE = "com.coinfloat.app.action.HIDE"
         const val ACTION_SHOW = "com.coinfloat.app.action.SHOW"
+        // Price refresh of the notification. Every post costs System UI ~30 ms of CPU (measured), plus every app that
+        // listens to notifications. While the floating window is on screen it already shows the live price, so the
+        // notification follows more slowly then.
         private const val NOTIFICATION_PRICE_MS = 2_000L
+        private const val NOTIFICATION_PRICE_OVERLAY_MS = 10_000L
 
         private val _isServiceActive = MutableStateFlow(false)
         val isServiceActive: StateFlow<Boolean> = _isServiceActive.asStateFlow()
@@ -391,7 +395,7 @@ class FloatingOverlayService : Service() {
     /**
      * The ongoing notification shows the coins' prices. Re-posting a notification is relatively expensive for the
      * system (the shade redraws, Android rate-limits updates), so price-only changes go out at most every
-     * [NOTIFICATION_PRICE_MS]; state changes (connect / hide / coin list) go out at once. Nothing is re-posted when the
+     * [NOTIFICATION_PRICE_MS] ([NOTIFICATION_PRICE_OVERLAY_MS] while the window is shown); state changes (connect / hide / coin list) go out at once. Nothing is re-posted when the
      * text did not change, and with the screen off the feed is paused, so prices do not change either.
      */
     private fun updateNotification(state: ConnectionState, priceOnly: Boolean = false) {
@@ -404,7 +408,8 @@ class FloatingOverlayService : Service() {
         val key = NotificationKey(settings.selectedSymbols, state, settings.isOverlayVisible, content)
         if (key == lastNotificationKey) return
         if (priceOnly) {
-            val wait = NOTIFICATION_PRICE_MS - (System.currentTimeMillis() - lastNotifyAt)
+            val every = if (settings.isOverlayVisible) NOTIFICATION_PRICE_OVERLAY_MS else NOTIFICATION_PRICE_MS
+            val wait = every - (System.currentTimeMillis() - lastNotifyAt)
             if (wait > 0) {
                 // post the newest prices once the interval is over (unless something newer is posted first)
                 if (pendingNotifyJob?.isActive != true) {

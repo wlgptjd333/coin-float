@@ -223,9 +223,13 @@ function curSec() { return SEC[interval] || 900; }
 // =====================================================================================================
 // Formatting
 // =====================================================================================================
+// The engine calls the price formatter for every axis label, every frame. toLocaleString() with options builds a new
+// formatter on each call and was the single biggest cost of a frame (measured), so one formatter per precision is kept.
+var priceFmts = {};
 function fmtPrice(p) {
     if (p == null || isNaN(p)) return '—';
-    return Number(p).toLocaleString('en-US', { minimumFractionDigits: precision, maximumFractionDigits: precision });
+    var f = priceFmts[precision] || (priceFmts[precision] = new Intl.NumberFormat('en-US', { minimumFractionDigits: precision, maximumFractionDigits: precision }));
+    return f.format(p);
 }
 function fmtVol(v) {
     if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B';
@@ -1121,7 +1125,9 @@ wrap.addEventListener('pointercancel', function () { if (gesture) cancelGesture(
 // Pinch zoom. The engine changes the candle width by only half of the change in finger distance per event (pinching
 // the fingers to half their distance zooms out ~22%), so going from days to months took a dozen pinches. Here, as in
 // TradingView, the candle width follows the fingers exactly (half the distance = twice as many candles) and the candle
-// under the fingers stays under them, so two fingers also pan. These listeners run after the engine's own on the same
+// under the fingers stays under them, so two fingers also pan. The empty space right of the newest candle never grows
+// past what it was (zooming out around the middle would otherwise push the newest candle to the middle of the screen
+// and leave the right half empty), so at the live edge the zoom keeps the newest candle in place. These listeners run after the engine's own on the same
 // event (it is a descendant of #chart and never stops propagation), so its result is simply replaced.
 var pinch = null;
 function touchMidX(t) { return (t[0].clientX + t[1].clientX) / 2 - chartEl.getBoundingClientRect().left; }
@@ -1132,14 +1138,20 @@ chartEl.addEventListener('touchstart', function (e) {
     var ts = chart.timeScale(), r = ts.getVisibleLogicalRange(), w = ts.width(), x = touchMidX(e.touches), d = touchDist(e.touches);
     if (!r || !w || r.to <= r.from || d < 20 || x > w) return;          // fingers on the price axis: the engine scales the price
     var bs = w / (r.to - r.from);
-    pinch = { d: d, bs: bs, anchor: r.from + x / bs };
+    // the anchor is kept as a distance from the candle that was newest at the start: older history arriving (or the
+    // series being trimmed) mid-gesture shifts every index, a candle opening after it shifts none
+    pinch = { d: d, bs: bs, fromEnd: candles.length - (r.from + x / bs), last: candles[candles.length - 1].time,
+        blank: Math.max(0, (r.to - (candles.length - 1)) * bs) };      // px of empty space right of the newest candle
 }, { passive: true });
 chartEl.addEventListener('touchmove', function (e) {
     if (!pinch || e.touches.length !== 2) return;
     var ts = chart.timeScale(), w = ts.width(), x = touchMidX(e.touches);
     var bs = clampN(pinch.bs * touchDist(e.touches) / pinch.d, MIN_BAR_SPACING, MAX_BAR_SPACING);
-    var from = pinch.anchor - x / bs;
-    ts.setVisibleLogicalRange({ from: from, to: from + w / bs });
+    var end = candles.length; while (end > 1 && candles[end - 1].time > pinch.last) end--;
+    var from = end - pinch.fromEnd - x / bs, to = from + w / bs;
+    var over = to - (candles.length - 1 + pinch.blank / bs);
+    if (over > 0) { from -= over; to -= over; }
+    ts.setVisibleLogicalRange({ from: from, to: to });
 }, { passive: true });
 chartEl.addEventListener('touchend', function (e) { if (e.touches.length !== 2) pinch = null; }, { passive: true });
 chartEl.addEventListener('touchcancel', function () { pinch = null; }, { passive: true });
@@ -1630,7 +1642,7 @@ function showLoading(on) { $('loading').className = on ? '' : 'hide'; }
 function reload(symbolChanged) {
     var seq = ++loadSeq;
     unsubKline(); stopFeatures(symbolChanged !== false); noMoreOlder = false; loadingOlder = false;
-    showLoading(true); crossTime = null;
+    showLoading(true); crossTime = null; pinch = null;
     fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=' + PAGE)
         .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(function (raw) {
