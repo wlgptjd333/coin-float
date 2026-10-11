@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.9] - 2026-10-11
+
+### Changed
+- **Zoom out to about 4,000-5,000 candles on one phone screen** (1.9.8: ~1,500; before that ~250), e.g. ~6 weeks of
+  15m, ~6 months of 1h or ~2 years of 4h at once. Older history keeps loading while you zoom or scroll left, up to
+  20,000 candles. Measured redraw cost on a PC: 4,000 candles ~18-35 ms, 8,000 ~60 ms, 16,000 ~156 ms, so the limit
+  stops where panning would start to stutter on a phone; a higher interval shows a longer span smoothly.
+
 ## [1.9.8] - 2026-10-11
 
 ### Changed

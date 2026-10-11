@@ -13,7 +13,7 @@ var INTERVALS = [
 var SEC = {}; INTERVALS.forEach(function (i) { SEC[i[0]] = i[2]; });
 var REST = 'https://fapi.binance.com/fapi/v1/klines';
 var WS_URL = 'wss://fstream.binance.com/market/stream';
-var MAX_BARS = 6000;                 // history kept in memory (zooming out loads older pages up to this)
+var MAX_BARS = 20000;                // history kept in memory: zooming out keeps loading older pages up to this
 // Multiple moving averages: periods are in candles of the current interval. Colors: red, yellow, green, blue, white, purple.
 var MA_DEFAULT = [[5, '#F6465D'], [10, '#F0B90B'], [50, '#0ECB81'], [100, '#2962FF'], [200, '#FFFFFF'], [400, '#B388FF']];
 var EMA_DEFAULT = [[20, '#FF9800'], [50, '#2962FF']];
@@ -262,7 +262,7 @@ var chart = LW.createChart($('chart'), {
     grid: { vertLines: { color: C.grid, visible: S('chart').grid === 'both' }, horzLines: { color: C.grid, visible: S('chart').grid !== 'none' } },
     crosshair: { mode: S('chart').cross === 'magnet' ? LW.CrosshairMode.Magnet : LW.CrosshairMode.Normal, vertLine: { labelBackgroundColor: '#2A2E39' }, horzLine: { labelBackgroundColor: '#2A2E39' } },
     rightPriceScale: { borderColor: C.border, scaleMargins: { top: S('chart').top / 100, bottom: S('chart').bottom / 100 } },
-    timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 8, minBarSpacing: 0.25, /* ~1,500 candles across a phone when zoomed all the way out */ tickMarkFormatter: tickFmt },
+    timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 8, minBarSpacing: 0.08, /* ~5,000 candles per phone screen; beyond that every frame gets slow (measured), use a higher interval */ tickMarkFormatter: tickFmt },
     localization: { timeFormatter: crosshairTimeFmt },
     kineticScroll: { touch: true, mouse: false },
     trackingMode: { exitMode: LW.TrackingModeExitMode.OnTouchEnd },
