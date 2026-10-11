@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.2] - 2026-10-11
+
+### Fixed
+- **Mini chart of a removed coin closes.** Removing a coin from the list while its mini chart was open left the chart
+  on that coin with a price that no longer updated.
+
+### Tested
+- In-app chart checked with real touch input in a headless phone-sized browser: about 2,600 random taps, drags,
+  pinches, settings changes, interval/symbol switches and pause/resume cycles (with every indicator and order-flow
+  feature on and off) produced no script errors and no broken state.
+
 ## [1.10.1] - 2026-10-11
 
 ### Fixed
@@ -23,7 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   candle each time; rebuilds are now folded into one every 500 ms.
 - **Notification:** every update costs System UI ~30 ms of CPU (measured), plus every app that listens to
   notifications. While the floating window is on screen (it already shows the live price) the notification's prices
-  refresh every 10 s instead of 2 s; with the window hidden they still refresh every 2 s.
+  refresh every 10 s instead of 2 s. (With the window hidden the price feed is paused for battery, so the notification
+  does not change then; only while the app itself is open with the window hidden does it still follow every 2 s.)
 
 ## [1.10.0] - 2026-10-11
 

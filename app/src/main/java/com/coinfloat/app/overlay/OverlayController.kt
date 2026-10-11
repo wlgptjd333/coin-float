@@ -235,7 +235,8 @@ class OverlayController(private val context: Context) {
             val (posX, posY) = getSafePosition(settings)
             updatePosition(posX, posY)
 
-            if (!settings.isChartEnabled && isMiniChartShowing) {
+            // chart turned off, or its coin was removed from the list (its price would no longer update)
+            if (isMiniChartShowing && (!settings.isChartEnabled || currentChartSymbol !in settings.selectedSymbols)) {
                 hideMiniChart()
             } else if (isMiniChartShowing && miniChartView != null && miniChartParams != null) {
                 miniChartView?.applyBackgroundStyle(settings.backgroundColorHex, settings.backgroundOpacity)
