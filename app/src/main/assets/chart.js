@@ -13,7 +13,7 @@ var INTERVALS = [
 var SEC = {}; INTERVALS.forEach(function (i) { SEC[i[0]] = i[2]; });
 var REST = 'https://fapi.binance.com/fapi/v1/klines';
 var WS_URL = 'wss://fstream.binance.com/market/stream';
-var MAX_BARS = 3000;
+var MAX_BARS = 6000;                 // history kept in memory (zooming out loads older pages up to this)
 // Multiple moving averages: periods are in candles of the current interval. Colors: red, yellow, green, blue, white, purple.
 var MA_DEFAULT = [[5, '#F6465D'], [10, '#F0B90B'], [50, '#0ECB81'], [100, '#2962FF'], [200, '#FFFFFF'], [400, '#B388FF']];
 var EMA_DEFAULT = [[20, '#FF9800'], [50, '#2962FF']];
@@ -262,7 +262,7 @@ var chart = LW.createChart($('chart'), {
     grid: { vertLines: { color: C.grid, visible: S('chart').grid === 'both' }, horzLines: { color: C.grid, visible: S('chart').grid !== 'none' } },
     crosshair: { mode: S('chart').cross === 'magnet' ? LW.CrosshairMode.Magnet : LW.CrosshairMode.Normal, vertLine: { labelBackgroundColor: '#2A2E39' }, horzLine: { labelBackgroundColor: '#2A2E39' } },
     rightPriceScale: { borderColor: C.border, scaleMargins: { top: S('chart').top / 100, bottom: S('chart').bottom / 100 } },
-    timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 8, minBarSpacing: 1.5, tickMarkFormatter: tickFmt },
+    timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 8, minBarSpacing: 0.25, /* ~1,500 candles across a phone when zoomed all the way out */ tickMarkFormatter: tickFmt },
     localization: { timeFormatter: crosshairTimeFmt },
     kineticScroll: { touch: true, mouse: false },
     trackingMode: { exitMode: LW.TrackingModeExitMode.OnTouchEnd },
@@ -1552,7 +1552,7 @@ chart.timeScale().subscribeVisibleLogicalRangeChange(function (r) {
     if (!r || !candles.length) return;
     $('to_latest').classList.toggle('show', r.to < candles.length - 4);
     scheduleCd();
-    if (r.from < 25) loadOlder();
+    if (r.from < Math.max(25, (r.to - r.from) * 0.25)) loadOlder();   // zoomed far out: fetch the next page earlier
 });
 $('to_latest').onclick = function () { chart.timeScale().scrollToRealTime(); };
 
@@ -1611,7 +1611,7 @@ function loadOlder() {
     if (loadingOlder || noMoreOlder || !candles.length || candles.length >= MAX_BARS) return;
     loadingOlder = true;
     var seq = loadSeq, endTime = candles[0].time * 1000 - 1;
-    fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=500&endTime=' + endTime)
+    fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=1000&endTime=' + endTime)
         .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(function (raw) {
             if (seq !== loadSeq) return;

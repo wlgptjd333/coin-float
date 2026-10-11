@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.8] - 2026-10-11
+
+### Changed
+- **Zoom out much further in the in-app chart.** The minimum candle spacing was 1.5 px, so a phone screen held only about
+  250 candles (under 3 days on 15m). It is now 0.25 px (about 1,300-1,500 candles per screen), older history loads in
+  pages of 1,000 while you zoom out, and up to 6,000 candles are kept (about two months on 15m).
+
 ## [1.9.7] - 2026-10-11
 
 ### Performance
