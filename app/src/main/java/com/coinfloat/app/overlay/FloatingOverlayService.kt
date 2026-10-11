@@ -36,6 +36,7 @@ class FloatingOverlayService : Service() {
         const val ACTION_STOP = "com.coinfloat.app.action.STOP"
         const val ACTION_HIDE = "com.coinfloat.app.action.HIDE"
         const val ACTION_SHOW = "com.coinfloat.app.action.SHOW"
+        private const val NOTIFICATION_PRICE_MS = 2_000L
 
         private val _isServiceActive = MutableStateFlow(false)
         val isServiceActive: StateFlow<Boolean> = _isServiceActive.asStateFlow()
@@ -197,11 +198,16 @@ class FloatingOverlayService : Service() {
     private fun ensureForegroundNotification(): Boolean {
         return try {
             val currentSettings = settingsRepository.settingsFlow.value
+            val state = marketDataRepository.connectionState.value
             val initialNotification = CoinFloatNotification.buildNotification(
                 context = this,
                 symbols = currentSettings.selectedSymbols,
-                connectionState = marketDataRepository.connectionState.value,
-                isOverlayVisible = currentSettings.isOverlayVisible
+                connectionState = state,
+                isOverlayVisible = currentSettings.isOverlayVisible,
+                content = CoinFloatNotification.content(
+                    currentSettings.selectedSymbols, state, currentSettings.isOverlayVisible,
+                    marketDataRepository.marketPrices.value, marketDataRepository.symbolInfoCache.value
+                )
             )
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -362,6 +368,7 @@ class FloatingOverlayService : Service() {
                             symbolInfoMap = marketDataRepository.symbolInfoCache.value
                         )
                     }
+                    updateNotification(marketDataRepository.connectionState.value, priceOnly = true)
                     val refreshDelay = settingsRepository.settingsFlow.value.refreshRateProfile.intervalMs
                     delay(refreshDelay)
                 }
@@ -371,24 +378,51 @@ class FloatingOverlayService : Service() {
     private data class NotificationKey(
         val symbols: List<String>,
         val state: ConnectionState,
-        val overlayVisible: Boolean
+        val overlayVisible: Boolean,
+        val content: CoinFloatNotification.Content
     )
 
     private var lastNotificationKey: NotificationKey? = null
+    private var lastNotifyAt = 0L
+    private var pendingNotifyJob: Job? = null
 
-    private fun updateNotification(state: ConnectionState) {
+    /**
+     * The ongoing notification shows the coins' prices. Re-posting a notification is relatively expensive for the
+     * system (the shade redraws, Android rate-limits updates), so price-only changes go out at most every
+     * [NOTIFICATION_PRICE_MS]; state changes (connect / hide / coin list) go out at once. Nothing is re-posted when the
+     * text did not change, and with the screen off the feed is paused, so prices do not change either.
+     */
+    private fun updateNotification(state: ConnectionState, priceOnly: Boolean = false) {
         if (!isServiceRunning) return
         val settings = settingsRepository.settingsFlow.value
-        // Settings change many times per second while a slider is dragged; only re-post the
-        // notification when something it shows actually changed.
-        val key = NotificationKey(settings.selectedSymbols, state, settings.isOverlayVisible)
+        val content = CoinFloatNotification.content(
+            settings.selectedSymbols, state, settings.isOverlayVisible,
+            marketDataRepository.marketPrices.value, marketDataRepository.symbolInfoCache.value
+        )
+        val key = NotificationKey(settings.selectedSymbols, state, settings.isOverlayVisible, content)
         if (key == lastNotificationKey) return
+        if (priceOnly) {
+            val wait = NOTIFICATION_PRICE_MS - (System.currentTimeMillis() - lastNotifyAt)
+            if (wait > 0) {
+                // post the newest prices once the interval is over (unless something newer is posted first)
+                if (pendingNotifyJob?.isActive != true) {
+                    pendingNotifyJob = serviceScope.launch {
+                        delay(wait)
+                        updateNotification(marketDataRepository.connectionState.value, priceOnly = true)
+                    }
+                }
+                return
+            }
+        }
+        pendingNotifyJob?.cancel()
         lastNotificationKey = key
+        lastNotifyAt = System.currentTimeMillis()
         val notification = CoinFloatNotification.buildNotification(
             context = this,
             symbols = settings.selectedSymbols,
             connectionState = state,
-            isOverlayVisible = settings.isOverlayVisible
+            isOverlayVisible = settings.isOverlayVisible,
+            content = content
         )
         notificationManager.notify(CoinFloatNotification.NOTIFICATION_ID, notification)
     }

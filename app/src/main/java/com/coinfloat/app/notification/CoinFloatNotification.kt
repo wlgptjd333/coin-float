@@ -11,6 +11,11 @@ import androidx.core.app.NotificationCompat
 import com.coinfloat.app.MainActivity
 import com.coinfloat.app.R
 import com.coinfloat.app.market.ConnectionState
+import com.coinfloat.app.market.MarketPrice
+import com.coinfloat.app.market.PriceFormatter
+import com.coinfloat.app.market.SymbolInfo
+import com.coinfloat.app.market.dayChangePercent
+import java.util.Locale
 import com.coinfloat.app.overlay.FloatingOverlayService
 
 object CoinFloatNotification {
@@ -37,11 +42,44 @@ object CoinFloatNotification {
         }
     }
 
+    /** What the notification shows: the first coin as the title, the others below, and the feed state if not live. */
+    data class Content(val title: String, val text: String, val lines: List<String>)
+
+    fun content(
+        symbols: List<String>,
+        connectionState: ConnectionState,
+        isOverlayVisible: Boolean,
+        prices: Map<String, MarketPrice>,
+        info: Map<String, SymbolInfo>
+    ): Content {
+        fun line(symbol: String): String {
+            val upper = symbol.uppercase()
+            val base = info[upper]?.baseAsset ?: upper.removeSuffix("USDT")
+            val p = prices[upper] ?: return "$base —"
+            val price = PriceFormatter.formatPrice(p.price, info[upper]?.tickSize)
+            val change = p.dayChangePercent()?.let { String.format(Locale.US, "  %+.2f%%", it) } ?: ""
+            return "$base $price$change"
+        }
+        val lines = symbols.map(::line)
+        // the price is only live while the window is shown and connected (the feed pauses otherwise)
+        val status = when {
+            !isOverlayVisible -> "숨김 · 마지막 가격"
+            connectionState == ConnectionState.CONNECTED -> null
+            connectionState == ConnectionState.DISCONNECTED -> "일시정지 · 마지막 가격"
+            else -> "연결 중…"
+        }
+        val title = lines.firstOrNull() ?: "CoinFloat"
+        val rest = lines.drop(1).joinToString("  ·  ")
+        val text = listOfNotNull(rest.ifEmpty { null }, status).joinToString("  ·  ").ifEmpty { "실시간" }
+        return Content(title, text, lines + listOfNotNull(status))
+    }
+
     fun buildNotification(
         context: Context,
         symbols: List<String>,
         connectionState: ConnectionState,
-        isOverlayVisible: Boolean
+        isOverlayVisible: Boolean,
+        content: Content? = null
     ): Notification {
         val openSettingsIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -85,16 +123,7 @@ object CoinFloatNotification {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val symbolsText = symbols.map { it.removeSuffix("USDT") }.joinToString(" · ")
-        val statusText = when {
-            !isOverlayVisible -> "오버레이 숨김"
-            connectionState == ConnectionState.CONNECTED -> "연결됨"
-            connectionState == ConnectionState.CONNECTING -> "연결 중"
-            connectionState == ConnectionState.RECONNECTING -> "재연결 중"
-            else -> "연결 안 됨"
-        }
-
-        val contentText = "$symbolsText · $statusText"
+        val c = content ?: content(symbols, connectionState, isOverlayVisible, emptyMap(), emptyMap())
 
         val toggleTitle = if (isOverlayVisible) {
             context.getString(R.string.action_hide)
@@ -104,8 +133,11 @@ object CoinFloatNotification {
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(context.getString(R.string.notification_title))
-            .setContentText(contentText)
+            .setContentTitle(c.title)
+            .setContentText(c.text)
+            .setStyle(NotificationCompat.InboxStyle().also { st -> c.lines.forEach { st.addLine(it) } })
+            .setShowWhen(false)
+            .setSilent(true)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(openSettingsPendingIntent)

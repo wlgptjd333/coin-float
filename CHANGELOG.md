@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.5] - 2026-10-11
+
+### Changed
+- **The ongoing notification shows prices instead of "시세 감시 중".** Title: the first coin (e.g. "BTC 83,021.1 +0.99%"),
+  below it the other coins; expanding it lists every coin on its own line. When the feed is not live it says so
+  ("연결 중…", "숨김 · 마지막 가격", "일시정지 · 마지막 가격") instead of passing an old price off as current.
+- Battery: price-only changes re-post the notification at most every 2 s and only when its text changed; with the screen
+  off or the window hidden the feed is paused, so it does not update at all. Silent, no timestamp.
+
 ## [1.9.4] - 2026-10-11
 
 ### Fixed
