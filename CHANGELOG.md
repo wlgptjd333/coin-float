@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.7] - 2026-10-11
+
+### Performance
+- **The coin list is cached on the device.** Every app start downloaded Binance's full exchangeInfo (1.1 MB of JSON,
+  900+ contracts) and parsed all of it, and the app, the service and the screens could each do so at the same time.
+  The few fields the app uses (about 500 USDT perpetuals) are now kept in a small file and refreshed at most once a day;
+  concurrent requests share one load. Starts are lighter and work offline with the last known list.
+
 ## [1.9.6] - 2026-10-11
 
 ### Added

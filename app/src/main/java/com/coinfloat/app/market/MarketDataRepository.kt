@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.math.BigDecimal
 
 class MarketDataRepository(
@@ -246,19 +248,40 @@ class MarketDataRepository(
         return info
     }
 
-    suspend fun loadExchangeInfoIfNeeded(): Boolean {
-        if (_symbolInfoCache.value.isNotEmpty()) return true
+    /** Where the compact symbol list is kept between app starts (set by the Application). */
+    @Volatile
+    var symbolCacheFile: java.io.File? = null
 
-        _isLoadingSymbols.value = true
-        return try {
+    // App, service and screens all ask for the symbol list at start-up; without the lock each of them downloaded and
+    // parsed the full 1.1 MB exchangeInfo at the same time.
+    private val exchangeInfoMutex = kotlinx.coroutines.sync.Mutex()
+
+    suspend fun loadExchangeInfoIfNeeded(): Boolean = exchangeInfoMutex.withLock {
+        if (_symbolInfoCache.value.isNotEmpty()) return@withLock true
+
+        // 1) the copy saved on disk (fresh for a day)
+        val file = symbolCacheFile
+        val cached = file?.let { f ->
+            withContext(Dispatchers.IO) { runCatching { if (f.exists()) SymbolInfoCache.decode(f.readText()) else null }.getOrNull() }
+        }
+        if (cached != null) {
+            _symbolInfoCache.value = cached.symbols.associateBy { it.symbol }
+            if (System.currentTimeMillis() - cached.savedAt < SymbolInfoCache.MAX_AGE_MS) return@withLock true
+        }
+
+        // 2) download (also refreshes a day-old copy; on failure the old copy keeps working)
+        if (cached == null) _isLoadingSymbols.value = true
+        try {
             val list = binanceClient.fetchExchangeInfo()
-            val map = list.associateBy { it.symbol }
-            _symbolInfoCache.value = map
-            Log.d(TAG, "Loaded ${map.size} USDT perpetual symbols into cache")
+            _symbolInfoCache.value = list.associateBy { it.symbol }
+            Log.d(TAG, "Loaded ${list.size} USDT perpetual symbols")
+            if (file != null) withContext(Dispatchers.IO) {
+                runCatching { file.writeText(SymbolInfoCache.encode(list, System.currentTimeMillis())) }
+            }
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load exchange info: ${e.message}")
-            false
+            cached != null
         } finally {
             _isLoadingSymbols.value = false
         }

@@ -20,6 +20,7 @@ class CoinFloatApplication : Application() {
         // Initialize repositories
         SettingsRepository.getInstance(this)
         val marketRepo = MarketDataRepository.getInstance()
+        marketRepo.symbolCacheFile = java.io.File(filesDir, "symbols_v1.tsv")
 
         // Preload exchangeInfo in background
         applicationScope.launch {
