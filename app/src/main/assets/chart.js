@@ -14,6 +14,10 @@ var SEC = {}; INTERVALS.forEach(function (i) { SEC[i[0]] = i[2]; });
 var REST = 'https://fapi.binance.com/fapi/v1/klines';
 var WS_URL = 'wss://fstream.binance.com/market/stream';
 var MAX_BARS = 20000;                // history kept in memory: zooming out keeps loading older pages up to this
+var PAGE = 1500;                     // candles per history request (the exchange maximum)
+// candle width limits in px. 0.08 is ~5,000 candles per phone screen; beyond that every frame gets slow (measured),
+// a higher interval shows the same span far cheaper.
+var MIN_BAR_SPACING = 0.08, MAX_BAR_SPACING = 50;
 // Multiple moving averages: periods are in candles of the current interval. Colors: red, yellow, green, blue, white, purple.
 var MA_DEFAULT = [[5, '#F6465D'], [10, '#F0B90B'], [50, '#0ECB81'], [100, '#2962FF'], [200, '#FFFFFF'], [400, '#B388FF']];
 var EMA_DEFAULT = [[20, '#FF9800'], [50, '#2962FF']];
@@ -262,7 +266,7 @@ var chart = LW.createChart($('chart'), {
     grid: { vertLines: { color: C.grid, visible: S('chart').grid === 'both' }, horzLines: { color: C.grid, visible: S('chart').grid !== 'none' } },
     crosshair: { mode: S('chart').cross === 'magnet' ? LW.CrosshairMode.Magnet : LW.CrosshairMode.Normal, vertLine: { labelBackgroundColor: '#2A2E39' }, horzLine: { labelBackgroundColor: '#2A2E39' } },
     rightPriceScale: { borderColor: C.border, scaleMargins: { top: S('chart').top / 100, bottom: S('chart').bottom / 100 } },
-    timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 8, minBarSpacing: 0.08, /* ~5,000 candles per phone screen; beyond that every frame gets slow (measured), use a higher interval */ tickMarkFormatter: tickFmt },
+    timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 8, minBarSpacing: MIN_BAR_SPACING, maxBarSpacing: MAX_BAR_SPACING, tickMarkFormatter: tickFmt },
     localization: { timeFormatter: crosshairTimeFmt },
     kineticScroll: { touch: true, mouse: false },
     trackingMode: { exitMode: LW.TrackingModeExitMode.OnTouchEnd },
@@ -1113,6 +1117,32 @@ wrap.addEventListener('pointercancel', function () { if (gesture) cancelGesture(
 ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'mousedown', 'mousemove', 'mouseup', 'click', 'dblclick', 'contextmenu'].forEach(function (t) {
     wrap.addEventListener(t, swallow, { capture: true, passive: false });
 });
+
+// Pinch zoom. The engine changes the candle width by only half of the change in finger distance per event (pinching
+// the fingers to half their distance zooms out ~22%), so going from days to months took a dozen pinches. Here, as in
+// TradingView, the candle width follows the fingers exactly (half the distance = twice as many candles) and the candle
+// under the fingers stays under them, so two fingers also pan. These listeners run after the engine's own on the same
+// event (it is a descendant of #chart and never stops propagation), so its result is simply replaced.
+var pinch = null;
+function touchMidX(t) { return (t[0].clientX + t[1].clientX) / 2 - chartEl.getBoundingClientRect().left; }
+function touchDist(t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); }
+chartEl.addEventListener('touchstart', function (e) {
+    pinch = null;
+    if (e.touches.length !== 2 || !candles.length) return;
+    var ts = chart.timeScale(), r = ts.getVisibleLogicalRange(), w = ts.width(), x = touchMidX(e.touches), d = touchDist(e.touches);
+    if (!r || !w || r.to <= r.from || d < 20 || x > w) return;          // fingers on the price axis: the engine scales the price
+    var bs = w / (r.to - r.from);
+    pinch = { d: d, bs: bs, anchor: r.from + x / bs };
+}, { passive: true });
+chartEl.addEventListener('touchmove', function (e) {
+    if (!pinch || e.touches.length !== 2) return;
+    var ts = chart.timeScale(), w = ts.width(), x = touchMidX(e.touches);
+    var bs = clampN(pinch.bs * touchDist(e.touches) / pinch.d, MIN_BAR_SPACING, MAX_BAR_SPACING);
+    var from = pinch.anchor - x / bs;
+    ts.setVisibleLogicalRange({ from: from, to: from + w / bs });
+}, { passive: true });
+chartEl.addEventListener('touchend', function (e) { if (e.touches.length !== 2) pinch = null; }, { passive: true });
+chartEl.addEventListener('touchcancel', function () { pinch = null; }, { passive: true });
 chart.subscribeClick(function (param) {                            // tap on empty chart: clear selection / measurement
     var changed = false;
     if (DR.sel != null) { DR.sel = null; changed = true; }
@@ -1552,8 +1582,27 @@ chart.timeScale().subscribeVisibleLogicalRangeChange(function (r) {
     if (!r || !candles.length) return;
     $('to_latest').classList.toggle('show', r.to < candles.length - 4);
     scheduleCd();
-    if (r.from < Math.max(25, (r.to - r.from) * 0.25)) loadOlder();   // zoomed far out: fetch the next page earlier
+    saveZoom();
+    if (needOlder(r)) loadOlder();
 });
+function needOlder(r) { return r.from < Math.max(25, (r.to - r.from) * 0.25); }     // zoomed far out: fetch earlier
+
+// The candle width is one setting for every symbol and interval, like TradingView: zoom out on 15m, switch to 1h and
+// the chart stays as zoomed out (and it is still that way the next time the app opens).
+var zoomSaveT = 0;
+function savedBarSpacing() {
+    var v = LS.get('barSpacing', null);
+    return typeof v === 'number' && isFinite(v) ? clampN(v, MIN_BAR_SPACING, MAX_BAR_SPACING) : null;
+}
+function saveZoom() {
+    clearTimeout(zoomSaveT);
+    zoomSaveT = setTimeout(function () {
+        var ts = chart.timeScale(), r = ts.getVisibleLogicalRange(), w = ts.width();
+        // hidden: the engine draws (and applies view changes) only on frames, so the range could be stale
+        if (document.hidden || !r || !w || !candles.length || r.to <= r.from || $('loading').className !== 'hide') return;
+        LS.set('barSpacing', Math.round(w / (r.to - r.from) * 1000) / 1000);
+    }, 500);
+}
 $('to_latest').onclick = function () { chart.timeScale().scrollToRealTime(); };
 
 // =====================================================================================================
@@ -1582,7 +1631,7 @@ function reload(symbolChanged) {
     var seq = ++loadSeq;
     unsubKline(); stopFeatures(symbolChanged !== false); noMoreOlder = false; loadingOlder = false;
     showLoading(true); crossTime = null;
-    fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=1000')
+    fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=' + PAGE)
         .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(function (raw) {
             if (seq !== loadSeq) return;
@@ -1593,9 +1642,11 @@ function reload(symbolChanged) {
             computeAllInd(); if (chartType === 'ha') toHA();
             setAllData();
             var n = candles.length, ts = chart.timeScale();
-            ts.applyOptions({ barSpacing: Math.max(3.5, Math.min(10, ts.width() / 64)) });     // ~64 bars across, like exchange apps
+            // the user's zoom; the first time ~64 candles across, like exchange apps
+            ts.applyOptions({ barSpacing: savedBarSpacing() || Math.max(3.5, Math.min(10, ts.width() / 64)) });
+            showLoading(false);
             ts.scrollToRealTime();
-            showLoading(false); scheduleLegend(); DR.redraw();
+            scheduleLegend(); DR.redraw();
             showPrice(candles[n - 1].close, 0);
             if (active) subscribeKline();
             syncFeatures();
@@ -1607,26 +1658,48 @@ function reload(symbolChanged) {
         });
 }
 
+// Older history for the empty space on the left. Zoomed far out that can be thousands of candles, so the pages it
+// takes (consecutive time windows of PAGE candles, up to 4) are requested together and merged in one rebuild, and when
+// the view still is not filled the next batch follows at once instead of waiting for the next touch.
 function loadOlder() {
     if (loadingOlder || noMoreOlder || !candles.length || candles.length >= MAX_BARS) return;
+    var r = chart.timeScale().getVisibleLogicalRange(); if (!r) return;
+    var want = Math.max(1, Math.max(25, (r.to - r.from) * 0.25) - r.from + PAGE / 2);
+    var pages = interval === '1M' ? 1 : Math.max(1, Math.min(4, Math.ceil(want / PAGE), Math.ceil((MAX_BARS - candles.length) / PAGE)));
+    var seq = loadSeq, end = candles[0].time * 1000 - 1, span = PAGE * curSec() * 1000, reqs = [];
+    for (var i = 0; i < pages; i++) {
+        var q = '&endTime=' + (end - i * span) + (pages > 1 ? '&startTime=' + (end - (i + 1) * span + 1) : '');
+        reqs.push(fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=' + PAGE + q)
+            .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); }));
+    }
     loadingOlder = true;
-    var seq = loadSeq, endTime = candles[0].time * 1000 - 1;
-    fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=1000&endTime=' + endTime)
-        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-        .then(function (raw) {
-            if (seq !== loadSeq) return;
-            if (!Array.isArray(raw) || !raw.length) { noMoreOlder = true; return; }
-            var rows = parseRows(raw).rows, added = rows.length;
-            var range = chart.timeScale().getVisibleLogicalRange();
+    var more = false;
+    Promise.all(reqs)
+        .then(function (pagesRaw) {
+            if (seq !== loadSeq || !candles.length) return;
+            var rows = [], first = candles[0].time;
+            for (var p = pagesRaw.length - 1; p >= 0; p--) {                           // oldest window first
+                var raw = pagesRaw[p];
+                if (Array.isArray(raw) && raw.length) rows = rows.concat(parseRows(raw).rows);
+                else if (p === pagesRaw.length - 1) noMoreOlder = true;              // nothing that far back: listing date reached
+            }
+            rows = rows.filter(function (c, k) { return c.time < first && (k === 0 || c.time > rows[k - 1].time); });
+            if (!rows.length) { noMoreOlder = true; return; }
+            var added = rows.length, range = chart.timeScale().getVisibleLogicalRange();
             candles = rows.concat(candles);
             D = newD();
             computeAllInd(); if (chartType === 'ha') toHA();
             setAllData();
             if (range) chart.timeScale().setVisibleLogicalRange({ from: range.from + added, to: range.to + added });   // keep the view where it was
             DR.redraw();
+            more = true;
         })
         .catch(function () { /* try again on the next scroll */ })
-        .then(function () { loadingOlder = false; });
+        .then(function () {
+            loadingOlder = false;
+            var now = more && chart.timeScale().getVisibleLogicalRange();
+            if (now && needOlder(now)) loadOlder();
+        });
 }
 
 // One websocket per Binance endpoint (market data / public book data). Features subscribe to the streams they need;

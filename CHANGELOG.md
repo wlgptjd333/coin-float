@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.0] - 2026-10-11
+
+### Fixed
+- **Pinch zoom follows your fingers, like TradingView.** The chart engine changed the candle width by only half of the
+  change in finger distance, so pinching the fingers to half their distance zoomed out about 22% and going from days to
+  months took a dozen pinches. Now half the distance shows twice as many candles, the candle under your fingers stays
+  under them, and two fingers also pan.
+- **History fills in while you zoom out.** The pages needed for the empty left side (1,500 candles each, up to 4 at a
+  time) are requested together and merged in one rebuild, and loading continues until the view is filled. Before, one
+  page of 1,000 loaded per touch and then waited for the next gesture.
+
+### Changed
+- **The zoom is kept across timeframes and symbols, and the next time the app opens**, like TradingView: zoom out on
+  15m, switch to 1h and the chart stays as zoomed out.
+
 ## [1.9.9] - 2026-10-11
 
 ### Changed
