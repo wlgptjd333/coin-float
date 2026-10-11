@@ -36,6 +36,9 @@ class MarketDataRepository(
     /** Live candles of the floating mini chart's symbol/interval (see [setMiniChartStream]). */
     val klineEvents = binanceClient.klineEvents
 
+    /** Drops the current socket and connects again right away (network changed). No-op while paused/stopped. */
+    fun reconnectNow() = binanceClient.reconnectNow()
+
     /** The mini chart that is open (or null): its candle stream is subscribed only while it is on screen. */
     fun setMiniChartStream(symbol: String?, interval: String?) {
         binanceClient.setExtraStream(if (symbol != null && interval != null) "${symbol.lowercase()}@kline_$interval" else null)

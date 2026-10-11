@@ -122,6 +122,7 @@ class FloatingOverlayService : Service() {
             addAction(Intent.ACTION_USER_PRESENT)
         }
         registerReceiver(screenStateReceiver, screenFilter)
+        registerNetworkCallback()
 
         // Observe settings changes
         serviceScope.launch {
@@ -218,22 +219,22 @@ class FloatingOverlayService : Service() {
         feedRunning = null
 
         serviceScope.launch {
+            // On a cold start DataStore may not have been read yet: starting from its placeholder defaults showed the
+            // window at the default spot with BTC/ETH for a moment before it jumped to the saved place and coins.
+            val saved = settingsRepository.awaitSettings()
+            if (!isServiceRunning) return@launch
             settingsRepository.updateServiceEnabled(true)
             settingsRepository.updateOverlayVisible(true)
+            val currentSettings = saved.copy(isServiceEnabled = true, isOverlayVisible = true)
+
+            updateNotification(marketDataRepository.connectionState.value)
+            marketDataRepository.start(currentSettings.selectedSymbols)
+            lastSubscribedSymbols = currentSettings.selectedSymbols
+            feedRunning = true
+            syncFeed()
+            showOverlay(currentSettings)
+            startPriceObserving()
         }
-
-        val currentSettings = settingsRepository.settingsFlow.value.copy(
-            isServiceEnabled = true,
-            isOverlayVisible = true
-        )
-
-        updateNotification(marketDataRepository.connectionState.value)
-        marketDataRepository.start(currentSettings.selectedSymbols)
-        lastSubscribedSymbols = currentSettings.selectedSymbols
-        feedRunning = true
-        syncFeed()
-        showOverlay(currentSettings)
-        startPriceObserving()
     }
 
     private fun handleHide() {
@@ -379,12 +380,36 @@ class FloatingOverlayService : Service() {
         try {
             unregisterReceiver(screenStateReceiver)
         } catch (_: Exception) {}
+        networkCallback?.let { cb ->
+            runCatching { (getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(cb) }
+        }
+        networkCallback = null
         overlayController.hide()
         marketDataRepository.setMiniChartStream(null, null)
         marketDataRepository.stop()
         priceUpdateJob?.cancel()
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    // Wi-Fi <-> mobile switches leave the old socket half-open until a ping times out (tens of seconds of frozen
+    // prices). Reconnect as soon as a different network becomes the default one.
+    private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
+    private var currentNetwork: android.net.Network? = null
+
+    private fun registerNetworkCallback() {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return
+        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                val previous = currentNetwork
+                currentNetwork = network
+                if (previous != null && previous != network) {
+                    Log.d(TAG, "Default network changed: reconnecting the market feed")
+                    marketDataRepository.reconnectNow()
+                }
+            }
+        }
+        runCatching { cm.registerDefaultNetworkCallback(cb) }.onSuccess { networkCallback = cb }
     }
 
     private fun isKeyguardLocked(): Boolean =

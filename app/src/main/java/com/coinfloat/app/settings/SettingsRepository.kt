@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.io.IOException
@@ -28,6 +29,8 @@ class SettingsRepository(
     scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) {
     companion object {
+        /** Placeholder until DataStore has been read (compared by identity). */
+        private val INITIAL = OverlaySettings()
         private val KEY_SELECTED_SYMBOLS = stringPreferencesKey("selected_symbols")
         private val KEY_SYMBOL_DISPLAY_MODE = stringPreferencesKey("symbol_display_mode")
         private val KEY_FONT_SIZE_SP = floatPreferencesKey("font_size_sp")
@@ -115,8 +118,15 @@ class SettingsRepository(
         .stateIn(
             scope = scope,
             started = SharingStarted.Eagerly,
-            initialValue = OverlaySettings()
+            initialValue = INITIAL
         )
+
+    /**
+     * The saved settings, waiting for DataStore's first read if needed. [settingsFlow] starts with plain defaults
+     * (BTC/ETH, default position and style) until the file is read; anything that acts on settings at startup (the
+     * overlay service) must not use those placeholders.
+     */
+    suspend fun awaitSettings(): OverlaySettings = settingsFlow.first { it !== INITIAL }
 
     suspend fun updateSelectedSymbols(symbols: List<String>) {
         editSymbols { it.clear(); it.addAll(symbols) }

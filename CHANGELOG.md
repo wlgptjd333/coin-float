@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.3] - 2026-10-11
+
+### Fixed
+- **The floating window could open at the default spot with BTC/ETH for a moment** and then jump to its saved place and
+  coins. On a cold start the service used the settings' placeholder defaults before DataStore had been read; it now waits
+  for the saved settings.
+- **Frozen prices shown as live after a network change.** Switching Wi-Fi <-> mobile could leave the socket half-open
+  until a ping timed out. The feed now reconnects as soon as the default network changes, and a watchdog replaces the
+  socket if no market data arrives for 15 s (every coin sends a mini-ticker each second, so silence means a dead socket);
+  the window dims while it reconnects.
+- The in-app chart reconnects as soon as the device is back online (it waited out its retry back-off, up to 15 s) and
+  fills in the candles it missed.
+- Opening the app no longer pops a "시세창을 시작합니다" toast every time it silently restores a floating window that
+  was already on (only starting it yourself shows it).
+- The chart page, which now lives for the whole app session, keeps its candle series bounded (a 1m chart used to grow
+  by 1,440 candles a day).
+
 ## [1.9.2] - 2026-10-11
 
 ### Fixed

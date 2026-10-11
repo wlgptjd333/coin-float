@@ -159,7 +159,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private var isStartingService = false
 
-    fun startService() {
+    /** [announce]: show the "starting" toast; off when the app silently restores a window that was already on. */
+    fun startService(announce: Boolean = true) {
         val context: Context = getApplication()
         if (!checkOverlayPermission()) {
             android.widget.Toast.makeText(
@@ -186,7 +187,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 settingsRepository.updateServiceEnabled(true)
                 settingsRepository.updateOverlayVisible(true)
             }
-            android.widget.Toast.makeText(context, "CoinFloat 시세창을 시작합니다.", android.widget.Toast.LENGTH_SHORT).show()
+            if (announce) android.widget.Toast.makeText(context, "CoinFloat 시세창을 시작합니다.", android.widget.Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             android.util.Log.e("SettingsViewModel", "Failed to start service: ${e.message}", e)
             android.widget.Toast.makeText(context, "시세창 시작 실패: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
@@ -323,7 +324,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             settings.collectLatest { s ->
                 if (_selectedTabIndex.value == TAB_HOME) publishAppActive()     // watchlist edits change what the home screen streams
                 if (s.isServiceEnabled && !FloatingOverlayService.isServiceActive.value && !isStartingService && checkOverlayPermission()) {
-                    startService()
+                    startService(announce = false)        // restoring a window that was on: no toast every time the app opens
                 }
             }
         }

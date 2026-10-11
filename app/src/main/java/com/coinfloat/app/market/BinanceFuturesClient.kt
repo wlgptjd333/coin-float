@@ -36,6 +36,8 @@ class BinanceFuturesClient(
         private const val EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo"
 
         private val BACKOFF_DELAYS_MS = longArrayOf(1000L, 2000L, 4000L, 8000L, 16000L, 30000L)
+        private const val WATCHDOG_CHECK_MS = 5_000L
+        private const val SILENCE_LIMIT_MS = 15_000L
     }
 
     private val httpClient = OkHttpClient.Builder()
@@ -197,6 +199,8 @@ class BinanceFuturesClient(
                 Log.d(TAG, "WebSocket connected successfully")
                 _connectionState.value = ConnectionState.CONNECTED
                 reconnectAttempt = 0
+                lastMessageAt = System.currentTimeMillis()
+                startWatchdog(generation)
 
                 val currentSymbols = synchronized(lock) { activeSymbols.toList() }
                 if (currentSymbols.isNotEmpty()) {
@@ -207,6 +211,7 @@ class BinanceFuturesClient(
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 if (!isCurrent()) return
+                lastMessageAt = System.currentTimeMillis()
                 handleMessage(text)
             }
 
@@ -261,6 +266,40 @@ class BinanceFuturesClient(
     private fun cancelReconnectJob() {
         reconnectJob?.cancel()
         reconnectJob = null
+    }
+
+    // Every subscribed coin sends a mini-ticker each second, so a long silence means the socket is dead even though it
+    // looks open (half-open TCP after a network switch, a dropped subscription): replace it instead of showing
+    // frozen prices as live.
+    @Volatile
+    private var lastMessageAt = 0L
+    private var watchdogJob: Job? = null
+
+    private fun startWatchdog(generation: Int) {
+        watchdogJob?.cancel()
+        watchdogJob = scope.launch {
+            while (isActive && generation == socketGeneration.get()) {
+                delay(WATCHDOG_CHECK_MS)
+                if (generation != socketGeneration.get()) break
+                val hasSubscriptions = synchronized(lock) { activeSymbols.isNotEmpty() && !isPaused && !isExplicitDisconnect }
+                if (hasSubscriptions && System.currentTimeMillis() - lastMessageAt > SILENCE_LIMIT_MS) {
+                    Log.w(TAG, "No market data for ${SILENCE_LIMIT_MS / 1000}s: reconnecting")
+                    reconnectNow()
+                    break
+                }
+            }
+        }
+    }
+
+    /** Replaces the socket right away (keeps the subscriptions). Ignored while paused or disconnected on purpose. */
+    fun reconnectNow() {
+        val allowed = synchronized(lock) { !isPaused && !isExplicitDisconnect && activeSymbols.isNotEmpty() }
+        if (!allowed) return
+        cancelReconnectJob()
+        closeWebSocket()
+        _connectionState.value = ConnectionState.RECONNECTING
+        reconnectAttempt = 0
+        initiateConnection()
     }
 
     private fun closeWebSocket() {

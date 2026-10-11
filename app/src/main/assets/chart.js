@@ -1676,6 +1676,14 @@ Stream.prototype.shutdown = function (reset) {
     if (this.ws) { try { this.ws.close(); } catch (e) { /* ignore */ } this.ws = null; }
 };
 var streams = { market: new Stream('market/stream'), pub: new Stream('public/stream') };
+// back online: reconnect at once instead of waiting out the retry back-off, then fill in what was missed
+window.addEventListener('online', function () {
+    if (!active) return;
+    [streams.market, streams.pub].forEach(function (st) {
+        if (!st.ws && st.names().length) { clearTimeout(st.timer); st.delay = 1000; st.connect(); }
+    });
+    if (candles.length) resync();
+});
 streams.market.hooks.push(function () { resync(); });
 
 var klineName = null;
@@ -1739,7 +1747,12 @@ function applyKline(k) {
     if (t === last.time) candles[n - 1] = bar;
     else if (t > last.time) candles.push(bar);
     else return;
-    pushLast();
+    if (candles.length > MAX_BARS + 500) {
+        // the page now lives for the whole app session: keep the series bounded (rare full rebuild)
+        candles = candles.slice(candles.length - MAX_BARS);
+        D = newD(); computeAllInd(); if (chartType === 'ha') toHA();
+        setAllData(); DR.redraw();
+    } else pushLast();
     showPrice(bar.close, bar.close === last.close ? 0 : (bar.close > last.close ? 1 : -1));
     if (crossTime == null) scheduleLegend();
 }
