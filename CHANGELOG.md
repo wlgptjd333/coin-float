@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.4] - 2026-10-11
+
+### Fixed
+- **No invisible "watching" service without the overlay permission.** If "display over other apps" was off, starting the
+  floating window still ran the foreground service (notification, socket, battery) with nothing on screen. It now stops
+  right away and keeps the on/off choice.
+- **The window comes back by itself after the permission is granted again.** Returning to the app from the permission
+  screen only refreshed the home notice; now, if the floating window was on, it is restored immediately.
+
 ## [1.9.3] - 2026-10-11
 
 ### Fixed

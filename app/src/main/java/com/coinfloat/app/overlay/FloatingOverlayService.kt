@@ -176,6 +176,15 @@ class FloatingOverlayService : Service() {
             return START_NOT_STICKY
         }
 
+        // Without "display over other apps" nothing can be shown: a running service would only keep a "watching"
+        // notification and the socket alive for nothing. Stop; the saved on/off state is kept, so the app brings the
+        // window back by itself once the permission is granted again.
+        if ((action == ACTION_START || action == ACTION_SHOW) && !android.provider.Settings.canDrawOverlays(this)) {
+            Log.w(TAG, "Overlay permission missing: not starting")
+            stopWithoutForgetting()
+            return START_NOT_STICKY
+        }
+
         when (action) {
             ACTION_START -> handleStart()
             ACTION_HIDE -> handleHide()
@@ -262,6 +271,22 @@ class FloatingOverlayService : Service() {
         val currentSettings = settingsRepository.settingsFlow.value.copy(isOverlayVisible = true)
         showOverlay(currentSettings)
         updateNotification(marketDataRepository.connectionState.value)
+    }
+
+    /** Stops like [handleStop] but leaves "service enabled" as it is (used when the permission is missing). */
+    private fun stopWithoutForgetting() {
+        isServiceRunning = false
+        _isServiceActive.value = false
+        overlayController.hide()
+        marketDataRepository.stop()
+        priceUpdateJob?.cancel()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        stopSelf()
     }
 
     private fun handleStop() {

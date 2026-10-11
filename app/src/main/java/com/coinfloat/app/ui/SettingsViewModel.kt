@@ -138,8 +138,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun refreshPermissions() {
+        val hadOverlay = _hasOverlayPermission.value
         _hasOverlayPermission.value = checkOverlayPermission()
         _hasNotificationPermission.value = checkNotificationPermission()
+        // Permission granted (again) while the window is meant to be on: restore it right away, like on app start.
+        if (!hadOverlay && _hasOverlayPermission.value && settings.value.isServiceEnabled &&
+            !FloatingOverlayService.isServiceActive.value && !isStartingService
+        ) {
+            startService(announce = false)
+        }
     }
 
     private fun checkOverlayPermission(): Boolean {
