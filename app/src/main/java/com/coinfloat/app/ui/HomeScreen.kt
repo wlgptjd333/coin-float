@@ -208,10 +208,11 @@ private fun Watchlist(
 
 @Composable
 private fun ChangeTag(change: Float?) {
+    val updown = com.coinfloat.app.ui.theme.LocalUpDown.current
     val color = when {
         change == null -> Cf.TextFaint
-        change >= 0f -> Cf.Up
-        else -> Cf.Down
+        change >= 0f -> updown.up
+        else -> updown.down
     }
     Text(
         text = if (change == null) "—" else "%+.2f%%".format(change),
@@ -233,6 +234,7 @@ fun OverlayPreview(settings: OverlaySettings, modifier: Modifier = Modifier) {
         Color(android.graphics.Color.red(c) / 255f, android.graphics.Color.green(c) / 255f, android.graphics.Color.blue(c) / 255f, alpha)
     }.getOrDefault(fallback)
 
+    val updown = com.coinfloat.app.ui.theme.LocalUpDown.current
     val bg = parse(settings.backgroundColorHex, settings.backgroundOpacity.coerceIn(0f, 1f), Color(0xCC1E2024))
     val text = parse(settings.textColorHex, settings.textOpacity.coerceIn(0.1f, 1f), Color(0xFF65D69A))
     val stroke = parse(settings.backgroundColorHex, (settings.backgroundOpacity.coerceIn(0f, 1f) * 1.5f).coerceIn(0.2f, 0.85f), Color.Gray)
@@ -279,7 +281,7 @@ fun OverlayPreview(settings: OverlaySettings, modifier: Modifier = Modifier) {
                     val line = buildAnnotatedString {
                         append("$label$p")
                         if (settings.show24hChange) {
-                            withStyle(SpanStyle(color = (if (change >= 0f) Cf.Up else Cf.Down).copy(alpha = text.alpha))) {
+                            withStyle(SpanStyle(color = (if (change >= 0f) updown.up else updown.down).copy(alpha = text.alpha))) {
                                 append(" %+.2f%%".format(change))
                             }
                         }

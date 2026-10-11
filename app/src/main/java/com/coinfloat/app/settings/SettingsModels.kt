@@ -20,6 +20,12 @@ enum class RefreshRateProfile(val label: String, val intervalMs: Long, val fpsTe
     FPS_1("1 FPS (1000ms - 초절전)", 1000L, "1 FPS")
 }
 
+/** Colors for "up" and "down" everywhere outside the chart page (which has its own palette setting). */
+enum class UpDownScheme(val label: String, val up: Int, val down: Int) {
+    GREEN_RED("초록 상승 · 빨강 하락", 0xFF0ECB81.toInt(), 0xFFF6465D.toInt()),
+    RED_BLUE("빨강 상승 · 파랑 하락", 0xFFF6465D.toInt(), 0xFF3B82F6.toInt())
+}
+
 data class SymbolConfig(
     val symbol: String,
     val customDisplayName: String? = null
@@ -44,7 +50,8 @@ data class OverlaySettings(
     val chartSizeProfile: ChartSizeProfile = ChartSizeProfile.MEDIUM,
     val customChartWidthDp: Int = 260,
     val customChartHeightDp: Int = 170,
-    val refreshRateProfile: RefreshRateProfile = RefreshRateProfile.FPS_5
+    val refreshRateProfile: RefreshRateProfile = RefreshRateProfile.FPS_5,
+    val upDownScheme: UpDownScheme = UpDownScheme.GREEN_RED
 ) {
     fun getChartDimensionsDp(): Pair<Int, Int> = when (chartSizeProfile) {
         ChartSizeProfile.SMALL -> Pair(ChartSizeProfile.SMALL.widthDp, ChartSizeProfile.SMALL.heightDp)

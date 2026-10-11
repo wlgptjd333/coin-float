@@ -60,6 +60,7 @@ fun SettingsContent(
     appVersion: String,
     onSymbolDisplayModeChange: (SymbolDisplayMode) -> Unit,
     onShow24hChangeChange: (Boolean) -> Unit,
+    onUpDownSchemeChange: (com.coinfloat.app.settings.UpDownScheme) -> Unit,
     onFontSizeChange: (Float) -> Unit,
     onTextColorChange: (String) -> Unit,
     onTextOpacityChange: (Float) -> Unit,
@@ -120,6 +121,17 @@ fun SettingsContent(
             GroupDivider()
             ControlBlock("여백", "${settings.paddingDp}dp") {
                 SmoothSlider(settings.paddingDp.toFloat(), { onPaddingChange(it.toInt()) }, 0f..16f, steps = 15)
+            }
+        }
+
+        SectionLabel("상승 · 하락 색")
+        Group {
+            ControlBlock("등락률 · 미니 차트 · 관심종목") {
+                Segmented(
+                    options = com.coinfloat.app.settings.UpDownScheme.values().map { it to it.label },
+                    selected = settings.upDownScheme,
+                    onSelect = onUpDownSchemeChange
+                )
             }
         }
 

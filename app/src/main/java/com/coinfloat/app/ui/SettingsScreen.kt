@@ -82,6 +82,13 @@ fun SettingsScreen(
         context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
     }
 
+    val upDown = remember(settings.upDownScheme) {
+        com.coinfloat.app.ui.theme.UpDownColors(
+            androidx.compose.ui.graphics.Color(settings.upDownScheme.up),
+            androidx.compose.ui.graphics.Color(settings.upDownScheme.down)
+        )
+    }
+    androidx.compose.runtime.CompositionLocalProvider(com.coinfloat.app.ui.theme.LocalUpDown provides upDown) {
     Scaffold(
         containerColor = Cf.Bg,
         bottomBar = {
@@ -147,6 +154,7 @@ fun SettingsScreen(
                             appVersion = appVersion,
                             onSymbolDisplayModeChange = viewModel::updateSymbolDisplayMode,
                             onShow24hChangeChange = viewModel::updateShow24hChange,
+                            onUpDownSchemeChange = viewModel::updateUpDownScheme,
                             onFontSizeChange = viewModel::updateFontSize,
                             onTextColorChange = viewModel::updateTextColor,
                             onTextOpacityChange = viewModel::updateTextOpacity,
@@ -191,5 +199,6 @@ fun SettingsScreen(
         }
     }
 
+    }
     infoSheet?.let { InfoDialog(it) { infoSheet = null } }
 }

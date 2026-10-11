@@ -302,7 +302,7 @@ class MiniChartView(
         if (currentPrice != null) {
             val prev = lastPriceFloat
             if (prev != null) {
-                if (currentPrice > prev) lastColor = UP else if (currentPrice < prev) lastColor = DOWN
+                if (currentPrice > prev) lastColor = upColor else if (currentPrice < prev) lastColor = downColor
             }
             lastPriceFloat = currentPrice
         }
@@ -315,7 +315,7 @@ class MiniChartView(
             append("  ")
             val start = length
             append(String.format(Locale.US, "%+.2f%%", changePercent))
-            setSpan(ForegroundColorSpan(if (changePercent >= 0f) UP else DOWN), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(ForegroundColorSpan(if (changePercent >= 0f) upColor else downColor), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     }
 
@@ -361,6 +361,17 @@ class MiniChartView(
 
     fun setChartError(message: String) {
         chartView.setError(message)
+    }
+
+    private var upColor = UP
+    private var downColor = DOWN
+
+    fun setUpDownColors(up: Int, down: Int) {
+        if (up == upColor && down == downColor) return
+        upColor = up; downColor = down
+        lastColor = up
+        shownPrice = null              // repaint the header with the new colors on the next tick
+        chartView.setUpDownColors(up, down)
     }
 
     fun applyKline(item: KlineItem) {

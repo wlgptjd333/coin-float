@@ -295,6 +295,7 @@ private fun LiveChartHeader(
     onFullscreen: () -> Unit
 ) {
     val prices by marketPrices.collectAsState()
+    val updown = com.coinfloat.app.ui.theme.LocalUpDown.current
     val currentPrice = prices[symbol]?.price
     val liveChange = prices[symbol]?.dayChangePercent() ?: ticker24h?.priceChangePercent
     val formattedPrice = PriceFormatter.formatPrice(currentPrice, tickSize)
@@ -305,8 +306,8 @@ private fun LiveChartHeader(
     LaunchedEffect(livePriceFloat) {
         if (livePriceFloat > 0f) {
             if (prevPrice > 0f) {
-                if (livePriceFloat > prevPrice) priceColor = UpColor
-                else if (livePriceFloat < prevPrice) priceColor = DownColor
+                if (livePriceFloat > prevPrice) priceColor = updown.up
+                else if (livePriceFloat < prevPrice) priceColor = updown.down
             }
             prevPrice = livePriceFloat
         }
@@ -450,7 +451,8 @@ private fun HeaderIconButton(
 @Composable
 private fun ChangeBadge(changePercent: Float) {
     val positive = changePercent >= 0f
-    val color = if (positive) UpColor else DownColor
+    val updown = com.coinfloat.app.ui.theme.LocalUpDown.current
+    val color = if (positive) updown.up else updown.down
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
@@ -530,7 +532,7 @@ private fun FundingStat(info: FundingInfo) {
         Row {
             Text(
                 text = String.format(Locale.US, "%s%.4f%%", if (positive) "+" else "", ratePct),
-                color = if (positive) UpColor else DownColor,
+                color = if (positive) com.coinfloat.app.ui.theme.LocalUpDown.current.up else com.coinfloat.app.ui.theme.LocalUpDown.current.down,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 fontFamily = FontFamily.Monospace

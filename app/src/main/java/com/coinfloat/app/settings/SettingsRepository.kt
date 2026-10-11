@@ -50,6 +50,7 @@ class SettingsRepository(
         private val KEY_CUSTOM_CHART_WIDTH_DP = intPreferencesKey("custom_chart_width_dp")
         private val KEY_CUSTOM_CHART_HEIGHT_DP = intPreferencesKey("custom_chart_height_dp")
         private val KEY_REFRESH_RATE_PROFILE = stringPreferencesKey("refresh_rate_profile")
+        private val KEY_UPDOWN_SCHEME = stringPreferencesKey("updown_scheme")
 
         @Volatile
         private var instance: SettingsRepository? = null
@@ -112,7 +113,8 @@ class SettingsRepository(
                 chartSizeProfile = profile,
                 customChartWidthDp = preferences[KEY_CUSTOM_CHART_WIDTH_DP] ?: 260,
                 customChartHeightDp = preferences[KEY_CUSTOM_CHART_HEIGHT_DP] ?: 170,
-                refreshRateProfile = rate
+                refreshRateProfile = rate,
+                upDownScheme = runCatching { UpDownScheme.valueOf(preferences[KEY_UPDOWN_SCHEME] ?: "") }.getOrDefault(UpDownScheme.GREEN_RED)
             )
         }
         .stateIn(
@@ -272,6 +274,12 @@ class SettingsRepository(
             preferences[KEY_CHART_SIZE_PROFILE] = ChartSizeProfile.CUSTOM.name
             preferences[KEY_CUSTOM_CHART_WIDTH_DP] = widthDp.coerceIn(160, 420)
             preferences[KEY_CUSTOM_CHART_HEIGHT_DP] = heightDp.coerceIn(110, 360)
+        }
+    }
+
+    suspend fun updateUpDownScheme(scheme: UpDownScheme) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_UPDOWN_SCHEME] = scheme.name
         }
     }
 

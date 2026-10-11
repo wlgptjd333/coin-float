@@ -165,7 +165,7 @@ class ScreenshotTest {
                 SettingsContent(
                     settings = OverlaySettings(selectedSymbols = symbols),
                     appVersion = "1.8.0",
-                    onSymbolDisplayModeChange = {}, onShow24hChangeChange = {}, onFontSizeChange = {}, onTextColorChange = {}, onTextOpacityChange = {},
+                    onSymbolDisplayModeChange = {}, onShow24hChangeChange = {}, onUpDownSchemeChange = {}, onFontSizeChange = {}, onTextColorChange = {}, onTextOpacityChange = {},
                     onBackgroundColorChange = {}, onBackgroundOpacityChange = {}, onPaddingChange = {}, onChartEnabledChange = {},
                     onChartIntervalChange = {}, onChartSizeProfileChange = {}, onCustomChartSizeChange = { _, _ -> },
                     onRefreshRateProfileChange = {}, onOpenAppInfo = {}, onShowStabilityHelp = {}, onShowLicenses = {}, onShowPrivacy = {}
@@ -179,7 +179,7 @@ class ScreenshotTest {
         SettingsContent(
             settings = OverlaySettings(selectedSymbols = symbols),
             appVersion = "1.8.0",
-            onSymbolDisplayModeChange = {}, onShow24hChangeChange = {}, onFontSizeChange = {}, onTextColorChange = {}, onTextOpacityChange = {},
+            onSymbolDisplayModeChange = {}, onShow24hChangeChange = {}, onUpDownSchemeChange = {}, onFontSizeChange = {}, onTextColorChange = {}, onTextOpacityChange = {},
             onBackgroundColorChange = {}, onBackgroundOpacityChange = {}, onPaddingChange = {}, onChartEnabledChange = {},
             onChartIntervalChange = {}, onChartSizeProfileChange = {}, onCustomChartSizeChange = { _, _ -> },
             onRefreshRateProfileChange = {}, onOpenAppInfo = {}, onShowStabilityHelp = {}, onShowLicenses = {}, onShowPrivacy = {}

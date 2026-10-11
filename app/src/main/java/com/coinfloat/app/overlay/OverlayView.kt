@@ -202,7 +202,8 @@ class OverlayView(context: Context) : LinearLayout(context) {
 
     private fun changeColor(change: Float): Int {
         val alpha = (currentSettings.textOpacity.coerceIn(0.1f, 1f) * 255).toInt()
-        return if (change >= 0f) Color.argb(alpha, 0x0E, 0xCB, 0x81) else Color.argb(alpha, 0xF6, 0x46, 0x5D)
+        val c = if (change >= 0f) currentSettings.upDownScheme.up else currentSettings.upDownScheme.down
+        return Color.argb(alpha, Color.red(c), Color.green(c), Color.blue(c))
     }
 
     private fun renderPrices() {

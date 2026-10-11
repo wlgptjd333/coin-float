@@ -337,6 +337,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun updateUpDownScheme(scheme: com.coinfloat.app.settings.UpDownScheme) {
+        viewModelScope.launch { settingsRepository.updateUpDownScheme(scheme) }
+    }
+
     fun updateShow24hChange(show: Boolean) {
         viewModelScope.launch { settingsRepository.updateShow24hChange(show) }
     }

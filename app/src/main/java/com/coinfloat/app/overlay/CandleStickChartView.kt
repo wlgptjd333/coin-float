@@ -93,6 +93,22 @@ class CandleStickChartView @JvmOverloads constructor(
     private var touchedCandleIndex: Int? = null
     var onCandleTouched: ((KlineItem?) -> Unit)? = null
 
+    private var upColor = UP
+    private var downColor = DOWN
+
+    /** Up / down colors from the settings scheme. */
+    fun setUpDownColors(up: Int, down: Int) {
+        if (up == upColor && down == downColor) return
+        upColor = up; downColor = down
+        upPaint.color = up; wickUpPaint.color = up
+        downPaint.color = down; wickDownPaint.color = down
+        volUpPaint.color = Color.argb(90, Color.red(up), Color.green(up), Color.blue(up))
+        volDownPaint.color = Color.argb(90, Color.red(down), Color.green(down), Color.blue(down))
+        val active = if (isPriceUp) up else down
+        currentPriceLinePaint.color = active; priceBadgePaint.color = active
+        invalidate()
+    }
+
     fun setInterval(interval: String) {
         intervalMs = intervalToMs(interval)
     }
@@ -126,7 +142,7 @@ class CandleStickChartView @JvmOverloads constructor(
         val prevPrice = currentLivePrice ?: last.close
         if (price > prevPrice) isPriceUp = true else if (price < prevPrice) isPriceUp = false
         currentLivePrice = price
-        val activeColor = if (isPriceUp) UP else DOWN
+        val activeColor = if (isPriceUp) upColor else downColor
         currentPriceLinePaint.color = activeColor
         priceBadgePaint.color = activeColor
 

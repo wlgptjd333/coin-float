@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +30,10 @@ object Cf {
     val Warn = Color(0xFFF0B90B)
     val WarnSoft = Color(0xFF2B2513)
 }
+
+/** Up / down colors chosen in settings (green-red or red-blue); provided at the app root. */
+data class UpDownColors(val up: Color, val down: Color)
+val LocalUpDown = staticCompositionLocalOf { UpDownColors(Cf.Up, Cf.Down) }
 
 private val ColorScheme = darkColorScheme(
     primary = Cf.Accent,
