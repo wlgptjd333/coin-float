@@ -882,33 +882,36 @@ private fun WebView.destroyChart() {
 /** Calls from the page into the app. */
 private class ChartBridge(
     private val webView: WebView,
-    private val openSearch: () -> Unit,
-    private val exitImmersive: () -> Unit,
-    private val backState: (Boolean) -> Unit,
-    private val candleClose: (String) -> Unit
+    private val onOpenSearch: () -> Unit,
+    private val onExitImmersive: () -> Unit,
+    private val onBackState: (Boolean) -> Unit,
+    private val onCandleClose: (String) -> Unit
 ) {
-    // "<interval>|<close time ms>" of the forming candle, or "" while the page loads
+    // The callbacks are named on* on purpose: a callback named like its method (candleClose) made candleClose(value)
+    // call the method itself, which re-posted itself forever and kept the main thread busy (1.11.0).
+
+    // "<interval>|<close time ms>" of the forming candle, or "" while the page loads.
     @JavascriptInterface
     fun candleClose(arg: String?) {
         val value = arg.orEmpty()
-        webView.post { candleClose(value) }
+        webView.post { onCandleClose(value) }
     }
 
     // The page reports whether it has something Back should close first (settings sheet, drawing tool, selection).
     @JavascriptInterface
     fun backState(arg: String?) {
         val consume = arg == "1"
-        webView.post { backState(consume) }
+        webView.post { onBackState(consume) }
     }
 
     @JavascriptInterface
     fun openSymbolSearch(arg: String?) {
-        webView.post { openSearch() }
+        webView.post { onOpenSearch() }
     }
 
     @JavascriptInterface
     fun exitImmersive(arg: String?) {
-        webView.post { exitImmersive() }
+        webView.post { onExitImmersive() }
     }
 }
 

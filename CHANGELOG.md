@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.1] - 2026-10-12
+
+### Fixed
+- **The chart screen kept the main thread busy (~80% CPU) and showed no countdown (1.11.0).** The page's
+  candle-close callback shared its name with the bridge method, so the method called itself and re-posted itself
+  forever instead of updating the header. Measured on the phone: main thread at 81% with the chart open. All bridge
+  callbacks are now named apart from their methods.
+
+### Changed
+- **Full screen / landscape bar shows the 24h change too**, like the portrait header: price, 24h change, then the
+  time left in the candle. The 24h ticker stream is only subscribed while that bar is on screen.
+- Interval chips cut off by scrolling fade out at the edges instead of showing half a label.
+
 ## [1.11.0] - 2026-10-12
 
 ### Changed

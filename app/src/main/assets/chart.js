@@ -1855,7 +1855,7 @@ window.loadSymbol = function (sym, defaultInterval) {
     if (defaultInterval && !started && !LS.get('interval', null)) { interval = normInterval(defaultInterval); markInterval(); }
     if (started && next === symbol && candles.length) return;
     started = true;
-    symbol = next; $('sym_name').textContent = next;
+    symbol = next; $('sym_name').textContent = next; syncDayTicker();
     DR.load(); reload(true);
 };
 window.setActive = function (on) {
@@ -1867,11 +1867,30 @@ window.setActive = function (on) {
     } else {
         stopTimers(); streams.market.shutdown(false); streams.pub.shutdown(false); syncFeatures();
     }
+    syncDayTicker();
 };
+// 24h change next to the price in the full-screen / landscape bar (otherwise the app's header shows it). The 24h
+// ticker stream (one message a second) is only subscribed while that bar is on screen.
+var dayName = null;
+function syncDayTicker() {
+    var want = immersive && active && started ? symbol.toLowerCase() + '@miniTicker' : null;
+    if (want === dayName) return;
+    if (dayName) streams.market.unsub(dayName);
+    dayName = want; setDayChange(null);
+    if (!want) return;
+    var sym = symbol;
+    streams.market.sub(want, function (d) { if (d && d.s === sym && +d.o > 0) setDayChange((+d.c - +d.o) / +d.o * 100); });
+}
+function setDayChange(pct) {
+    var el = $('top_chg'); if (!el) return;
+    var ok = pct != null && isFinite(pct), txt = ok ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '';
+    if (el.textContent !== txt) el.textContent = txt;
+    if (ok) el.style.color = pct >= 0 ? C.up : C.down;
+}
 window.setImmersive = function (on) {
     immersive = !!on;
     $('app').classList.toggle('immersive', immersive);
-    updateCountdown();
+    updateCountdown(); syncDayTicker();
     scheduleLegend();
 };
 document.addEventListener('visibilitychange', function () { window.setActive(!document.hidden); });

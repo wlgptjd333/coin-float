@@ -36,7 +36,12 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 #sym_btn { align-items: center; gap: 3px; padding: 0 8px; height: 30px; border-radius: 6px; font-weight: 700; font-size: 13px; color: #fff; flex: 0 0 auto; }
 #sym_btn .caret { color: var(--muted); font-size: 10px; }
 #top_price { font-weight: 700; font-size: 13px; padding: 0 8px 0 0; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
-#intervals { flex: 1 1 auto; min-width: 0; display: flex; gap: 1px; overflow-x: auto; scrollbar-width: none; }
+#top_chg { font-weight: 600; font-size: 12px; padding: 0 8px 0 0; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+#app #top_chg:empty { display: none !important; }
+#intervals { flex: 1 1 auto; min-width: 0; display: flex; gap: 1px; overflow-x: auto; scrollbar-width: none;
+    /* chips cut off by the scroll fade out instead of ending in half a label */
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%); }
 #intervals::-webkit-scrollbar { display: none; }
 .chip { flex: 0 0 auto; height: 30px; padding: 0 9px; border-radius: 6px; font-size: 12.5px; color: var(--muted); }
 .chip.active { color: #fff; background: var(--line); font-weight: 600; }
@@ -176,6 +181,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
     <div id="topbar">
         <button id="sym_btn" class="imm"><span id="sym_name">BTCUSDT</span><span class="caret">▾</span></button>
         <span id="top_price" class="imm"></span>
+        <span id="top_chg" class="imm" aria-label="24시간 등락률"></span>
         <span id="top_cd" class="imm" aria-label="봉 마감까지 남은 시간"></span>
         <div id="intervals"></div>
         <button id="type_btn" class="tb-btn" aria-label="차트 종류"></button>
