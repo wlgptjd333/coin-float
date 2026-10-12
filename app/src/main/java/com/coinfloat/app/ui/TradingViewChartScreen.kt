@@ -244,6 +244,7 @@ fun TradingViewChartScreen(
                 tickSize = tickSize,
                 statsExpanded = statsExpanded,
                 onToggleStats = { statsExpanded = !statsExpanded },
+                candleClose = webViewHolder.candleClose,
                 onSymbolClick = { showSearchSheet = true },
                 onRotate = ::toggleOrientation,
                 onFullscreen = onToggleFullscreen
@@ -290,6 +291,7 @@ private fun LiveChartHeader(
     tickSize: String?,
     statsExpanded: Boolean,
     onToggleStats: () -> Unit,
+    candleClose: CandleClose?,
     onSymbolClick: () -> Unit,
     onRotate: () -> Unit,
     onFullscreen: () -> Unit
@@ -327,6 +329,7 @@ private fun LiveChartHeader(
         tickSize = tickSize,
         statsExpanded = statsExpanded,
         onToggleStats = onToggleStats,
+        candleClose = candleClose,
         onSymbolClick = onSymbolClick,
         onRotate = onRotate,
         onFullscreen = onFullscreen
@@ -338,7 +341,7 @@ private fun LiveChartHeader(
 // ---------------------------------------------------------------------------------------------------
 
 @Composable
-private fun ChartHeader(
+internal fun ChartHeader(
     symbol: String,
     formattedPrice: String,
     priceColor: Color,
@@ -348,6 +351,7 @@ private fun ChartHeader(
     tickSize: String?,
     statsExpanded: Boolean,
     onToggleStats: () -> Unit,
+    candleClose: CandleClose? = null,
     onSymbolClick: () -> Unit,
     onRotate: () -> Unit,
     onFullscreen: () -> Unit
@@ -355,7 +359,7 @@ private fun ChartHeader(
     // The one-line header is dense by design; a large system font scale would truncate the symbol.
     val density = LocalDensity.current
     CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = minOf(density.fontScale, 1.0f))) {
-        ChartHeaderContent(symbol, formattedPrice, priceColor, changePercent, ticker24h, fundingInfo, tickSize, statsExpanded, onToggleStats, onSymbolClick, onRotate, onFullscreen)
+        ChartHeaderContent(symbol, formattedPrice, priceColor, changePercent, ticker24h, fundingInfo, tickSize, statsExpanded, onToggleStats, candleClose, onSymbolClick, onRotate, onFullscreen)
     }
 }
 
@@ -370,6 +374,7 @@ private fun ChartHeaderContent(
     tickSize: String?,
     statsExpanded: Boolean,
     onToggleStats: () -> Unit,
+    candleClose: CandleClose?,
     onSymbolClick: () -> Unit,
     onRotate: () -> Unit,
     onFullscreen: () -> Unit
@@ -383,6 +388,9 @@ private fun ChartHeaderContent(
                     .padding(start = 12.dp, end = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+              // symbol + price take the free width (the price block is measured first, the symbol shrinks only when
+              // there is truly no room); the buttons stay at the end
+              Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Row(
                     modifier = Modifier
                         .weight(1f, fill = false)
@@ -402,24 +410,39 @@ private fun ChartHeaderContent(
                     )
                     Text(text = " ▾", color = MutedText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = formattedPrice,
-                    color = priceColor,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    maxLines = 1
-                )
-                if (changePercent != null) {
-                    Spacer(Modifier.width(8.dp))
-                    ChangeBadge(changePercent)
+                Spacer(Modifier.width(6.dp))
+                // price, then 24h change over the time left in the candle, like exchange tickers; tapping it opens the
+                // market stats row (24h high/low, volume, funding)
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(onClickLabel = "시장 정보", onClick = onToggleStats)
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = formattedPrice,
+                        color = priceColor,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1
+                    )
+                    if (changePercent != null || candleClose != null) {
+                        Spacer(Modifier.width(7.dp))
+                        Column(verticalArrangement = Arrangement.Center) {
+                            if (changePercent != null) ChangeText(changePercent)
+                            if (candleClose != null) CandleCountdown(candleClose)
+                        }
+                    }
+                    Icon(
+                        if (statsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = MutedText,
+                        modifier = Modifier.padding(start = 2.dp).size(16.dp)
+                    )
                 }
-                Spacer(Modifier.weight(1f))
-                HeaderIconButton(
-                    if (statsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    "시장 정보", onToggleStats
-                )
+              }
                 HeaderIconButton(Icons.Default.ScreenRotation, "화면 회전", onRotate)
                 HeaderIconButton(Icons.Default.Fullscreen, "전체화면", onFullscreen)
             }
@@ -429,6 +452,44 @@ private fun ChartHeaderContent(
                 }
             }
         }
+    }
+}
+
+/**
+ * Time left in the forming candle, next to the price like exchange apps (it used to sit on the price axis, under the
+ * last-price label, where it covered the axis prices). Ticks on its own, so only this text recomposes every second.
+ */
+@Composable
+private fun CandleCountdown(close: CandleClose) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                now = System.currentTimeMillis()
+                delay(1000L - now % 1000L)          // on the second boundary, in step with the exchange clock
+            }
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = ChartInterval.label(close.interval),
+            color = MutedText,
+            fontSize = 10.5.sp,
+            lineHeight = 13.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1
+        )
+        Spacer(Modifier.width(3.dp))
+        Text(
+            text = ChartInterval.formatTimeLeft(close.closeAtMs - now),
+            color = MainText,
+            fontSize = 10.5.sp,
+            lineHeight = 13.sp,
+            fontWeight = FontWeight.Medium,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1
+        )
     }
 }
 
@@ -449,24 +510,18 @@ private fun HeaderIconButton(
 }
 
 @Composable
-private fun ChangeBadge(changePercent: Float) {
+private fun ChangeText(changePercent: Float) {
     val positive = changePercent >= 0f
     val updown = com.coinfloat.app.ui.theme.LocalUpDown.current
-    val color = if (positive) updown.up else updown.down
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(color.copy(alpha = 0.15f))
-            .padding(horizontal = 5.dp, vertical = 1.dp)
-    ) {
-        Text(
-            text = String.format(Locale.US, "%s%.2f%%", if (positive) "+" else "", changePercent),
-            color = color,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
-        )
-    }
+    Text(
+        text = String.format(Locale.US, "%s%.2f%%", if (positive) "+" else "", changePercent),
+        color = if (positive) updown.up else updown.down,
+        fontSize = 11.sp,
+        lineHeight = 13.sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = FontFamily.Monospace,
+        maxLines = 1
+    )
 }
 
 @Composable
@@ -693,6 +748,8 @@ private fun SymbolSearchSheet(
  * instant and keeps zoom, scroll, drawings and loaded data (it used to rebuild the page and refetch everything). The
  * page's callbacks go through this holder, so a re-created chart screen never talks to a disposed one.
  */
+data class CandleClose(val interval: String, val closeAtMs: Long)
+
 class ChartWebHolder {
     var view: WebView? = null
     var symbol: () -> String = { "BTCUSDT" }
@@ -701,6 +758,9 @@ class ChartWebHolder {
     var onOpenSearch: () -> Unit = {}
     var onExitImmersive: () -> Unit = {}
     var onBackState: (Boolean) -> Unit = {}
+
+    /** Interval and close time of the candle the page is forming (null while it loads), for the header countdown. */
+    var candleClose by mutableStateOf<CandleClose?>(null)
 
     fun destroy() {
         view?.destroyChart()
@@ -763,12 +823,14 @@ private fun ChartWebView(
                         onOpenSymbolSearch = { holder.onOpenSearch() },
                         onExitImmersive = { holder.onExitImmersive() },
                         onBackState = { holder.onBackState(it) },
+                        onCandleClose = { holder.candleClose = parseCandleClose(it) },
                         onRendererGone = {
                             // the renderer died: throw this WebView away and build a fresh one
                             holder.view?.destroyChart()
                             holder.view = null
                             generation++
                             holder.onBackState(false)
+                            holder.candleClose = null
                         }
                     ).also { holder.view = it }
                 }
@@ -793,6 +855,14 @@ private fun ChartWebView(
     }
 }
 
+internal fun parseCandleClose(arg: String): CandleClose? {
+    val parts = arg.split('|')
+    if (parts.size != 2) return null
+    val at = parts[1].toLongOrNull() ?: return null
+    val interval = parts[0].takeIf { ChartInterval.isValid(it) } ?: return null
+    return CandleClose(interval, at)
+}
+
 private fun WebView.loadChart(symbol: String, interval: String) {
     val safeSymbol = ChartInterval.sanitizeSymbol(symbol)
     val safeInterval = ChartInterval.normalize(interval)
@@ -814,8 +884,16 @@ private class ChartBridge(
     private val webView: WebView,
     private val openSearch: () -> Unit,
     private val exitImmersive: () -> Unit,
-    private val backState: (Boolean) -> Unit
+    private val backState: (Boolean) -> Unit,
+    private val candleClose: (String) -> Unit
 ) {
+    // "<interval>|<close time ms>" of the forming candle, or "" while the page loads
+    @JavascriptInterface
+    fun candleClose(arg: String?) {
+        val value = arg.orEmpty()
+        webView.post { candleClose(value) }
+    }
+
     // The page reports whether it has something Back should close first (settings sheet, drawing tool, selection).
     @JavascriptInterface
     fun backState(arg: String?) {
@@ -843,6 +921,7 @@ private fun createChartWebView(
     onOpenSymbolSearch: () -> Unit,
     onExitImmersive: () -> Unit,
     onBackState: (Boolean) -> Unit,
+    onCandleClose: (String) -> Unit,
     onRendererGone: () -> Unit
 ): WebView {
     val debuggable = (ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -886,7 +965,7 @@ private fun createChartWebView(
             textZoom = 100                      // the dense chart layout must not reflow with the system font scale
         }
 
-        addJavascriptInterface(ChartBridge(this, onOpenSymbolSearch, onExitImmersive, onBackState), "AndroidBridge")
+        addJavascriptInterface(ChartBridge(this, onOpenSymbolSearch, onExitImmersive, onBackState, onCandleClose), "AndroidBridge")
 
         webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {

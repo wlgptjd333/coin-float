@@ -393,6 +393,7 @@ function setAllData() {
     var mid = ind.boll && S('boll').midOn;
     bUpS.setData(ind.boll ? pts(D.bUp) : []); bMidS.setData(mid ? pts(D.bMid) : []); bLoS.setData(ind.boll ? pts(D.bLo) : []);
     subsSetData();
+    reportClose();
 }
 function histPts() {
     var out = [];
@@ -587,7 +588,7 @@ $('pane_tags').addEventListener('click', function (e) {
     if (act === 'cfg') openSettings(k);
     else if (b.getAttribute('data-a') === 'x') { ind[k] = false; LS.set('ind', ind); applyIndicators(); }
 });
-if (window.ResizeObserver) new ResizeObserver(function () { scheduleTags(); scheduleCd(); }).observe($('chart'));
+if (window.ResizeObserver) new ResizeObserver(function () { scheduleTags(); }).observe($('chart'));
 
 function applyIndicators() {
     var vis = function (s, on) { s.applyOptions({ visible: !!on }); };
@@ -1111,9 +1112,8 @@ wrap.addEventListener('pointerdown', function (e) {
     if (chart.options().handleScroll.vertTouchDrag !== want) chart.applyOptions({ handleScroll: { vertTouchDrag: want } });
 }, true);
 ['pointerup', 'pointercancel', 'wheel', 'dblclick'].forEach(function (t) {
-    wrap.addEventListener(t, function () { setTimeout(syncScaleBtns, 40); setTimeout(scheduleTags, 60); scheduleCd(); }, { capture: true, passive: true });
+    wrap.addEventListener(t, function () { setTimeout(syncScaleBtns, 40); setTimeout(scheduleTags, 60); }, { capture: true, passive: true });
 });
-wrap.addEventListener('pointermove', scheduleCd, { capture: true, passive: true });
 wrap.addEventListener('pointerdown', onDown, true);
 wrap.addEventListener('pointermove', onMove, true);
 wrap.addEventListener('pointerup', onUp, true);
@@ -1509,9 +1509,9 @@ function val(arr, i, dig) { return arr[i] == null ? null : (dig == null ? fmtPri
 var legendOpen = LS.get('legendOpen', false), legendHtml = '';
 function setLegend(html) { if (html !== legendHtml) { legendHtml = html; $('legend').innerHTML = html; } }
 function renderLegend() {
-    var n = candles.length; if (!n) { setLegend(''); placeCd(); return; }
+    var n = candles.length; if (!n) { setLegend(''); return; }
     var mode = S('chart').legend;
-    if (mode === 'off') { setLegend(''); placeCd(); return; }
+    if (mode === 'off') { setLegend(''); return; }
     var i = crossTime != null ? indexOfTime(crossTime) : -1; if (i < 0) i = n - 1;
     var c = candles[i], b = chartType === 'ha' && haBars[i] ? haBars[i] : c;
     var cls = c.close >= c.open ? 'up' : 'down', chg = c.open ? (c.close - c.open) / c.open * 100 : 0;
@@ -1542,7 +1542,6 @@ function renderLegend() {
     }
     var l2 = parts.length ? '<div class="row">' + parts.join(' &nbsp;') + '</div>' : '';
     setLegend(l1 + l2);
-    placeCd();
 }
 $('legend').addEventListener('click', function (e) {
     if (!e.target.closest || !e.target.closest('#lg_t')) return;
@@ -1550,25 +1549,27 @@ $('legend').addEventListener('click', function (e) {
 });
 chart.subscribeCrosshairMove(function (param) { crossTime = param && param.time ? param.time : null; scheduleLegend(); });
 
-// countdown to the candle close, shown right under the last-price label on the axis
-function placeCd() {
-    var el = $('cd_tag'); if (!el) return;
-    if (!candles.length || !active) { el.style.display = 'none'; return; }
-    var last = candles[candles.length - 1], y = mainSeries().priceToCoordinate(last.close), ph = chart.paneSize(0).height;
-    if (y == null || y + 26 > ph || y < 0 || !S('chart').lastLine) { el.style.display = 'none'; return; }
-    var left = nextOpen(last.time) - Math.floor(Date.now() / 1000);
-    if (left < 0) left = 0;
-    var hh = Math.floor(left / 3600), mm = Math.floor(left % 3600 / 60), ss = left % 60, pw = chart.priceScale('right').width();
-    var key = Math.round(y) + '|' + pw + '|' + (last.close >= last.open) + '|' + left;
-    if (key === cdKey && el.style.display === 'block') return;
-    cdKey = key;
-    el.style.display = 'block'; el.style.top = (y + 10) + 'px'; if (pw > 0) el.style.width = pw + 'px';
-    el.style.background = hexA(last.close >= last.open ? C.up : C.down, 0.85);
-    el.textContent = (hh ? hh + ':' + pad2(mm) : pad2(mm)) + ':' + pad2(ss);
+// Time left in the forming candle. It used to sit under the last-price label on the price axis, where it covered the
+// axis prices; like exchange apps it is now shown next to the price at the top: by the app's header (told the close
+// time over the bridge) or, in full screen, in this page's own top bar.
+function fmtLeft(s) {
+    if (s < 0) s = 0;
+    var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+    if (d) return d + '일 ' + pad2(h) + ':' + pad2(m);
+    return (h ? h + ':' + pad2(m) : pad2(m)) + ':' + pad2(sec);
 }
-var cdRaf = 0, cdKey = '';
-function scheduleCd() { if (cdRaf) return; cdRaf = requestAnimationFrame(function () { cdRaf = 0; placeCd(); }); }
-function updateCountdown() { placeCd(); }
+var closeReported = '';
+function reportClose() {
+    var v = candles.length ? interval + '|' + nextOpen(candles[candles.length - 1].time) * 1000 : '';
+    if (v === closeReported) return;
+    closeReported = v; bridge('candleClose', v);
+}
+function updateCountdown() {
+    if (!immersive) return;
+    var el = $('top_cd'); if (!el) return;
+    var txt = candles.length ? fmtLeft(nextOpen(candles[candles.length - 1].time) - Math.floor(Date.now() / 1000)) : '';
+    if (el.textContent !== txt) el.textContent = txt;
+}
 var cdTimer = null;
 var connLostAt = 0;
 function checkConn() {
@@ -1593,7 +1594,6 @@ function showPrice(p, dir) {
 chart.timeScale().subscribeVisibleLogicalRangeChange(function (r) {
     if (!r || !candles.length) return;
     $('to_latest').classList.toggle('show', r.to < candles.length - 4);
-    scheduleCd();
     saveZoom();
     if (needOlder(r)) loadOlder();
 });
@@ -1625,7 +1625,9 @@ function parseRows(raw) {
     for (var i = 0; i < raw.length; i++) {
         var k = raw[i];
         out.push({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5], buy: +k[9] });
-        if (i < 100) { var s = String(k[4]), dot = s.indexOf('.'); if (dot >= 0) dec = Math.max(dec, s.length - dot - 1); }
+        // decimals actually used, sampled from the closes and OHLC: Binance pads prices to the contract's precision
+        // ("83043.60" for a 0.1 tick), and keeping the padding widened the price axis and every price label
+        if (i < 100) for (var f = 1; f <= 4; f++) { var s = String(k[f]).replace(/0+$/, ''), dot = s.indexOf('.'); if (dot >= 0) dec = Math.max(dec, s.length - dot - 1); }
     }
     return { rows: out, dec: dec };
 }
@@ -1643,6 +1645,7 @@ function reload(symbolChanged) {
     var seq = ++loadSeq;
     unsubKline(); stopFeatures(symbolChanged !== false); noMoreOlder = false; loadingOlder = false;
     showLoading(true); crossTime = null; pinch = null;
+    if (closeReported) { closeReported = ''; bridge('candleClose', ''); }     // the header hides it until the data is in
     fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=' + PAGE)
         .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(function (raw) {
@@ -1839,6 +1842,7 @@ function applyKline(k) {
         setAllData(); DR.redraw();
     } else pushLast();
     showPrice(bar.close, bar.close === last.close ? 0 : (bar.close > last.close ? 1 : -1));
+    if (t > last.time) { reportClose(); updateCountdown(); }
     if (crossTime == null) scheduleLegend();
 }
 
@@ -1867,6 +1871,7 @@ window.setActive = function (on) {
 window.setImmersive = function (on) {
     immersive = !!on;
     $('app').classList.toggle('immersive', immersive);
+    updateCountdown();
     scheduleLegend();
 };
 document.addEventListener('visibilitychange', function () { window.setActive(!document.hidden); });

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.0] - 2026-10-12
+
+### Changed
+- **Candle countdown moved next to the price at the top**, like exchange apps. It sat under the last-price label on
+  the price axis, where it covered the axis prices. The chart header now shows the price, then the 24h change over
+  the interval and the time left in the forming candle ("15m 04:12", "4h 2:30:00", "1W 6일 23:59"). In full screen
+  (and landscape) the chart's own top bar shows it as a small label right after the price.
+- **Header tidied:** tapping the price block opens the market stats (24h high/low, volume, funding); the separate
+  stats button is gone, so the symbol has room again (checked at 393 and 360 dp, also with long names such as
+  1000PEPEUSDT).
+- **Prices use the contract's real decimals.** Binance pads prices ("83043.60" for a 0.1 tick), and the chart showed
+  that padding: "87,000.00" on the axis and in every label. It now shows "87,000.0", which also narrows the price axis.
+
 ## [1.10.2] - 2026-10-11
 
 ### Fixed

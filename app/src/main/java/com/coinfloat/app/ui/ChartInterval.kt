@@ -19,6 +19,26 @@ object ChartInterval {
         return if (v in valid) v else DEFAULT
     }
 
+    fun isValid(interval: String): Boolean = interval in valid
+
+    /** Label as the chart's interval bar shows it: minutes/hours as is, days and weeks capitalised ("1D"), "1M" month. */
+    fun label(interval: String): String =
+        if (interval.endsWith("d") || interval.endsWith("w")) interval.uppercase() else interval
+
+    /** "04:12", "1:04:12", or "2일 03:15" for multi-day candles. Never negative. */
+    fun formatTimeLeft(ms: Long): String {
+        val s = (ms.coerceAtLeast(0L) + 999L) / 1000L          // round up: "00:00" only once the candle has closed
+        val d = s / 86_400L
+        val h = s % 86_400L / 3_600L
+        val m = s % 3_600L / 60L
+        val sec = s % 60L
+        return when {
+            d > 0 -> String.format(java.util.Locale.US, "%d일 %02d:%02d", d, h, m)
+            h > 0 -> String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, sec)
+            else -> String.format(java.util.Locale.US, "%02d:%02d", m, sec)
+        }
+    }
+
     /** Keeps only characters that are safe to embed in a JavaScript string literal for a symbol. */
     fun sanitizeSymbol(symbol: String): String =
         symbol.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }

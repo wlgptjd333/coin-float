@@ -3,6 +3,8 @@ package com.coinfloat.app.screenshots
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -60,6 +62,33 @@ class ScreenshotTest {
     private fun shot(content: @Composable () -> Unit) = paparazzi.snapshot {
         CoinFloatTheme {
             Box(Modifier.background(Cf.Bg).verticalScroll(rememberScrollState())) { content() }
+        }
+    }
+
+    // live header of the in-app chart at a common width and at a narrow (360 dp) one, with the candle countdown
+    @Test
+    fun chartHeader() = shot {
+        androidx.compose.foundation.layout.Column {
+            listOf(393, 360).forEach { w ->
+                Box(Modifier.padding(bottom = 12.dp).width(w.dp)) {
+                    com.coinfloat.app.ui.ChartHeader(
+                        symbol = "BTCUSDT", formattedPrice = "111,234.5", priceColor = androidx.compose.ui.graphics.Color(0xFF0ECB81),
+                        changePercent = 2.31f, ticker24h = null, fundingInfo = null, tickSize = "0.10",
+                        statsExpanded = false, onToggleStats = {},
+                        candleClose = com.coinfloat.app.ui.CandleClose("15m", System.currentTimeMillis() + 252_000L),
+                        onSymbolClick = {}, onRotate = {}, onFullscreen = {}
+                    )
+                }
+            }
+            Box(Modifier.width(360.dp)) {
+                com.coinfloat.app.ui.ChartHeader(
+                    symbol = "1000PEPEUSDT", formattedPrice = "0.0123456", priceColor = androidx.compose.ui.graphics.Color(0xFFF6465D),
+                    changePercent = -12.85f, ticker24h = null, fundingInfo = null, tickSize = "0.0000001",
+                    statsExpanded = false, onToggleStats = {},
+                    candleClose = com.coinfloat.app.ui.CandleClose("4h", System.currentTimeMillis() + 9_000_000L),
+                    onSymbolClick = {}, onRotate = {}, onFullscreen = {}
+                )
+            }
         }
     }
 

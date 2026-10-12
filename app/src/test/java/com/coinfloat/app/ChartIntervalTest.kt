@@ -42,4 +42,31 @@ class ChartIntervalTest {
         assertEquals("BTCALERTUSDT", ChartInterval.sanitizeSymbol("BTC'+alert+'USDT"))
         assertEquals("", ChartInterval.sanitizeSymbol("'\"; \\"))
     }
+
+    @Test
+    fun timeLeftFormats() {
+        assertEquals("04:12", ChartInterval.formatTimeLeft(252_000L))
+        assertEquals("00:01", ChartInterval.formatTimeLeft(400L))              // rounds up: 0 only once closed
+        assertEquals("00:00", ChartInterval.formatTimeLeft(-5_000L))
+        assertEquals("1:00:00", ChartInterval.formatTimeLeft(3_600_000L))
+        assertEquals("23:59", ChartInterval.formatTimeLeft(1_439_000L))
+        assertEquals("2일 03:15", ChartInterval.formatTimeLeft((2 * 86_400L + 3 * 3_600L + 15 * 60L) * 1000L))
+    }
+
+    @Test
+    fun labelsMatchTheChartBar() {
+        assertEquals("15m", ChartInterval.label("15m"))
+        assertEquals("4h", ChartInterval.label("4h"))
+        assertEquals("1D", ChartInterval.label("1d"))
+        assertEquals("1W", ChartInterval.label("1w"))
+        assertEquals("1M", ChartInterval.label("1M"))
+    }
+
+    @Test
+    fun parsesCandleCloseFromThePage() {
+        assertEquals(com.coinfloat.app.ui.CandleClose("15m", 1760100900000L), com.coinfloat.app.ui.parseCandleClose("15m|1760100900000"))
+        assertEquals(null, com.coinfloat.app.ui.parseCandleClose(""))
+        assertEquals(null, com.coinfloat.app.ui.parseCandleClose("7x|1"))
+        assertEquals(null, com.coinfloat.app.ui.parseCandleClose("15m|abc"))
+    }
 }
