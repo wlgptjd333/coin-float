@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.12.0] - 2026-10-12
+
+### Added
+- **Drawing settings like TradingView.** Double-tap a drawing (or ⚙ 설정 in its bar) for a sheet with three tabs,
+  applied live on the chart: 취소 restores the drawing, 확인 keeps it.
+  - 모습 (style): color, width, line style; trend line extend left/right/both and a stats label
+    (price change, %, bars); horizontal line price label on/off and side; rectangle fill color and opacity.
+  - 좌표 (points): exact price of each point and one-bar steps in time.
+  - 보임 (visibility): show the drawing on minute / hour / day / week+month charts.
+  - 템플릿: save a drawing's look as the default for new ones, or go back to the app default.
+- **Fibonacci retracement with 24 level slots** (on/off, value, color each), one-color mode, level line width and
+  style, extend, trend line on/off and color, background fill and opacity, labels as value / percent / hidden with or
+  without prices, left or right, reverse, and log-scale levels. Presets: 핵심 되돌림 (default), 트레이딩뷰 기본,
+  OTE (ICT), 하모닉, 확장 목표.
+
 ## [1.11.1] - 2026-10-12
 
 ### Fixed
