@@ -107,13 +107,17 @@ defineSettings('chart', {
     credit: '차트 엔진: TradingView Lightweight Charts™ (Apache-2.0) · © TradingView, Inc. · https://www.tradingview.com'
 });
 defineSettings('vol', {
-    title: '거래량 설정', onChange: styleChanged,
+    title: '거래량 설정', onChange: calcChanged,
     fields: [
         { k: 'follow', t: 'bool', label: '캔들 색상 따르기', def: true },
         { k: 'up', t: 'color', label: '상승 거래량 색', def: '#0ECB81', showIf: function (c) { return !c.follow; } },
         { k: 'down', t: 'color', label: '하락 거래량 색', def: '#F6465D', showIf: function (c) { return !c.follow; } },
         { k: 'opacity', t: 'range', label: '진하기', def: 38, min: 10, max: 100, step: 1, unit: '%' },
-        { k: 'height', t: 'range', label: '차지하는 높이', def: 18, min: 8, max: 50, step: 1, unit: '%' }
+        { k: 'height', t: 'range', label: '차지하는 높이', def: 18, min: 8, max: 50, step: 1, unit: '%' },
+        { t: 'sec', label: '거래량 이동평균' },
+        { k: 'maOn', t: 'bool', label: '거래량 이동평균선', sub: '평균보다 큰 거래량이 한눈에 보입니다', def: false },
+        { k: 'maLen', t: 'num', label: '기간', def: 20, min: 2, max: 200, step: 1, showIf: function (c) { return c.maOn; } },
+        { k: 'maColor', t: 'color', label: '선 색', def: '#2962FF', showIf: function (c) { return c.maOn; } }
     ]
 });
 defineSettings('ma', {
@@ -165,7 +169,14 @@ defineSettings('rsi', {
         { k: 'width', t: 'range', label: '선 두께', def: 1, min: 1, max: 4, step: 1, unit: 'px' },
         { k: 'levels', t: 'bool', label: '과매수 · 과매도 선', def: true },
         { k: 'ob', t: 'num', label: '과매수 기준', def: 70, min: 50, max: 99, step: 1, showIf: function (c) { return c.levels; } },
-        { k: 'os', t: 'num', label: '과매도 기준', def: 30, min: 1, max: 50, step: 1, showIf: function (c) { return c.levels; } }
+        { k: 'os', t: 'num', label: '과매도 기준', def: 30, min: 1, max: 50, step: 1, showIf: function (c) { return c.levels; } },
+        { k: 'band', t: 'bool', label: '과매수 ~ 과매도 구간 배경', def: true, showIf: function (c) { return c.levels; } },
+        { k: 'mid', t: 'bool', label: '50 중심선', def: true },
+        { t: 'sec', label: 'RSI 이동평균' },
+        { k: 'maOn', t: 'bool', label: 'RSI 이동평균선', sub: 'RSI가 이 선을 위로 뚫으면 힘이 붙는 신호로 봅니다', def: true },
+        { k: 'maType', t: 'sel', label: '종류', def: 'sma', opts: [['sma', 'SMA'], ['ema', 'EMA']], showIf: function (c) { return c.maOn; } },
+        { k: 'maLen', t: 'num', label: '기간', def: 14, min: 2, max: 100, step: 1, showIf: function (c) { return c.maOn; } },
+        { k: 'maColor', t: 'color', label: '선 색', def: '#F7C548', showIf: function (c) { return c.maOn; } }
     ]
 });
 defineSettings('macd', {
@@ -175,11 +186,40 @@ defineSettings('macd', {
         { k: 'fast', t: 'num', label: '단기 EMA', def: 12, min: 2, max: 100, step: 1 },
         { k: 'slow', t: 'num', label: '장기 EMA', def: 26, min: 3, max: 200, step: 1 },
         { k: 'signal', t: 'num', label: '시그널', def: 9, min: 2, max: 100, step: 1 },
+        { k: 'oscType', t: 'sel', label: 'MACD 이평 종류', def: 'ema', opts: [['ema', 'EMA'], ['sma', 'SMA']] },
+        { k: 'sigType', t: 'sel', label: '시그널 이평 종류', def: 'ema', opts: [['ema', 'EMA'], ['sma', 'SMA']] },
         { t: 'sec', label: '스타일' },
         { k: 'cMacd', t: 'color', label: 'MACD 선 색', def: '#2962FF' },
         { k: 'cSig', t: 'color', label: '시그널 선 색', def: '#FF9800' },
         { k: 'width', t: 'range', label: '선 두께', def: 1, min: 1, max: 4, step: 1, unit: 'px' },
-        { k: 'hist', t: 'bool', label: '히스토그램 표시', def: true }
+        { k: 'hist', t: 'bool', label: '히스토그램 표시', def: true },
+        { k: 'hist4', t: 'bool', label: '히스토그램 4색', sub: '0 위/아래 × 커지는지/줄어드는지에 따라 진하기가 달라집니다 (트레이딩뷰 기본)', def: true, showIf: function (c) { return c.hist; } }
+    ]
+});
+defineSettings('vwap', {
+    title: 'VWAP 설정', onChange: calcChanged,
+    fields: [
+        { k: 'anchor', t: 'sel', label: '초기화 기준', def: 'day', opts: [['day', '매일 (UTC 0시)'], ['week', '매주 (월요일)'], ['month', '매월']] },
+        { k: 'color', t: 'color', label: '선 색', def: '#2962FF' },
+        { k: 'width', t: 'range', label: '선 두께', def: 2, min: 1, max: 4, step: 1, unit: 'px' },
+        { t: 'sec', label: '표준편차 밴드' },
+        { k: 'b1', t: 'bool', label: '밴드 1', def: true },
+        { k: 'm1', t: 'num', label: '밴드 1 배수', def: 1, min: 0.1, max: 5, step: 0.1, showIf: function (c) { return c.b1; } },
+        { k: 'b2', t: 'bool', label: '밴드 2', def: false },
+        { k: 'm2', t: 'num', label: '밴드 2 배수', def: 2, min: 0.1, max: 5, step: 0.1, showIf: function (c) { return c.b2; } },
+        { k: 'bandColor', t: 'color', label: '밴드 색', def: '#4CAF50', showIf: function (c) { return c.b1 || c.b2; } },
+        { t: 'note', label: '거래량 가중 평균 가격입니다. 기준 시점부터 거래된 물량의 평균 단가라, 위면 매수 쪽이 유리하고 아래면 매도 쪽이 유리한 구간으로 봅니다. 가격은 (고가+저가+종가)/3 을 씁니다.' }
+    ]
+});
+defineSettings('st', {
+    title: '슈퍼트렌드 설정', onChange: calcChanged,
+    fields: [
+        { k: 'period', t: 'num', label: 'ATR 기간', def: 10, min: 1, max: 100, step: 1 },
+        { k: 'factor', t: 'num', label: '배수', def: 3, min: 0.5, max: 10, step: 0.1 },
+        { k: 'up', t: 'color', label: '상승 추세 색', def: '#0ECB81' },
+        { k: 'down', t: 'color', label: '하락 추세 색', def: '#F6465D' },
+        { k: 'width', t: 'range', label: '선 두께', def: 2, min: 1, max: 4, step: 1, unit: 'px' },
+        { t: 'note', label: 'ATR(평균 변동폭)만큼 떨어진 추적 선입니다. 종가가 선을 뚫으면 추세가 바뀝니다. 기간을 늘리거나 배수를 키우면 신호가 줄고 느려집니다.' }
     ]
 });
 defineSettings('cvd', {
@@ -201,7 +241,8 @@ var interval = normInterval(LS.get('interval', '15m'));
 var chartType = LS.get('type', 'candle');                       // candle | ha | line | area
 var ind = Object.assign({
     vol: true, ma: true, ema: false, boll: false, rsi: false, macd: false,
-    cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: false
+    cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: false,
+    vwap: false, st: false
 }, LS.get('ind', {}));
 var railOpen = LS.get('rail', false);
 var active = true, immersive = false, started = false;
@@ -295,6 +336,10 @@ function overlayLine(color, width, noScale) {
 var maS = MA_DEFAULT.map(function (d) { return overlayLine(d[1], 1, true); });
 var emaS = EMA_DEFAULT.map(function (d) { return overlayLine(d[1], 1, true); });
 var bUpS = overlayLine('rgba(41,98,255,.9)'), bMidS = overlayLine('rgba(255,152,0,.9)'), bLoS = overlayLine('rgba(41,98,255,.9)');
+var vwS = overlayLine('#2962FF', 2, true), vwU1 = overlayLine('#4CAF50', 1, true), vwL1 = overlayLine('#4CAF50', 1, true), vwU2 = overlayLine('#4CAF50', 1, true), vwL2 = overlayLine('#4CAF50', 1, true);
+var stS = overlayLine('#0ECB81', 2, true);
+var stDrawn = { i: -1, dir: 0 }, vwDrawn = -1;
+var volMaS = chart.addSeries(LW.LineSeries, { color: '#2962FF', lineWidth: 1, priceScaleId: '', lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, visible: false, priceFormat: { type: 'volume' } });
 
 function mainSeries() { return chartType === 'line' ? lineSeries : chartType === 'area' ? areaSeries : candleSeries; }
 function barOf(c) { return { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }; }
@@ -313,7 +358,14 @@ function newD() {
     P.rsi = S('rsi').period;
     var m = S('macd'); P.fast = m.fast; P.slow = Math.max(m.slow, m.fast + 1); P.sig = m.signal;
     P.cvdDay = S('cvd').reset === 'day';
-    return { cs: [], ma: P.ma.map(function () { return []; }), ema: P.ema.map(function () { return []; }), bMid: [], bUp: [], bLo: [], rsi: [], rsiG: [], rsiL: [], e12: [], e26: [], macd: [], sig: [], hist: [], cvd: [], delta: [] };
+    var r = S('rsi'); P.rsiMa = r.maOn ? r.maLen : 0; P.rsiMaE = r.maType === 'ema';
+    P.oscS = m.oscType === 'sma'; P.sigS = m.sigType === 'sma';
+    var vo = S('vol'); P.volMa = vo.maOn ? vo.maLen : 0;
+    var vw = S('vwap'); P.vwA = vw.anchor; P.vwM1 = vw.m1; P.vwM2 = vw.m2;
+    var st = S('st'); P.stLen = st.period; P.stF = st.factor;
+    return { cs: [], ma: P.ma.map(function () { return []; }), ema: P.ema.map(function () { return []; }), bMid: [], bUp: [], bLo: [], rsi: [], rsiG: [], rsiL: [], e12: [], e26: [], macd: [], sig: [], hist: [], cvd: [], delta: [],
+        rsiCs: [], rsiMa: [], mcs: [], vcs: [], volMa: [], vwPV: [], vwV: [], vwPV2: [], vw: [], vwU1: [], vwL1: [], vwU2: [], vwL2: [],
+        tr: [], atr: [], stFl: [], stFu: [], stDir: [], stUp: [], stDn: [] };
 }
 var D = newD();
 
@@ -347,16 +399,65 @@ function stepInd(i) {
         else { D.rsiG[i] = (D.rsiG[i - 1] * (RP - 1) + g) / RP; D.rsiL[i] = (D.rsiL[i - 1] * (RP - 1) + l) / RP; }
         D.rsi[i] = i >= RP ? (D.rsiL[i] === 0 ? 100 : 100 - 100 / (1 + D.rsiG[i] / D.rsiL[i])) : null;
     }
+    // RSI-based moving average (TradingView's RSI shows one by default)
+    D.rsiCs[i] = (i > 0 ? D.rsiCs[i - 1] : 0) + (D.rsi[i] == null ? 0 : D.rsi[i]);
+    var rl = P.rsiMa;
+    if (!rl || D.rsi[i] == null || i < RP + rl - 1) D.rsiMa[i] = null;
+    else if (P.rsiMaE && D.rsiMa[i - 1] != null) D.rsiMa[i] = D.rsiMa[i - 1] + (2 / (rl + 1)) * (D.rsi[i] - D.rsiMa[i - 1]);
+    else D.rsiMa[i] = (D.rsiCs[i] - D.rsiCs[i - rl]) / rl;
     var af = 2 / (P.fast + 1), as = 2 / (P.slow + 1), ag = 2 / (P.sig + 1);
     D.e12[i] = i === 0 ? close : D.e12[i - 1] + af * (close - D.e12[i - 1]);
     D.e26[i] = i === 0 ? close : D.e26[i - 1] + as * (close - D.e26[i - 1]);
-    D.macd[i] = i >= P.slow - 1 ? D.e12[i] - D.e26[i] : null;
+    var fastV = P.oscS ? (i >= P.fast - 1 ? (D.cs[i] - (i >= P.fast ? D.cs[i - P.fast] : 0)) / P.fast : null) : D.e12[i];
+    var slowV = P.oscS ? (i >= P.slow - 1 ? (D.cs[i] - (i >= P.slow ? D.cs[i - P.slow] : 0)) / P.slow : null) : D.e26[i];
+    D.macd[i] = i >= P.slow - 1 && fastV != null && slowV != null ? fastV - slowV : null;
+    D.mcs[i] = (i > 0 ? D.mcs[i - 1] : 0) + (D.macd[i] == null ? 0 : D.macd[i]);
     if (D.macd[i] == null) { D.sig[i] = null; D.hist[i] = null; }
     else {
         var ps = D.sig[i - 1];
-        D.sig[i] = ps == null ? D.macd[i] : ps + ag * (D.macd[i] - ps);
-        D.hist[i] = D.macd[i] - D.sig[i];
+        if (P.sigS) D.sig[i] = i >= P.slow - 1 + P.sig - 1 ? (D.mcs[i] - D.mcs[i - P.sig]) / P.sig : null;
+        else D.sig[i] = ps == null ? D.macd[i] : ps + ag * (D.macd[i] - ps);
+        D.hist[i] = D.sig[i] == null ? null : D.macd[i] - D.sig[i];
     }
+    // volume moving average
+    D.vcs[i] = (i > 0 ? D.vcs[i - 1] : 0) + candles[i].volume;
+    var vl = P.volMa; D.volMa[i] = vl && i >= vl - 1 ? (D.vcs[i] - (i >= vl ? D.vcs[i - vl] : 0)) / vl : null;
+    stepVwap(i); stepSupertrend(i);
+}
+// VWAP anchored to the start of each day / week / month (UTC), with standard-deviation bands
+function vwapPeriod(t) {
+    if (P.vwA === 'month') { var d = new Date(t * 1000); return d.getUTCFullYear() * 12 + d.getUTCMonth(); }
+    if (P.vwA === 'week') return Math.floor((t / 86400 + 3) / 7);           // weeks start on Monday (1970-01-01 was a Thursday)
+    return Math.floor(t / 86400);
+}
+function stepVwap(i) {
+    var k = candles[i], tp = (k.high + k.low + k.close) / 3, v = k.volume;
+    var fresh = i === 0 || vwapPeriod(k.time) !== vwapPeriod(candles[i - 1].time);
+    D.vwPV[i] = (fresh ? 0 : D.vwPV[i - 1]) + tp * v;
+    D.vwV[i] = (fresh ? 0 : D.vwV[i - 1]) + v;
+    D.vwPV2[i] = (fresh ? 0 : D.vwPV2[i - 1]) + tp * tp * v;
+    var vw = D.vwV[i] > 0 ? D.vwPV[i] / D.vwV[i] : tp, sd = D.vwV[i] > 0 ? Math.sqrt(Math.max(0, D.vwPV2[i] / D.vwV[i] - vw * vw)) : 0;
+    D.vw[i] = vw;
+    D.vwU1[i] = vw + P.vwM1 * sd; D.vwL1[i] = vw - P.vwM1 * sd;
+    D.vwU2[i] = vw + P.vwM2 * sd; D.vwL2[i] = vw - P.vwM2 * sd;
+}
+// Supertrend (as TradingView's ta.supertrend): ATR by Wilder's smoothing, bands at hl2 ± factor·ATR that only tighten,
+// trend flips when the close crosses the active band
+function stepSupertrend(i) {
+    var k = candles[i], len = P.stLen, pc = i > 0 ? candles[i - 1].close : k.close;
+    D.tr[i] = i === 0 ? k.high - k.low : Math.max(k.high - k.low, Math.abs(k.high - pc), Math.abs(k.low - pc));
+    if (i < len - 1) D.atr[i] = null;
+    else if (i === len - 1 || D.atr[i - 1] == null) { var sum = 0; for (var j = i - len + 1; j <= i; j++) sum += D.tr[j]; D.atr[i] = sum / len; }
+    else D.atr[i] = (D.atr[i - 1] * (len - 1) + D.tr[i]) / len;
+    if (D.atr[i] == null) { D.stFl[i] = D.stFu[i] = D.stDir[i] = D.stUp[i] = D.stDn[i] = null; return; }
+    var hl2 = (k.high + k.low) / 2, up = hl2 + P.stF * D.atr[i], lo = hl2 - P.stF * D.atr[i];
+    var pFl = D.stFl[i - 1], pFu = D.stFu[i - 1], pDir = D.stDir[i - 1];
+    D.stFl[i] = pFl == null || lo > pFl || pc < pFl ? lo : pFl;
+    D.stFu[i] = pFu == null || up < pFu || pc > pFu ? up : pFu;
+    // the first bar with an ATR starts in a downtrend (upper band), like TradingView
+    var dir = pDir == null ? -1 : pDir === 1 ? (k.close < D.stFl[i] ? -1 : 1) : (k.close > D.stFu[i] ? 1 : -1);
+    D.stDir[i] = dir;
+    D.stUp[i] = dir === 1 ? D.stFl[i] : null; D.stDn[i] = dir === -1 ? D.stFu[i] : null;
 }
 function computeAllInd() { for (var i = 0; i < candles.length; i++) stepInd(i); }
 function pts(arr, from) {
@@ -392,12 +493,44 @@ function setAllData() {
     emaS.forEach(function (s, k) { s.setData(ind.ema && P.ema[k].on ? pts(D.ema[k]) : []); });
     var mid = ind.boll && S('boll').midOn;
     bUpS.setData(ind.boll ? pts(D.bUp) : []); bMidS.setData(mid ? pts(D.bMid) : []); bLoS.setData(ind.boll ? pts(D.bLo) : []);
+    volMaS.setData(ind.vol && P.volMa ? pts(D.volMa) : []);
+    var vw = S('vwap');
+    setVwapData();
+    setStData();
     subsSetData();
     reportClose();
 }
+// The engine joins a line across whitespace, and a segment takes the color of the point it starts at; so a break
+// (VWAP reset, Supertrend flip) is a transparent point right before it.
+var CLEAR = 'rgba(0,0,0,0)';
+function vwapPts(arr, color) {
+    var out = [], n = candles.length;
+    for (var i = 0; i < n; i++) {
+        var brk = i + 1 < n && vwapPeriod(candles[i + 1].time) !== vwapPeriod(candles[i].time);
+        out.push({ time: candles[i].time, value: arr[i], color: brk ? CLEAR : color });
+    }
+    return out;
+}
+function setVwapData() {
+    var vw = S('vwap'), on = ind.vwap, b1 = hexA(vw.bandColor, 0.85), b2 = hexA(vw.bandColor, 0.6);
+    vwS.setData(on ? vwapPts(D.vw, vw.color) : []);
+    vwU1.setData(on && vw.b1 ? vwapPts(D.vwU1, b1) : []); vwL1.setData(on && vw.b1 ? vwapPts(D.vwL1, b1) : []);
+    vwU2.setData(on && vw.b2 ? vwapPts(D.vwU2, b2) : []); vwL2.setData(on && vw.b2 ? vwapPts(D.vwL2, b2) : []);
+    vwDrawn = candles.length - 1;
+}
+function stPoint(i, last) {
+    var c = S('st'), dir = D.stDir[i], flip = !last && D.stDir[i + 1] != null && D.stDir[i + 1] !== dir;
+    return { time: candles[i].time, value: dir === 1 ? D.stUp[i] : D.stDn[i], color: flip ? CLEAR : dir === 1 ? c.up : c.down };
+}
+function setStData() {
+    var out = [], n = candles.length;
+    if (ind.st) for (var i = 0; i < n; i++) if (D.stDir[i] != null) out.push(stPoint(i, i === n - 1));
+    stS.setData(out);
+    stDrawn = { i: n - 1, dir: D.stDir[n - 1] };
+}
 function histPts() {
     var out = [];
-    for (var i = 0; i < candles.length; i++) if (D.hist[i] != null) out.push({ time: candles[i].time, value: D.hist[i], color: histColor(D.hist[i]) });
+    for (var i = 0; i < candles.length; i++) if (D.hist[i] != null) out.push({ time: candles[i].time, value: D.hist[i], color: histColor(D.hist[i], D.hist[i - 1]) });
     return out;
 }
 // incremental update of the last (forming) bar or a freshly appended bar
@@ -411,6 +544,23 @@ function pushLast() {
     if (ind.ma) maS.forEach(function (s, k) { var p = P.ma[k].on ? ptAt(D.ma[k], i) : null; if (p) s.update(p); });
     if (ind.ema) emaS.forEach(function (s, k) { var p = P.ema[k].on ? ptAt(D.ema[k], i) : null; if (p) s.update(p); });
     if (ind.boll) { var u = ptAt(D.bUp, i); if (u) { bUpS.update(u); if (S('boll').midOn) bMidS.update(ptAt(D.bMid, i)); bLoS.update(ptAt(D.bLo, i)); } }
+    if (ind.vol && P.volMa) { var vm = ptAt(D.volMa, i); if (vm) volMaS.update(vm); }
+    if (ind.vwap) {
+        // the first candle of a new period clears the previous point: rebuild once, otherwise just move the last point
+        if (i > vwDrawn && i > 0 && vwapPeriod(c.time) !== vwapPeriod(candles[i - 1].time)) setVwapData();
+        else {
+            var vc = S('vwap'), b1 = hexA(vc.bandColor, 0.85), b2 = hexA(vc.bandColor, 0.6);
+            vwS.update({ time: c.time, value: D.vw[i], color: vc.color });
+            if (vc.b1) { vwU1.update({ time: c.time, value: D.vwU1[i], color: b1 }); vwL1.update({ time: c.time, value: D.vwL1[i], color: b1 }); }
+            if (vc.b2) { vwU2.update({ time: c.time, value: D.vwU2[i], color: b2 }); vwL2.update({ time: c.time, value: D.vwL2[i], color: b2 }); }
+            vwDrawn = i;
+        }
+    }
+    if (ind.st && D.stDir[i] != null) {
+        // a flip on the forming candle recolors the candle before it (the break): rebuild then; it is rare
+        var same = (i === stDrawn.i && D.stDir[i] === stDrawn.dir) || (i === stDrawn.i + 1 && D.stDir[i] === D.stDir[i - 1]);
+        if (same) { stS.update(stPoint(i, true)); stDrawn = { i: i, dir: D.stDir[i] }; } else setStData();
+    }
     subsUpdate(i);
 }
 
@@ -455,18 +605,50 @@ function signedVol(v) { return (v < 0 ? '-' : '+') + fmtVol(Math.abs(v)); }
 var COMPACT = { type: 'custom', minMove: 0.01, formatter: function (v) { return (v < 0 ? '-' : '') + fmtVol(Math.abs(v)); } };
 function upFill() { return hexA(C.up, 0.55); }
 function downFill() { return hexA(C.down, 0.55); }
-function histColor(v) { return v >= 0 ? hexA(C.up, 0.6) : hexA(C.down, 0.6); }
+// MACD histogram: TradingView's four shades - strong when the bar grows away from zero, light when it shrinks back
+function histColor(v, prev) {
+    if (!S('macd').hist4 || prev == null) return v >= 0 ? hexA(C.up, 0.6) : hexA(C.down, 0.6);
+    return v >= 0 ? hexA(C.up, v >= prev ? 0.75 : 0.32) : hexA(C.down, v <= prev ? 0.75 : 0.32);
+}
+// fills the band between two values of a series' price scale (RSI 30-70 background), drawn under the lines
+function bandPrimitive(series, getBand) {
+    var prim = { _req: null, attached: function (p) { prim._req = p.requestUpdate; }, detached: function () { prim._req = null; }, updateAllViews: function () {},
+        paneViews: function () { return [view]; } };
+    var view = { zOrder: function () { return 'bottom'; }, renderer: function () { return renderer; } };
+    var renderer = { draw: function (target) {
+        var b = getBand(); if (!b) return;
+        var y1 = series.priceToCoordinate(b.hi), y2 = series.priceToCoordinate(b.lo); if (y1 == null || y2 == null) return;
+        target.useBitmapCoordinateSpace(function (sc) {
+            sc.context.fillStyle = b.color;
+            sc.context.fillRect(0, Math.round(Math.min(y1, y2) * sc.verticalPixelRatio), sc.bitmapSize.width, Math.round(Math.abs(y2 - y1) * sc.verticalPixelRatio));
+        });
+    } };
+    series.attachPrimitive(prim);
+    return prim;
+}
 SUBS.rsi = {
-    create: function (pane, sid) { return { line: chart.addSeries(LW.LineSeries, lineOpts('#B388FF', true, sid), pane), pl: [] }; },
+    create: function (pane, sid) {
+        var o = { line: chart.addSeries(LW.LineSeries, lineOpts('#B388FF', true, sid), pane), pl: [] };
+        o.ma = chart.addSeries(LW.LineSeries, lineOpts('#F7C548', false, sid), pane);
+        o.band = bandPrimitive(o.line, function () { var c = S('rsi'); return c.levels && c.band ? { hi: c.ob, lo: c.os, color: hexA(c.color, 0.08) } : null; });
+        return o;
+    },
     style: function (o) {
         var c = S('rsi');
         o.line.applyOptions({ color: c.color, lineWidth: c.width });
+        o.ma.applyOptions({ color: c.maColor, lineWidth: 1, visible: c.maOn });
         o.pl.forEach(function (l) { try { o.line.removePriceLine(l); } catch (e) { /* gone */ } }); o.pl = [];
-        if (c.levels) [c.ob, c.os].forEach(function (v) { o.pl.push(o.line.createPriceLine({ price: v, color: 'rgba(132,142,156,.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false })); });
+        if (c.levels) [c.ob, c.os].forEach(function (v) { o.pl.push(o.line.createPriceLine({ price: v, color: 'rgba(132,142,156,.55)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false })); });
+        if (c.mid) o.pl.push(o.line.createPriceLine({ price: 50, color: 'rgba(132,142,156,.3)', lineWidth: 1, lineStyle: 1, axisLabelVisible: false }));
+        if (o.band._req) o.band._req();
     },
-    setData: function (o) { o.line.setData(pts(D.rsi)); },
-    update: function (o, i) { var r = ptAt(D.rsi, i); if (r) o.line.update(r); },
-    legend: function (i) { var c = S('rsi'); return D.rsi[i] != null ? '<span style="color:' + c.color + '">RSI ' + c.period + ' ' + D.rsi[i].toFixed(1) + '</span>' : ''; }
+    setData: function (o) { o.line.setData(pts(D.rsi)); o.ma.setData(S('rsi').maOn ? pts(D.rsiMa) : []); },
+    update: function (o, i) { var r = ptAt(D.rsi, i); if (r) o.line.update(r); var m = S('rsi').maOn && ptAt(D.rsiMa, i); if (m) o.ma.update(m); },
+    legend: function (i) {
+        var c = S('rsi'); if (D.rsi[i] == null) return '';
+        return '<span style="color:' + c.color + '">RSI ' + c.period + ' ' + D.rsi[i].toFixed(1) + '</span>' +
+            (c.maOn && D.rsiMa[i] != null ? ' <span style="color:' + c.maColor + '">' + D.rsiMa[i].toFixed(1) + '</span>' : '');
+    }
 };
 SUBS.macd = {
     create: function (pane, sid) {
@@ -485,11 +667,11 @@ SUBS.macd = {
     setData: function (o) { o.macd.setData(pts(D.macd)); o.sig.setData(pts(D.sig)); o.hist.setData(histPts()); },
     update: function (o, i) {
         var m = ptAt(D.macd, i);
-        if (m) { o.macd.update(m); o.sig.update(ptAt(D.sig, i)); o.hist.update({ time: candles[i].time, value: D.hist[i], color: histColor(D.hist[i]) }); }
+        if (m) { o.macd.update(m); var sg = ptAt(D.sig, i); if (sg) o.sig.update(sg); if (D.hist[i] != null) o.hist.update({ time: candles[i].time, value: D.hist[i], color: histColor(D.hist[i], D.hist[i - 1]) }); }
     },
     legend: function (i) {
         var c = S('macd');
-        return D.macd[i] != null ? '<span style="color:' + c.cMacd + '">MACD ' + D.macd[i].toFixed(precision) + '</span> <span style="color:' + c.cSig + '">' + D.sig[i].toFixed(precision) + '</span>' : '';
+        return D.macd[i] != null ? '<span style="color:' + c.cMacd + '">MACD ' + D.macd[i].toFixed(precision) + '</span>' + (D.sig[i] != null ? ' <span style="color:' + c.cSig + '">' + D.sig[i].toFixed(precision) + '</span>' : '') : '';
     }
 };
 SUBS.cvd = {
@@ -594,6 +776,9 @@ function applyIndicators() {
     var vis = function (s, on) { s.applyOptions({ visible: !!on }); };
     vis(volSeries, ind.vol); maS.forEach(function (s, k) { vis(s, ind.ma && P.ma[k].on); }); emaS.forEach(function (s, k) { vis(s, ind.ema && P.ema[k].on); });
     vis(bUpS, ind.boll); vis(bMidS, ind.boll && S('boll').midOn); vis(bLoS, ind.boll);
+    var vwc = S('vwap'); vis(volMaS, ind.vol && S('vol').maOn);
+    vis(vwS, ind.vwap); vis(vwU1, ind.vwap && vwc.b1); vis(vwL1, ind.vwap && vwc.b1); vis(vwU2, ind.vwap && vwc.b2); vis(vwL2, ind.vwap && vwc.b2);
+    vis(stS, ind.st);
     applyStyles();
     applySubs();
     setAllData();
@@ -612,6 +797,12 @@ function applyStyles() {
     emaS.forEach(function (s, k) { var l = e.lines[k]; s.applyOptions({ color: l.c, lineWidth: l.w }); });
     bUpS.applyOptions({ color: b.cBand, lineWidth: b.width }); bLoS.applyOptions({ color: b.cBand, lineWidth: b.width });
     bMidS.applyOptions({ color: b.cMid, lineWidth: b.width });
+    volMaS.applyOptions({ color: S('vol').maColor });
+    var vw = S('vwap'), st = S('st');
+    vwS.applyOptions({ color: vw.color, lineWidth: vw.width });
+    [vwU1, vwL1].forEach(function (x) { x.applyOptions({ lineWidth: 1 }); });
+    [vwU2, vwL2].forEach(function (x) { x.applyOptions({ lineWidth: 1, lineStyle: 2 }); });
+    stS.applyOptions({ lineWidth: st.width });
 }
 var refreshRaf = 0, refreshCalc = false;
 function scheduleRefresh(calc) {                  // slider drags fire many changes: coalesce into one repaint per frame
@@ -1787,6 +1978,8 @@ function openIndicators() {
         switchRow('이동평균선', maLines, 'ma', true),
         switchRow('지수이동평균', 'EMA ' + S('ema').lines.map(function (l) { return l.p; }).join(' · '), 'ema', true),
         switchRow('볼린저 밴드', b.period + ', ' + b.mult, 'boll', true),
+        switchRow('VWAP', '거래량 가중 평균가 · ' + ({ day: '매일', week: '매주', month: '매월' })[S('vwap').anchor] + ' 초기화', 'vwap', true),
+        switchRow('슈퍼트렌드', 'ATR ' + S('st').period + ', ' + S('st').factor, 'st', true),
         switchRow('볼륨 프로파일 (매물대)', '가격대별 거래량 · POC · 가치 영역', 'vp', true),
         switchRow('RSI', r.period + ' · 별도 창', 'rsi', true),
         switchRow('MACD', m.fast + ', ' + m.slow + ', ' + m.signal + ' · 별도 창', 'macd', true),
@@ -1856,6 +2049,9 @@ function renderLegend() {
     if (open) {
         if (ind.ma) S('ma').lines.forEach(function (m, k) { if (!m.on) return; var v = val(D.ma[k], i); if (v) parts.push('<span style="color:' + m.c + '">' + (m.t === 'ema' ? 'EMA' : 'MA') + m.p + ' ' + v + '</span>'); });
         if (ind.ema) S('ema').lines.forEach(function (m, k) { if (!m.on) return; var v = val(D.ema[k], i); if (v) parts.push('<span style="color:' + m.c + '">EMA' + m.p + ' ' + v + '</span>'); });
+        if (ind.vwap && D.vw[i] != null) parts.push('<span style="color:' + S('vwap').color + '">VWAP ' + fmtPrice(D.vw[i]) + '</span>');
+        if (ind.st && D.stDir[i] != null) parts.push('<span style="color:' + (D.stDir[i] === 1 ? S('st').up : S('st').down) + '">ST ' + fmtPrice(D.stDir[i] === 1 ? D.stUp[i] : D.stDn[i]) + (D.stDir[i] === 1 ? ' ▲' : ' ▼') + '</span>');
+        if (ind.vol && P.volMa && D.volMa[i] != null) parts.push('<span style="color:' + S('vol').maColor + '">Vol MA ' + fmtVol(D.volMa[i]) + '</span>');
         if (ind.boll && D.bMid[i] != null) {
             var bc = S('boll');
             parts.push('<span style="color:' + bc.cMid + '">BOLL ' + fmtPrice(D.bMid[i]) + '</span> <span style="color:' + bc.cBand + '">' + fmtPrice(D.bUp[i]) + ' / ' + fmtPrice(D.bLo[i]) + '</span>');

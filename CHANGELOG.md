@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.13.0] - 2026-10-12
+
+### Added
+- **VWAP** (volume-weighted average price of hlc3), reset daily / weekly / monthly (UTC), with ±1σ and ±2σ bands.
+- **Supertrend** (ATR period and factor, up/down colors), the same calculation as TradingView's `ta.supertrend`; the
+  line breaks where the trend flips.
+
+### Changed
+- **RSI** as on TradingView: RSI-based moving average (SMA/EMA, 14), shaded band between overbought and oversold, 50
+  midline.
+- **MACD:** four-shade histogram (strong while a bar grows away from zero, light while it shrinks back) and SMA/EMA
+  choice for the MACD and signal averages.
+- **Volume:** optional moving average line (20).
+- Checked against TradingView's formulas on 1,500 BTC 15m candles: Supertrend (direction and value on every bar),
+  VWAP and bands, RSI, RSI MA and volume MA match exactly.
+
 ## [1.12.0] - 2026-10-12
 
 ### Added
