@@ -204,10 +204,16 @@ function removeAll(rt) {
 function render(s, rt, plots) {
     var st = s.style || {};
     // a script switching between overlay and its own pane starts over
-    if (rt.overlayDrawn != null && rt.overlayDrawn !== rt.overlay) removeAll(rt);
+    if (rt.overlayDrawn != null && rt.overlayDrawn !== rt.overlay) detachVisuals(rt);
     rt.overlayDrawn = rt.overlay;
-    var pane = rt.overlay ? 0 : paneOfRt(rt);
-    if (pane < 0) pane = chart.panes().length;
+    // a script in its own pane is a pane member of the chart: the chart decides its pane (order, merging, moving onto
+    // the main chart) and mounts it, which renders it again from these plots
+    if (!rt.overlay) {
+        rt.lastPlots = plots;
+        if (!rt.member) { rt.member = memberFor(s, rt); CF.paneMember('p' + s.id, rt.member); return; }
+        if (!rt.mountedNow) return;
+    } else if (rt.member) { rt.member = null; CF.paneMember('p' + s.id, null); }
+    var pane = rt.overlay ? 0 : rt.pane, sid = rt.overlay ? null : rt.sid;
     rt.plots = {}; rt.ahead = 0;
     var keep = {}, markers = [], fills = [], bgs = [], hlines = [], tints = {}, drawings = { lines: [], labels: [], boxes: [] };
     Object.keys(plots).forEach(function (key) {
@@ -249,11 +255,13 @@ function render(s, rt, plots) {
         var base = ps.c || (colorOk(o.color) ? o.color : '#2962FF'), width = ps.w || +o.linewidth || 1;
         if (!se) {
             var common = { priceLineVisible: false, lastValueVisible: !rt.overlay, crosshairMarkerVisible: false, priceFormat: { type: 'price', precision: precisionFor(values), minMove: Math.pow(10, -precisionFor(values)) } };
+            if (sid) common.priceScaleId = sid;
             if (type === 'hist') se = chart.addSeries(LW.HistogramSeries, Object.assign(common, { color: base }), pane);
             else if (type === 'area') se = chart.addSeries(LW.AreaSeries, Object.assign(common, { lineColor: base, topColor: CF.hexA(hex6(base), 0.25), bottomColor: CF.hexA(hex6(base), 0.02), lineWidth: width }), pane);
             else se = chart.addSeries(LW.LineSeries, Object.assign(common, { color: base, lineWidth: width }), pane);
             se.__type = type;
             rt.series[key] = se;
+            if (sid) fitScale(se, pane);
         }
         if (type === 'line') se.applyOptions({
             color: base, lineWidth: width,
@@ -273,10 +281,14 @@ function render(s, rt, plots) {
     var anyKey = Object.keys(rt.series).filter(function (k) { return k !== '__carrier'; })[0];
     if (!rt.anchor && anyKey) rt.anchor = rt.series[anyKey];
     // panes without a line still need a series for hlines, markers and drawings: an invisible carrier
-    var needCarrier = !rt.overlay && (!rt.anchor || rt.anchor.__carrier) && (hlines.length || markers.length || fills.length || bgs.length);
+    var needCarrier = !rt.overlay && (!rt.anchor || rt.anchor.__carrier);
     if (needCarrier) {
         var car = rt.series.__carrier;
-        if (!car) { car = chart.addSeries(LW.LineSeries, { lineVisible: false, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, pane); car.__carrier = true; car.__type = 'line'; rt.series.__carrier = car; }
+        if (!car) {
+            car = chart.addSeries(LW.LineSeries, Object.assign({ lineVisible: false, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, sid ? { priceScaleId: sid } : {}), pane);
+            car.__carrier = true; car.__type = 'line'; rt.series.__carrier = car;
+            if (sid) fitScale(car, pane);
+        }
         var hv = hlines.map(function (h) { return h.value; }).filter(function (v) { return typeof v === 'number'; });
         var vals = hv.length ? hv : [0];
         var cs = CF.candles(), cd = [];
@@ -312,12 +324,29 @@ function render(s, rt, plots) {
         rt.prim = makePrimitive(rt); rt.primOn = pTarget; pTarget.attachPrimitive(rt.prim);
     }
     if (rt.prim && rt.prim._req) rt.prim._req();
-    if (!rt.overlay && rt.anchor) { try { rt.anchor.getPane().setStretchFactor && rt.paneSized !== true && (rt.anchor.getPane().setStretchFactor(0.3), rt.paneSized = true); } catch (e) { /* older engine */ } }
 }
 function keyOf(rt, se) { var k = null; Object.keys(rt.series).forEach(function (x) { if (rt.series[x] === se) k = x; }); return k; }
-function paneOfRt(rt) {
-    var k = Object.keys(rt.series)[0]; if (!k) return -1;
-    try { return rt.series[k].getPane().paneIndex(); } catch (e) { return -1; }
+// own scale inside a shared pane (or laid over the main chart: the lower part, like volume)
+function fitScale(se, pane) { try { se.priceScale().applyOptions({ scaleMargins: pane ? { top: 0.15, bottom: 0.12 } : { top: 0.62, bottom: 0.04 } }); } catch (e) { /* ignore */ } }
+function detachVisuals(rt) {
+    if (rt.markers) { try { rt.markers.detach(); } catch (e) { /* gone */ } }
+    if (rt.prim && rt.primOn) { try { rt.primOn.detachPrimitive(rt.prim); } catch (e) { /* gone */ } }
+    (rt.priceLines || []).forEach(function (pl) { try { pl.s.removePriceLine(pl.l); } catch (e) { /* gone */ } });
+    removeAll(rt);
+}
+function memberFor(s, rt) {
+    return {
+        name: function () { return rt.title || titleOf(s); },
+        color: function () {
+            var k = Object.keys(rt.plots).filter(function (x) { return rt.series[x]; })[0], p = k && rt.plots[k];
+            return hex6((s.style && s.style[k] && s.style[k].c) || (p && p.color) || '#B2B5BE');
+        },
+        legend: function (i) { return legendOf(s, rt, i); },
+        settings: function () { openScriptSettings(s); },
+        close: function () { setOn(s, false); },
+        mount: function (pane, sid) { rt.pane = pane; rt.sid = sid; rt.mountedNow = true; if (rt.lastPlots) render(s, rt, rt.lastPlots); },
+        unmount: function () { rt.mountedNow = false; detachVisuals(rt); }
+    };
 }
 function hex6(c) { return typeof c === 'string' && c[0] === '#' ? c.slice(0, 7) : '#2962FF'; }
 function precisionFor(values) {
@@ -481,19 +510,22 @@ function drawTop(rt, target) {
 }
 
 // ---- legend: "<title> v1 v2 ..." at the crosshair candle ------------------------------------------------------------
+function legendOf(s, rt, ci) {
+    if (rt.err) return '<span style="color:#F6465D">' + esc(rt.title || '스크립트') + ' 오류</span>';
+    var vals = [];
+    Object.keys(rt.series).forEach(function (k) {
+        if (k === '__carrier') return;
+        var p = rt.plots[k]; if (!p) return;
+        var v = p.values[ci - rt.feedStart - (p.offset || 0)];
+        if (typeof v === 'number' && isFinite(v)) vals.push('<span style="color:' + hex6((s.style && s.style[k] && s.style[k].c) || p.color) + '">' + fmt(v) + '</span>');
+    });
+    return '<span style="color:#B2B5BE">' + esc(rt.title || titleOf(s)) + '</span>' + (vals.length ? ' ' + vals.join(' ') : '');
+}
 CF.legend(function (ci) {
     var parts = [];
     scripts.forEach(function (s) {
-        var rt = rts[s.id]; if (!s.on || !rt) return;
-        if (rt.err) { parts.push('<span style="color:#F6465D">' + esc(rt.title || '스크립트') + ' 오류</span>'); return; }
-        var vals = [];
-        Object.keys(rt.series).forEach(function (k) {
-            if (k === '__carrier') return;
-            var p = rt.plots[k]; if (!p) return;
-            var v = p.values[ci - rt.feedStart - (p.offset || 0)];
-            if (typeof v === 'number' && isFinite(v)) vals.push('<span style="color:' + hex6((s.style && s.style[k] && s.style[k].c) || p.color) + '">' + fmt(v) + '</span>');
-        });
-        if (vals.length) parts.push('<span style="color:#B2B5BE">' + esc(rt.title) + '</span> ' + vals.join(' '));
+        var rt = rts[s.id]; if (!s.on || !rt || (rt.member && !rt.err)) return;
+        var h = legendOf(s, rt, ci); if (rt.err || h.indexOf('</span> ') > 0) parts.push(h);
     });
     return parts.join(' &nbsp;');
 });
@@ -504,12 +536,10 @@ function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&
 function teardown(id) {
     if (worker) worker.postMessage({ type: 'drop', id: id });
     var rt = rts[id]; if (!rt) return;
-    if (rt.markers) { try { rt.markers.detach(); } catch (e) { /* gone */ } }
-    if (rt.prim && rt.primOn) { try { rt.primOn.detachPrimitive(rt.prim); } catch (e) { /* gone */ } }
-    CF.barTint(id, null);
-    rt.priceLines.forEach(function (pl) { try { pl.s.removePriceLine(pl.l); } catch (e) { /* gone */ } });
-    removeAll(rt);
     delete rts[id];
+    if (rt.member) { rt.member = null; rt.mountedNow = false; CF.paneMember('p' + id, null); }
+    detachVisuals(rt);
+    CF.barTint(id, null);
     CF.scheduleLegend(); CF.redrawNow();
 }
 function setOn(s, on) {
@@ -526,6 +556,7 @@ function addScript(src, lib) {
 }
 function removeScript(s) {
     teardown(s.id);
+    CF.paneForget('p' + s.id);
     scripts = scripts.filter(function (x) { return x !== s; }); save();
 }
 function titleOf(s) {

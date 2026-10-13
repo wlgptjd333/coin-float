@@ -85,10 +85,12 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 #legend .row + .row { display: block; width: fit-content; }
 .lg-t { pointer-events: auto; color: #B2B5BE; font-size: 10px; line-height: 14px; padding: 1px 8px; margin-left: 6px; border-radius: 9px; border: 1px solid var(--line); background: rgba(30, 34, 45, .9); vertical-align: 1px; }
 #pane_tags { position: absolute; inset: 0 60px 0 0; z-index: 6; pointer-events: none; }
-.ptag-row { position: absolute; left: 6px; display: flex; gap: 4px; }
+body.pane-max #legend { display: none; }
+.ptag-row { position: absolute; left: 6px; right: 0; display: flex; flex-wrap: wrap; gap: 4px; }
 .ptag { pointer-events: auto; display: flex; align-items: center; height: 20px; border-radius: 5px; background: rgba(19, 23, 34, .55); font-size: 10.5px; font-weight: 600; opacity: .8; }
 .ptag.open { background: rgba(30, 34, 45, .95); opacity: 1; }
-.ptag .pname { color: inherit; font: inherit; padding: 0 7px; height: 20px; }
+.ptag .pname { color: inherit; font: inherit; padding: 0 7px; height: 20px; white-space: nowrap; }
+.ptag .pname span { font-weight: 600; }
 .ptag .pbtn { display: none; color: var(--muted); font-size: 11px; padding: 0 5px; height: 20px; }
 .ptag.open .pbtn { display: inline-block; }
 #top_cd { align-items: center; height: 20px; font-size: 11.5px; font-weight: 600; color: var(--text); background: rgba(255,255,255,.07); border-radius: 4px; padding: 0 6px; margin-right: 6px; flex: 0 0 auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -203,6 +205,19 @@ textarea.code:focus { border-color: var(--accent); }
 .tplmenu button:last-child { border-bottom: 0; }
 .tplmenu button:active { background: var(--line); }
 .tplmenu small { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+.tplbox { padding: 6px 16px 10px; }
+.tplbox .drow { display: flex; align-items: center; gap: 8px; }
+.tplbox .tplb { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); font-size: 12.5px; color: var(--text); }
+.tplbox .tplreset { color: var(--accent); font-size: 12.5px; padding: 6px 4px; }
+.tplbox .tplmenu { margin-top: 8px; }
+.tplrow { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.tplrow:last-child { border-bottom: 0; }
+.tplmenu .tplrow button { border-bottom: 0; }
+.tplrow .ap { flex: 1; text-align: left; padding: 10px 12px; font-size: 13px; }
+.tplrow .rm { padding: 10px 12px; color: var(--muted); }
+.tplrow input { flex: 1; min-width: 0; margin: 6px 0 6px 8px; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font-size: 13px; }
+.tplrow .sv { padding: 10px 12px; color: var(--accent); font-size: 12.5px; white-space: nowrap; }
+.ln .del { color: var(--muted); }
 .sheet-link { color: var(--muted); font-size: 12px; padding: 10px 16px 2px; display: block; }
 </style>
 <script src="lightweight-charts.js"></script>

@@ -29,8 +29,8 @@ function candleStartOf(t) {
     return best >= 0 && t < (best + 1 < a.length ? a[best + 1].time : CF.nextOpen(a[best].time)) ? a[best].time : null;
 }
 // small text with a dark halo instead of a filled pill, so labels never hide the bars they describe
-function tag(ctx, text, x, y, color, align) {
-    ctx.font = '600 10px -apple-system, Roboto, sans-serif';
+function tag(ctx, text, x, y, color, align, size) {
+    ctx.font = '600 ' + (size || 10) + 'px -apple-system, Roboto, sans-serif';
     ctx.textAlign = align === 'right' ? 'right' : 'left'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
     ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.92)'; ctx.strokeText(text, x, y);
     ctx.fillStyle = color; ctx.fillText(text, x, y);
@@ -115,12 +115,19 @@ CF.defineSettings('heat', {
 CF.defineSettings('bidask', {
     title: 'Bid / Ask 설정', onChange: function () { redraw(); CF.scheduleLegend(); },
     fields: [
+        { t: 'sec', label: '가격 라벨' },
+        { k: 'label', t: 'sel', label: '위치', def: 'axis', opts: [['axis', '가격 축'], ['left', '차트 왼쪽'], ['right', '차트 오른쪽'], ['off', '숨김']] },
+        { k: 'qty', t: 'bool', label: '수량도 표시', def: false, showIf: function (c) { return c.label === 'left' || c.label === 'right'; } },
+        { k: 'font', t: 'range', label: '글자 크기', def: 10, min: 8, max: 14, step: 1, unit: 'px', showIf: function (c) { return c.label === 'left' || c.label === 'right'; } },
+        { k: 'textA', t: 'range', label: '글자 진하기', def: 80, min: 20, max: 100, step: 1, unit: '%', showIf: function (c) { return c.label === 'left' || c.label === 'right'; } },
+        { t: 'sec', label: '선' },
         { k: 'lines', t: 'bool', label: '최우선 호가 선 표시', def: true },
         { k: 'style', t: 'sel', label: '선 모양', def: 'dotted', opts: [['solid', '실선'], ['dashed', '점선'], ['dotted', '점']], showIf: function (c) { return c.lines; } },
         { k: 'width', t: 'range', label: '선 두께', def: 1, min: 1, max: 3, step: 1, unit: 'px', showIf: function (c) { return c.lines; } },
-        { k: 'tags', t: 'bool', label: '가격 · 수량 라벨', def: true },
+        { k: 'lineA', t: 'range', label: '선 진하기', def: 45, min: 10, max: 100, step: 1, unit: '%', showIf: function (c) { return c.lines; } },
+        { t: 'sec', label: '수치' },
         { k: 'spread', t: 'bool', label: '스프레드 · 호가 불균형 수치 (상단 수치 펼침 시)', def: true },
-        { t: 'note', label: 'Binance 선물의 최우선 매수(Bid)·매도(Ask) 호가를 실시간으로 보여줍니다. 거래소가 무료로 공개하는 데이터입니다.' }
+        { t: 'note', label: 'Binance 선물의 최우선 매수(Bid)·매도(Ask) 호가를 실시간으로 보여줍니다. "가격 축"은 캔들을 가리지 않고 축에 가격만 표시하며, 수량은 상단 수치를 펼치면 보입니다.' }
     ]
 });
 CF.defineSettings('liqmap', {
@@ -864,20 +871,26 @@ CF.registerFeature('liqmap', {
 var ba = { bid: 0, ask: 0, bq: 0, aq: 0, off: null, name: null };
 function paintBidAsk(ctx, w, h) {
     if (!ba.bid || !ba.ask) return;
-    var cfg = CF.S('bidask'); if (!cfg.lines && !cfg.tags) return;
+    var cfg = CF.S('bidask'), inChart = cfg.label === 'left' || cfg.label === 'right';
+    if (!cfg.lines && !inChart) return;
     var yb = CF.yOf(ba.bid), ya = CF.yOf(ba.ask);
     var dash = cfg.style === 'solid' ? [] : cfg.style === 'dashed' ? [6, 4] : [1.5, 3];
-    var rx = w - 6 - (CF.ind.depth && CF.S('depth').bars ? w * CF.S('depth').barW / 100 : 0);       // stay clear of the depth bars
+    var right = cfg.label === 'right', x = right ? w - 6 - (CF.ind.depth && CF.S('depth').bars ? w * CF.S('depth').barW / 100 : 0) : 6;   // clear of the depth bars
+    var off = cfg.font * 0.7 + 1;
     function one(y, col, text, above) {
         if (y == null || y < -4 || y > h + 4) return;
         if (cfg.lines) {
-            ctx.strokeStyle = CF.hexA(col, 0.85); ctx.lineWidth = cfg.width; ctx.setLineDash(dash);
+            ctx.strokeStyle = CF.hexA(col, cfg.lineA / 100); ctx.lineWidth = cfg.width; ctx.setLineDash(dash);
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); ctx.setLineDash([]);
         }
-        if (cfg.tags) tag(ctx, text, rx, y + (above ? -7 : 7), col, 'right');
+        if (inChart) {
+            ctx.globalAlpha = cfg.textA / 100;
+            tag(ctx, text, x, y + (above ? -off : off), col, right ? 'right' : 'left', cfg.font);
+            ctx.globalAlpha = 1;
+        }
     }
-    one(ya, DOWN(), 'Ask ' + CF.fmtPrice(ba.ask) + '  ×' + CF.fmtVol(ba.aq), true);
-    one(yb, UP(), 'Bid ' + CF.fmtPrice(ba.bid) + '  ×' + CF.fmtVol(ba.bq), false);
+    one(ya, DOWN(), 'Ask ' + CF.fmtPrice(ba.ask) + (cfg.qty ? '  ×' + CF.fmtVol(ba.aq) : ''), true);
+    one(yb, UP(), 'Bid ' + CF.fmtPrice(ba.bid) + (cfg.qty ? '  ×' + CF.fmtVol(ba.bq) : ''), false);
 }
 // share of resting bid liquidity within ±0.5 % of the market (only when the order book is running for walls/heatmap)
 function bookImbalance() {
@@ -903,6 +916,16 @@ CF.registerFeature('bidask', {
         var sym = CF.symbol();
         ba.name = sym.toLowerCase() + '@depth5@500ms'; ba.bid = ba.ask = 0;
         ba.off = CF.layer('top', paintBidAsk);
+        // "price axis": the two prices as labels on the axis, like TradingView's bid / ask labels
+        ba.axOff = CF.axisLabels(function () {
+            if (!ba.bid || CF.S('bidask').label !== 'axis') return [];
+            // the spread is usually one tick: the labels stack above and below the last-price label instead of hiding under it
+            var H = 19, ya = CF.yOf(ba.ask), yb = CF.yOf(ba.bid), yl = CF.yOf(lastPrice());
+            if (ya == null || yb == null) return [];
+            if (yl != null) { ya = Math.min(ya, yl - H); yb = Math.max(yb, yl + H); }
+            else if (yb - ya < H) { var mid = (ya + yb) / 2; ya = mid - H / 2; yb = mid + H / 2; }
+            return [{ y: ya, text: CF.fmtPrice(ba.ask), bg: DOWN() }, { y: yb, text: CF.fmtPrice(ba.bid), bg: UP() }];
+        });
         streams.pub.sub(ba.name, function (d) {
             if (!d || d.s !== sym || !d.b || !d.a || !d.b.length || !d.a.length) return;
             ba.bid = +d.b[0][0]; ba.bq = +d.b[0][1]; ba.ask = +d.a[0][0]; ba.aq = +d.a[0][1];
@@ -912,6 +935,7 @@ CF.registerFeature('bidask', {
     stop: function () {
         streams.pub.unsub(ba.name);
         if (ba.off) { ba.off(); ba.off = null; }
+        if (ba.axOff) { ba.axOff(); ba.axOff = null; }
         ba.bid = ba.ask = 0;
     }
 });

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.16.0] - 2026-10-13
+
+### Added
+- **TradingView-style pane management.** Every lower indicator (RSI, MACD, CVD, OI, liquidations, Pine scripts in
+  their own pane) has a pane menu (tap its name, then ⋯):
+  - move the pane up / down
+  - merge with the pane above / below, or split back into its own pane
+  - lay it over the main chart on its own scale
+  - maximize the pane, collapse it to its name and values, or reset all pane heights
+  The layout (order, grouping, heights dragged on the separators) is kept across restarts, and an indicator switched
+  off keeps its place for when it comes back. "Merge lower indicators" now regroups the current panes.
+- **Pane legends.** Each pane shows its indicators' values at the crosshair candle (or the newest) in its tag.
+- **Any number of average lines** (up to 10) in the moving average and EMA settings: "＋ 선 추가" and ✕ per line.
+- **Settings templates** in every indicator's settings: save the current settings under a name, apply or delete them in
+  one tap.
+
+### Changed
+- **Bid / ask no longer covers the newest candles.** By default the two prices are labels on the price axis, stacked
+  above and below the last-price label like TradingView; the lines are fainter (adjustable). The in-chart labels can
+  still be chosen (left or right), with font size, opacity and an optional quantity.
+
 ## [1.15.3] - 2026-10-13
 
 ### Fixed

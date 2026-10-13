@@ -44,9 +44,12 @@ var SCHEMA = {}, cfgCache = {}, cfgSaveT = null, HEX = /^#[0-9a-fA-F]{6}$/;
 })();
 function defineSettings(key, def) { SCHEMA[key] = def; delete cfgCache[key]; }
 function clampN(v, a, b) { return v < a ? a : v > b ? b : v; }
+var MAX_LINES = 10;
 function fixLines(f, v) {
-    return f.def.map(function (d, i) {
-        var s = v && v[i] || {};
+    var src = Array.isArray(v) && v.length ? v.slice(0, MAX_LINES) : f.def;
+    return src.map(function (s, i) {
+        var d = f.def[i] || { on: true, p: 20, c: PALETTE[i % PALETTE.length], w: 1, t: f.def[0].t };
+        s = s || {};
         return {
             on: typeof s.on === 'boolean' ? s.on : d.on !== false,
             p: typeof s.p === 'number' && s.p >= 1 ? Math.min(2000, Math.floor(s.p)) : d.p,
@@ -352,8 +355,14 @@ function volOf(c) {
 // Indicators
 // =====================================================================================================
 var P = {};                                   // calculation parameters, refreshed together with D
+// the line series follow the number of average lines in the settings
+function fitPool(pool, n) {
+    while (pool.length < n) pool.push(overlayLine('#FFFFFF', 1, true));
+    while (pool.length > n) { var se = pool.pop(); try { chart.removeSeries(se); } catch (e) { /* gone */ } }
+}
 function newD() {
     P.ma = S('ma').lines; P.ema = S('ema').lines;
+    fitPool(maS, P.ma.length); fitPool(emaS, P.ema.length);
     var b = S('boll'); P.bp = b.period; P.bm = b.mult;
     P.rsi = S('rsi').period;
     var m = S('macd'); P.fast = m.fast; P.slow = Math.max(m.slow, m.fast + 1); P.sig = m.signal;
@@ -592,37 +601,164 @@ function pushLast() {
 }
 
 // ---- bottom panes (RSI, MACD, CVD, OI, liquidations ...) -----------------------------------------------------
-var SUBS = {}, subLive = {}, subShared = {};
+var SUBS = {}, subLive = {};
 function eachSeries(o, fn) { Object.keys(o).forEach(function (k) { if (k !== 'pl' && o[k] && o[k].priceScale) fn(o[k], k); }); }
-function paneOf(key) {                                  // current pane index of a live sub-indicator (-1 when absent)
-    var o = subLive[key], idx = -1;
-    if (o) eachSeries(o, function (s) { if (idx < 0) { try { idx = s.getPane().paneIndex(); } catch (e) { /* ignore */ } } });
-    return idx;
-}
 function sidOpt(sid) { return sid ? { priceScaleId: sid } : {}; }
-function rebuildSubs() {
-    Object.keys(subLive).forEach(function (k) { removeSubSeries(subLive[k]); delete subLive[k]; delete subShared[k]; });
-}
-function applySubs() {
-    var merged = !!S('chart').merge;
-    Object.keys(SUBS).forEach(function (key) {
-        var on = !!ind[key];
-        if (on && !subLive[key]) {
-            var host = -1;                              // merged mode: join the pane a previous indicator already opened
-            if (merged) Object.keys(subLive).forEach(function (k) { if (host < 0 && subShared[k]) host = paneOf(k); });
-            var newPane = chart.panes().length;
-            subLive[key] = host >= 0 ? SUBS[key].create(host, 'm_' + key) : SUBS[key].create(newPane);
-            if (host < 0) { try { chart.panes()[newPane].setStretchFactor(0.3); } catch (e) { /* pane not created */ } }
-            subShared[key] = merged;
-            if (host >= 0) eachSeries(subLive[key], function (se) { try { se.priceScale().applyOptions({ scaleMargins: { top: 0.15, bottom: 0.12 } }); } catch (e) { /* ignore */ } });
-        } else if (!on && subLive[key]) { removeSubSeries(subLive[key]); delete subLive[key]; delete subShared[key]; }
+// Lower panes, TradingView-style. Every indicator with its own scale (RSI, MACD, CVD, OI, liquidations and Pine scripts
+// that are not overlays) is a pane member. Members sit in groups: one group is one pane under the chart, its first member
+// on the pane's right scale and the others on their own overlay scales; members can also be laid over the main chart.
+// Panes can be reordered, merged, split, maximized or collapsed, and the layout (order, grouping, heights) is kept.
+// A member that is switched off keeps its place, so switching it back on puts it where it was.
+var pineMembers = {}, subMembers = {}, mounted = [], visGroups = [];
+var paneLay = (function () {
+    var l = LS.get('paneLay', null) || {}, arr = function (a) { return Array.isArray(a) ? a.filter(function (k) { return typeof k === 'string'; }) : []; };
+    return { groups: (Array.isArray(l.groups) ? l.groups : []).map(arr).filter(function (g) { return g.length; }), main: arr(l.main),
+        h: l.h && typeof l.h === 'object' ? l.h : {}, col: l.col && typeof l.col === 'object' ? l.col : {}, mainH: +l.mainH || 1,
+        max: typeof l.max === 'string' ? l.max : null };
+})();
+function savePaneLay() { LS.set('paneLay', paneLay); }
+function subMember(key) {
+    return subMembers[key] || (subMembers[key] = {
+        name: function () { return PANE_NAME[key] || key; },
+        color: function () { return paneTagColor(key); },
+        legend: function (i) { return SUBS[key].legend ? SUBS[key].legend(i, candles[i]) : ''; },
+        settings: function () { if (SCHEMA[key]) openSettings(key); },
+        close: function () { ind[key] = false; LS.set('ind', ind); applyIndicators(); },
+        mount: function (pane, sid) {
+            var o = subLive[key] = SUBS[key].create(pane, sid);
+            if (sid) eachSeries(o, function (se) { try { se.priceScale().applyOptions({ scaleMargins: pane ? { top: 0.15, bottom: 0.12 } : { top: 0.62, bottom: 0.04 } }); } catch (e) { /* ignore */ } });
+            if (SUBS[key].style) SUBS[key].style(o);
+            if (candles.length) SUBS[key].setData(o);
+        },
+        unmount: function () { if (subLive[key]) { removeSubSeries(subLive[key]); delete subLive[key]; } }
     });
+}
+function memberOf(k) { return SUBS[k] ? subMember(k) : pineMembers[k]; }
+function activeKeys() { return Object.keys(SUBS).filter(function (k) { return ind[k]; }).concat(Object.keys(pineMembers)); }
+function placeOf(k) {                                   // { main: true } | { gi: index in paneLay.groups } | null
+    if (paneLay.main.indexOf(k) >= 0) return { main: true };
+    for (var gi = 0; gi < paneLay.groups.length; gi++) if (paneLay.groups[gi].indexOf(k) >= 0) return { gi: gi };
+    return null;
+}
+function forgetPaneKey(k) {
+    paneLay.main = paneLay.main.filter(function (x) { return x !== k; });
+    paneLay.groups = paneLay.groups.map(function (g) { return g.filter(function (x) { return x !== k; }); }).filter(function (g) { return g.length; });
+    savePaneLay();
+}
+function readPaneHeights() {                            // the heights the user dragged, before panes are rebuilt
+    if (paneLay.max || !visGroups.length) return;
+    var ps = chart.panes();
+    try {
+        if (ps[0] && ps[0].getStretchFactor) paneLay.mainH = ps[0].getStretchFactor();
+        visGroups.forEach(function (v) { var p = ps[v.pane]; if (p && !paneLay.col[v.g[0]]) paneLay.h[v.g[0]] = p.getStretchFactor(); });
+    } catch (e) { /* older engine */ }
+}
+var paneHT = 0;
+function paneHeightsSoon() { clearTimeout(paneHT); paneHT = setTimeout(function () { if (visGroups.length) { readPaneHeights(); savePaneLay(); } }, 400); }
+function applyPaneHeights() {
+    var ps = chart.panes(), maxV = null;
+    visGroups.forEach(function (v) { if (paneLay.max && v.g[0] === paneLay.max) maxV = v; });
+    if (paneLay.max && !maxV) paneLay.max = null;
+    try {
+        if (ps[0]) ps[0].setStretchFactor(maxV ? 0.001 : paneLay.mainH || 1);
+        visGroups.forEach(function (v) {
+            var p = ps[v.pane]; if (!p) return;
+            p.setStretchFactor(maxV ? (v === maxV ? 1 : 0.001) : paneLay.col[v.g[0]] ? 0.05 : paneLay.h[v.g[0]] || 0.3);
+        });
+    } catch (e) { /* older engine */ }
+}
+// tear every member down and build the panes again from the layout (cheap: a handful of series)
+function relayout(keepHeights) {
+    if (!keepHeights) readPaneHeights();
+    mounted.forEach(function (k) { var m = memberOf(k); if (m) { try { m.unmount(); } catch (e) { console.error(e); } } });
+    mounted = []; visGroups = [];
+    var live = {}, fresh = [];
+    activeKeys().forEach(function (k) { live[k] = true; if (!placeOf(k)) fresh.push(k); });
+    fresh.forEach(function (k) {                        // new members: their own pane, or the last pane when merging
+        var host = null;
+        if (S('chart').merge) paneLay.groups.forEach(function (g) { if (g.some(function (x) { return live[x]; })) host = g; });
+        if (host) host.push(k); else paneLay.groups.push([k]);
+    });
+    function mountKey(k, pane, sid) { try { memberOf(k).mount(pane, sid); mounted.push(k); } catch (e) { console.error(e); } }
+    paneLay.main.forEach(function (k) { if (live[k]) mountKey(k, 0, 'm_' + k); });
+    var pane = 1;
+    paneLay.groups.forEach(function (g) {
+        var ks = g.filter(function (k) { return live[k]; }); if (!ks.length) return;
+        ks.forEach(function (k, j) { mountKey(k, pane, j ? 'm_' + k : null); });
+        visGroups.push({ g: g, pane: pane, keys: ks }); pane++;
+    });
+    applyPaneHeights();
     var ps = chart.panes();
     for (var i = 1; i < ps.length; i++) {
         try { chart.priceScale('right', i).applyOptions({ scaleMargins: { top: 0.12, bottom: 0.1 } }); } catch (e) { /* older engine */ }
     }
+    savePaneLay(); scheduleTags(); scheduleLegend(); redrawLayers();
+}
+function applySubs() {
+    if (activeKeys().sort().join() !== mounted.slice().sort().join()) { relayout(); return; }
     Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); });
 }
+function mergeAllPanes(on) {
+    readPaneHeights();
+    var keys = []; paneLay.groups.forEach(function (g) { keys = keys.concat(g); });
+    paneLay.groups = on ? (keys.length ? [keys] : []) : keys.map(function (k) { return [k]; });
+    paneLay.max = null;
+    relayout(true);
+}
+function paneAct(k, act) {
+    var pl = placeOf(k); if (!pl) return;
+    readPaneHeights();
+    var g = pl.main ? null : paneLay.groups[pl.gi], vi = -1;
+    if (!g && act !== 'split' && act !== 'even') return;                 // on the main chart: only "own pane" applies
+    visGroups.forEach(function (v, i) { if (v.g === g) vi = i; });
+    function take() { var a = pl.main ? paneLay.main : g; a.splice(a.indexOf(k), 1); }
+    if (act === 'up' || act === 'down') {               // the whole pane trades places with its neighbour
+        var ni = vi + (act === 'up' ? -1 : 1); if (vi < 0 || ni < 0 || ni >= visGroups.length) return;
+        var b = paneLay.groups.indexOf(visGroups[ni].g);
+        paneLay.groups[pl.gi] = paneLay.groups[b]; paneLay.groups[b] = g;
+    } else if (act === 'joinUp' || act === 'joinDown') {
+        var nj = vi + (act === 'joinUp' ? -1 : 1);
+        if (nj < 0 && act === 'joinUp' && vi === 0) { take(); paneLay.main.push(k); }   // above the first pane is the chart
+        else if (vi < 0 || nj < 0 || nj >= visGroups.length) return;
+        else { take(); visGroups[nj].g.push(k); }
+    } else if (act === 'split') { take(); paneLay.groups.splice(pl.main ? 0 : pl.gi + 1, 0, [k]); }
+    else if (act === 'main') { take(); paneLay.main.push(k); }
+    else if (act === 'max') paneLay.max = paneLay.max === g[0] ? null : g[0];
+    else if (act === 'col') { if (paneLay.col[g[0]]) delete paneLay.col[g[0]]; else paneLay.col[g[0]] = true; }
+    else if (act === 'even') { paneLay.h = {}; paneLay.col = {}; paneLay.mainH = 1; paneLay.max = null; }
+    paneLay.groups = paneLay.groups.filter(function (x) { return x.length; });
+    relayout(true);
+}
+function openPaneMenu(k) {
+    var m = memberOf(k), pl = placeOf(k); if (!m || !pl) return;
+    var g = pl.main ? null : paneLay.groups[pl.gi], vi = -1;
+    visGroups.forEach(function (v, i) { if (v.g === g) vi = i; });
+    var n = visGroups.length, items = [];
+    if (pl.main) items.push(['split', '별도 창으로 분리', '차트 아래 새 창으로 옮깁니다']);
+    else {
+        if (vi > 0) items.push(['up', '창 위로 이동', '']);
+        if (vi < n - 1) items.push(['down', '창 아래로 이동', '']);
+        items.push(['joinUp', vi === 0 ? '메인 차트에 겹치기' : '위 창과 합치기', vi === 0 ? '캔들 위에 자체 축으로 겹쳐 그립니다' : '한 창에 겹쳐 봅니다']);
+        if (vi < n - 1) items.push(['joinDown', '아래 창과 합치기', '한 창에 겹쳐 봅니다']);
+        if (visGroups[vi] && visGroups[vi].keys.length > 1) items.push(['split', '새 창으로 분리', '이 지표만 따로 떼어 냅니다']);
+        if (vi > 0) items.push(['main', '메인 차트에 겹치기', '캔들 위에 자체 축으로 겹쳐 그립니다']);
+        items.push(['max', paneLay.max === g[0] ? '최대화 해제' : '창 최대화', paneLay.max === g[0] ? '' : '이 창만 크게 봅니다']);
+        items.push(['col', paneLay.col[g[0]] ? '창 펼치기' : '창 접기', paneLay.col[g[0]] ? '' : '이름과 값만 남기고 줄입니다']);
+    }
+    items.push(['even', '창 높이 초기화', '창 사이 경계선을 끌면 높이를 바꿀 수 있어요']);
+    var rows = items.map(function (it) {
+        var b = document.createElement('button'); b.className = 'row-opt';
+        b.innerHTML = '<span>' + it[1] + (it[2] ? '<small>' + it[2] + '</small>' : '') + '</span>';
+        b.onclick = function () { closeSheet(); paneAct(k, it[0]); };
+        return b;
+    });
+    var cfg = document.createElement('button'); cfg.className = 'row-opt'; cfg.innerHTML = '<span>지표 설정</span>';
+    cfg.onclick = function () { closeSheet(); m.settings(); };
+    var off = document.createElement('button'); off.className = 'row-opt'; off.innerHTML = '<span style="color:#F6465D">지표 끄기</span>';
+    off.onclick = function () { closeSheet(); m.close(); };
+    openSheet(escHtml(m.name()) + ' · 창', rows.concat([sectionTitle('지표'), cfg, off]));
+}
+function escHtml(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 function removeSubSeries(o) { eachSeries(o, function (se) { try { chart.removeSeries(se); } catch (e) { /* ignore */ } }); }
 function subsSetData() { Object.keys(subLive).forEach(function (key) { SUBS[key].setData(subLive[key]); }); }
 function subsUpdate(i) { Object.keys(subLive).forEach(function (key) { if (SUBS[key].update) SUBS[key].update(subLive[key], i); }); }
@@ -766,36 +902,63 @@ function paneTagColor(key) {
 var tagsRaf = 0;
 function scheduleTags() { if (tagsRaf) return; tagsRaf = requestAnimationFrame(function () { tagsRaf = 0; layoutPaneTags(); }); }
 function layoutPaneTags() {
-    var box = $('pane_tags'), ps = chart.panes(), rows = {}, html = '';
+    var box = $('pane_tags'), ps = chart.panes(), html = '';
     if (!box) return;
     var base = chartEl.getBoundingClientRect().top;
-    Object.keys(subLive).forEach(function (key) {
-        var pi = paneOf(key); if (pi < 1) return;
-        (rows[pi] = rows[pi] || []).push(key);
-    });
-    Object.keys(rows).forEach(function (pi) {
-        var el = ps[pi] && ps[pi].getHTMLElement && ps[pi].getHTMLElement(); if (!el) return;
+    // name (replaced by the live values), and on tap: settings, pane menu, off
+    function tagHtml(k) {
+        var m = memberOf(k); if (!m) return '';
+        return '<span class="ptag' + (openTag === k ? ' open' : '') + '" style="color:' + m.color() + '"><button class="pname" data-k="' + k + '" data-a="name">' + escHtml(m.name()) + '</button>' +
+            '<button class="pbtn" data-k="' + k + '" data-a="cfg" aria-label="설정">⚙</button><button class="pbtn" data-k="' + k + '" data-a="menu" aria-label="창 메뉴">⋯</button>' +
+            '<button class="pbtn" data-k="' + k + '" data-a="x" aria-label="끄기">✕</button></span>';
+    }
+    // a maximized pane hides the others: their tags and the chart legend go too
+    var maxed = !!paneLay.max && visGroups.some(function (v) { return v.g[0] === paneLay.max; });
+    document.body.classList.toggle('pane-max', maxed);
+    var onMain = paneLay.main.filter(function (k) { return mounted.indexOf(k) >= 0; });
+    if (onMain.length && !maxed && ps[0] && ps[0].getHTMLElement) {
+        var r0 = ps[0].getHTMLElement().getBoundingClientRect();
+        html += '<div class="ptag-row" style="top:' + (r0.bottom - base - 24).toFixed(0) + 'px">' + onMain.map(tagHtml).join('') + '</div>';
+    }
+    visGroups.forEach(function (v) {
+        var el = ps[v.pane] && ps[v.pane].getHTMLElement && ps[v.pane].getHTMLElement(), id = v.g[0];
+        if (!el || (maxed && id !== paneLay.max)) return;
         var top = el.getBoundingClientRect().top - base + 3;
-        html += '<div class="ptag-row" style="top:' + top.toFixed(0) + 'px">' + rows[pi].map(function (k) {
-            // quiet by default: just the name; a tap reveals settings / close for a few seconds
-            return '<span class="ptag' + (openTag === k ? ' open' : '') + '" style="color:' + paneTagColor(k) + '"><button class="pname" data-k="' + k + '" data-a="name">' + (PANE_NAME[k] || k) + '</button>' +
-                '<button class="pbtn" data-k="' + k + '" data-a="cfg" aria-label="설정">⚙</button><button class="pbtn" data-k="' + k + '" data-a="x" aria-label="닫기">✕</button></span>';
-        }).join('') + '</div>';
+        var state = paneLay.max === id ? ['max', '최대화 해제'] : paneLay.col[id] ? ['col', '펼치기'] : null;
+        html += '<div class="ptag-row" style="top:' + top.toFixed(0) + 'px">' + v.keys.map(tagHtml).join('') +
+            (state ? '<span class="ptag"><button class="pname" data-k="' + v.keys[0] + '" data-a="' + state[0] + '">' + state[1] + '</button></span>' : '') + '</div>';
     });
     box.innerHTML = html;
+    fillPaneValues(lastLegendI);
+}
+// each pane shows its indicators' values at the crosshair candle (or the newest), like TradingView's pane legends
+var lastLegendI = -1;
+function fillPaneValues(i) {
+    lastLegendI = i;
+    var box = $('pane_tags'); if (!box || !candles.length) return;
+    if (i < 0 || i >= candles.length) i = candles.length - 1;
+    Array.prototype.forEach.call(box.querySelectorAll('.pname[data-a="name"]'), function (b) {
+        var m = memberOf(b.getAttribute('data-k')); if (!m) return;
+        var h = ''; try { h = m.legend(i) || ''; } catch (e) { /* member gone */ }
+        b.innerHTML = h || escHtml(m.name());
+    });
 }
 var openTag = null, openTagT = 0;
 $('pane_tags').addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('button'); if (!b) return;
-    var k = b.getAttribute('data-k'), act = b.getAttribute('data-a');
+    var k = b.getAttribute('data-k'), act = b.getAttribute('data-a'), m = memberOf(k);
     if (act === 'name') {
         openTag = openTag === k ? null : k; clearTimeout(openTagT);
-        if (openTag) openTagT = setTimeout(function () { openTag = null; layoutPaneTags(); }, 4000);
+        if (openTag) openTagT = setTimeout(function () { openTag = null; layoutPaneTags(); }, 5000);
         layoutPaneTags(); return;
     }
     openTag = null;
-    if (act === 'cfg') openSettings(k);
-    else if (b.getAttribute('data-a') === 'x') { ind[k] = false; LS.set('ind', ind); applyIndicators(); }
+    if (!m) return;
+    if (act === 'cfg') m.settings();
+    else if (act === 'menu') openPaneMenu(k);
+    else if (act === 'x') m.close();
+    else if (act === 'max' || act === 'col') { paneAct(k, act); return; }
+    layoutPaneTags();
 });
 if (window.ResizeObserver) new ResizeObserver(function () { scheduleTags(); }).observe($('chart'));
 
@@ -848,7 +1011,7 @@ var lastMerge = null;
 function applyChartCfg() {
     computeColors();
     var c = S('chart');
-    if (lastMerge !== null && !!c.merge !== lastMerge) rebuildSubs();
+    if (lastMerge !== null && !!c.merge !== lastMerge) mergeAllPanes(!!c.merge);
     lastMerge = !!c.merge;
     document.documentElement.style.setProperty('--bg', C.bg);
     chart.applyOptions({
@@ -1037,7 +1200,8 @@ function makeLayerPrimitive(z) {
         attached: function (p) { prim._req = p.requestUpdate; },
         detached: function () { prim._req = null; },
         updateAllViews: function () {},
-        paneViews: function () { return [view]; }
+        paneViews: function () { return [view]; },
+        priceAxisViews: function () { return z === 'top' ? axisViews() : []; }
     };
     var view = { zOrder: function () { return z; }, renderer: function () { return renderer; } };
     var renderer = {
@@ -1054,6 +1218,21 @@ function makeLayerPrimitive(z) {
         }
     };
     return prim;
+}
+var axisHooks = [];
+function axisViews() {
+    var out = [];
+    axisHooks.forEach(function (fn) {
+        var ls; try { ls = fn() || []; } catch (e) { ls = []; }
+        ls.forEach(function (l) {
+            out.push({
+                coordinate: function () { var y = l.y != null ? l.y : layerSeries ? layerSeries.priceToCoordinate(l.price) : null; return y == null ? -999 : y; },
+                text: function () { return l.text; }, textColor: function () { return l.fg || '#FFFFFF'; }, backColor: function () { return l.bg; },
+                visible: function () { return true; }, tickVisible: function () { return false; }
+            });
+        });
+    });
+    return out;
 }
 function attachLayers(series) {
     if (layerSeries === series) return;
@@ -1449,7 +1628,7 @@ wrap.addEventListener('pointerdown', function (e) {
     if (chart.options().handleScroll.vertTouchDrag !== want) chart.applyOptions({ handleScroll: { vertTouchDrag: want } });
 }, true);
 ['pointerup', 'pointercancel', 'wheel', 'dblclick'].forEach(function (t) {
-    wrap.addEventListener(t, function () { setTimeout(syncScaleBtns, 40); setTimeout(scheduleTags, 60); }, { capture: true, passive: true });
+    wrap.addEventListener(t, function () { setTimeout(syncScaleBtns, 40); setTimeout(scheduleTags, 60); paneHeightsSoon(); }, { capture: true, passive: true });
 });
 wrap.addEventListener('pointerdown', onDown, true);
 wrap.addEventListener('pointermove', onMove, true);
@@ -1910,16 +2089,20 @@ function buildLines(key, f) {
         var arr = S(key)[f.k].map(function (l) { return Object.assign({}, l); });
         Object.assign(arr[i], patch); setCfg(key, f.k, arr);
     }
+    function copy() { return S(key)[f.k].map(function (l) { return Object.assign({}, l); }); }
     function draw() {
         box.innerHTML = '';
-        S(key)[f.k].forEach(function (l, i) {
+        var lines = S(key)[f.k];
+        lines.forEach(function (l, i) {
             var row = document.createElement('div'); row.className = 'fld';
             row.innerHTML = '<div class="ln"><button class="chip-dot" style="background:' + l.c + '" aria-label="색상"></button>' +
                 '<input type="number" inputmode="numeric" min="1" max="2000" value="' + l.p + '">' +
                 (f.types ? '<button class="tag t">' + (l.t === 'ema' ? 'EMA' : 'SMA') + '</button>' : '') +
                 '<button class="tag w">' + l.w + 'px</button>' +
-                '<span class="switch' + (l.on ? ' on' : '') + '" style="margin-left:auto"></span></div>';
-            var dot = row.querySelector('.chip-dot'), inp = row.querySelector('input');
+                '<span class="switch' + (l.on ? ' on' : '') + '" style="margin-left:auto"></span>' +
+                (lines.length > 1 ? '<button class="tag del" aria-label="선 삭제">✕</button>' : '') + '</div>';
+            var dot = row.querySelector('.chip-dot'), inp = row.querySelector('input'), del = row.querySelector('.del');
+            if (del) del.onclick = function () { var arr = copy(); arr.splice(i, 1); openAt = -1; setCfg(key, f.k, arr); draw(); };
             dot.onclick = function () { openAt = openAt === i ? -1 : i; draw(); };
             inp.onchange = function () { var n = Math.max(1, Math.min(2000, Math.floor(+inp.value) || l.p)); inp.value = n; save(i, { p: n }); };
             var tb = row.querySelector('.t'); if (tb) tb.onclick = function () { save(i, { t: l.t === 'ema' ? 'sma' : 'ema' }); draw(); };
@@ -1928,6 +2111,17 @@ function buildLines(key, f) {
             box.appendChild(row);
             if (openAt === i) { var fl = document.createElement('div'); fl.className = 'fld'; fl.style.paddingTop = '0'; fl.appendChild(colorStrip(l.c, function (c) { dot.style.background = c; save(i, { c: c }); })); box.appendChild(fl); }
         });
+        if (lines.length < MAX_LINES) {
+            var add = document.createElement('button'); add.className = 'reset'; add.textContent = '＋ 선 추가';
+            add.onclick = function () {
+                var arr = copy(), used = arr.map(function (l) { return l.p; }), cols = arr.map(function (l) { return l.c.toUpperCase(); });
+                var p = [5, 10, 20, 30, 50, 60, 100, 120, 200, 400].filter(function (x) { return used.indexOf(x) < 0; })[0] || Math.min(2000, Math.max.apply(null, used) * 2);
+                var c = PALETTE.filter(function (x) { return cols.indexOf(x.toUpperCase()) < 0; })[0] || PALETTE[arr.length % PALETTE.length];
+                arr.push({ on: true, p: p, c: c, w: 1, t: f.def[0].t });
+                setCfg(key, f.k, arr); draw();
+            };
+            box.appendChild(add);
+        }
     }
     draw();
     return box;
@@ -1973,6 +2167,48 @@ function buildField(key, f, rerender) {
     }
     return el;
 }
+// Named templates per settings sheet ("RSI 단타", "MA 장기" ...): saved, applied or deleted in one tap.
+var CFG_TPL = LS.get('cfgTpl', {}); if (!CFG_TPL || typeof CFG_TPL !== 'object') CFG_TPL = {};
+var tplOpenKey = null;
+function templateBox(key, rerender) {
+    var box = document.createElement('div'); box.className = 'tplbox';
+    var list = Array.isArray(CFG_TPL[key]) ? CFG_TPL[key] : [];
+    var bar = document.createElement('div'); bar.className = 'drow';
+    bar.innerHTML = '<button class="tplb">템플릿' + (list.length ? ' ' + list.length : '') + ' ' + (tplOpenKey === key ? '▴' : '▾') + '</button><span style="flex:1"></span><button class="tplreset">기본값으로 되돌리기</button>';
+    bar.querySelector('.tplb').onclick = function () { tplOpenKey = tplOpenKey === key ? null : key; rerender(); };
+    bar.querySelector('.tplreset').onclick = function () { resetCfg(key); rerender(); toast('기본값으로 되돌렸어요'); };
+    box.appendChild(bar);
+    if (tplOpenKey !== key) return box;
+    var menu = document.createElement('div'); menu.className = 'tplmenu';
+    list.forEach(function (t, i) {
+        var r = document.createElement('div'); r.className = 'tplrow';
+        r.innerHTML = '<button class="ap"></button><button class="rm" aria-label="삭제">✕</button>';
+        r.querySelector('.ap').textContent = t.n;
+        r.querySelector('.ap').onclick = function () {
+            CFGS[key] = JSON.parse(JSON.stringify(t.v || {})); delete cfgCache[key]; saveCfg();
+            var d = SCHEMA[key]; if (d.onChange) d.onChange(S(key), null);
+            rerender(); toast('"' + t.n + '" 적용');
+        };
+        r.querySelector('.rm').onclick = function () { list.splice(i, 1); CFG_TPL[key] = list; LS.set('cfgTpl', CFG_TPL); rerender(); };
+        menu.appendChild(r);
+    });
+    var add = document.createElement('div'); add.className = 'tplrow';
+    add.innerHTML = '<input type="text" maxlength="24" placeholder="새 템플릿 이름"><button class="sv">현재 설정 저장</button>';
+    var inp = add.querySelector('input');
+    inp.onclick = function (e) { e.stopPropagation(); };
+    add.querySelector('.sv').onclick = function () {
+        var name = inp.value.trim() || ('템플릿 ' + (list.length + 1));
+        var v = JSON.parse(JSON.stringify(CFGS[key] || {})), at = -1;
+        list.forEach(function (t, i) { if (t.n === name) at = i; });
+        if (at >= 0) list[at].v = v; else list.push({ n: name, v: v });
+        if (list.length > 20) list.shift();
+        CFG_TPL[key] = list; LS.set('cfgTpl', CFG_TPL); rerender(); toast('"' + name + '" 저장');
+    };
+    menu.appendChild(add);
+    if (!list.length) menu.appendChild(noteRow('지금 설정을 이름 붙여 저장해 두고, 나중에 한 번에 불러올 수 있어요. 설정 자체는 바꿀 때마다 자동 저장됩니다.'));
+    box.appendChild(menu);
+    return box;
+}
 var settingsKey = null;
 function openSettings(key, back) {
     var def = SCHEMA[key]; if (!def) return;
@@ -1985,9 +2221,7 @@ function openSettings(key, back) {
     sheet.appendChild(h);
     var rerender = function () { openSettings(key, back); };
     def.fields.forEach(function (f) { var r = buildField(key, f, rerender); if (r) sheet.appendChild(r); });
-    var rs = document.createElement('button'); rs.className = 'reset'; rs.textContent = '기본값으로 되돌리기';
-    rs.onclick = function () { resetCfg(key); rerender(); };
-    sheet.appendChild(rs);
+    sheet.appendChild(templateBox(key, rerender));
     if (def.credit) { var cr = document.createElement('div'); cr.className = 'credit'; cr.textContent = def.credit; sheet.appendChild(cr); }
     $('sheet_bg').classList.add('show', 'live');
     sheet.scrollTop = keep;
@@ -2063,9 +2297,9 @@ var legendOpen = LS.get('legendOpen', false), legendHtml = '';
 function setLegend(html) { if (html !== legendHtml) { legendHtml = html; $('legend').innerHTML = html; } }
 function renderLegend() {
     var n = candles.length; if (!n) { setLegend(''); return; }
-    var mode = S('chart').legend;
-    if (mode === 'off') { setLegend(''); return; }
     var i = crossTime != null ? indexOfTime(crossTime) : -1; if (i < 0) i = n - 1;
+    var mode = S('chart').legend;
+    if (mode === 'off') { setLegend(''); fillPaneValues(i); return; }
     var c = candles[i], b = chartType === 'ha' && haBars[i] ? haBars[i] : c;
     var cls = c.close >= c.open ? 'up' : 'down', chg = c.open ? (c.close - c.open) / c.open * 100 : 0;
     var open = mode === 'full' && (legendOpen || crossTime != null);
@@ -2090,7 +2324,6 @@ function renderLegend() {
             parts.push('<span style="color:#F0B90B">POC ' + fmtPrice(vr.lo + (vr.poc + 0.5) * vr.step) + '</span> <span style="color:#B2B5BE">VA ' +
                 fmtPrice(vr.lo + vr.vaLo * vr.step) + ' – ' + fmtPrice(vr.lo + (vr.vaHi + 1) * vr.step) + '</span>');
         }
-        Object.keys(subLive).forEach(function (key) { var h = SUBS[key].legend && SUBS[key].legend(i, c); if (h) parts.push(h); });
         Object.keys(features).forEach(function (key) {
             var f = features[key]; if (!f.running || !f.legend) return;
             var h = f.legend(i, c); if (h) parts.push(h);
@@ -2099,6 +2332,7 @@ function renderLegend() {
     }
     var l2 = parts.length ? '<div class="row">' + parts.join(' &nbsp;') + '</div>' : '';
     setLegend(l1 + l2);
+    fillPaneValues(i);
 }
 $('legend').addEventListener('click', function (e) {
     if (!e.target.closest || !e.target.closest('#lg_t')) return;
@@ -2478,7 +2712,11 @@ window.CF = {
     legend: function (fn) { legendHooks.push(fn); }, openSheet: openSheet, closeSheet: closeSheet, sectionTitle: sectionTitle,
     noteRow: noteRow, colorStrip: colorStrip, openIndicators: function () { openIndicators(); }, bridge: bridge,
     backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); },
-    barTint: setBarTint
+    barTint: setBarTint,
+    // a pane member from an add-on (Pine script drawn in its own pane); null removes it, forget drops its place
+    paneMember: function (key, m) { if (m) pineMembers[key] = m; else if (pineMembers[key]) delete pineMembers[key]; else return; relayout(); },
+    paneForget: function (key) { forgetPaneKey(key); },
+    axisLabels: function (fn) { axisHooks.push(fn); return function () { var i = axisHooks.indexOf(fn); if (i >= 0) axisHooks.splice(i, 1); redrawLayers(); }; }
 };
 
 // =====================================================================================================
@@ -2497,5 +2735,5 @@ function boot() {
     setTimeout(function () { if (!started) window.loadSymbol(symbol); }, 700);
 }
 window.addEventListener('DOMContentLoaded', boot);
-window.__cf = { chart: chart, DR: DR, get candles() { return candles; }, get interval() { return interval; }, setTool: setTool, ind: ind, get D() { return D; }, features: features, subs: SUBS, get live() { return subLive; }, S: S, P: P };
+window.__cf = { chart: chart, DR: DR, get candles() { return candles; }, get interval() { return interval; }, setTool: setTool, ind: ind, get D() { return D; }, features: features, subs: SUBS, get live() { return subLive; }, S: S, P: P, paneAct: paneAct, get paneLay() { return paneLay; }, openPaneMenu: openPaneMenu, openSettings: openSettings };
 })();
