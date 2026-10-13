@@ -208,8 +208,8 @@ function render(s, rt, plots) {
     rt.overlayDrawn = rt.overlay;
     var pane = rt.overlay ? 0 : paneOfRt(rt);
     if (pane < 0) pane = chart.panes().length;
-    rt.plots = {};
-    var keep = {}, markers = [], fills = [], bgs = [], hlines = [], drawings = { lines: [], labels: [], boxes: [] };
+    rt.plots = {}; rt.ahead = 0;
+    var keep = {}, markers = [], fills = [], bgs = [], hlines = [], tints = {}, drawings = { lines: [], labels: [], boxes: [] };
     Object.keys(plots).forEach(function (key) {
         var p = plots[key], o = p.options || {}, kind = styleOf(p), data = p.data || [];
         if (key === '__lines__' || key === '__labels__' || key === '__boxes__') {
@@ -218,14 +218,20 @@ function render(s, rt, plots) {
             return;
         }
         if (key.indexOf('__') === 0) return;
-        if (kind === 'fill') { fills.push(o); return; }
+        if (kind === 'fill') { fills.push({ o: o, data: data }); return; }
         if (kind === 'hline') { hlines.push({ title: key, value: data.length ? data[data.length - 1].value : null, o: o }); rt.plots[key] = { values: data.map(function (d) { return d.value; }), hline: true, color: colorOk(o.color) ? o.color : '#787B86' }; return; }
         if (kind === 'background') { bgs.push(data); return; }
-        if (kind === 'barcolor') return;                                // not supported: candles keep their colors
         var off = +o.offset || 0;
+        if (kind === 'barcolor') {                                      // candle colors: na keeps the candle's own
+            data.forEach(function (d, i) {
+                var c = d.options && d.options.color; if (!colorOk(c) || d.value == null || d.value === false) return;
+                var t = timeAt(rt, i + off); if (t != null) tints[t] = c;
+            });
+            return;
+        }
         var values = [], colors = [];
         data.forEach(function (d, i) { values[i] = d.value; colors[i] = d.options && d.options.color; });
-        rt.plots[key] = { values: values, offset: off, color: o.color, kind: kind, width: +o.linewidth || 1 };
+        rt.plots[key] = { values: values, colors: colors, offset: off, color: o.color, kind: kind, width: +o.linewidth || 1 };
         if (kind === 'shape' || kind === 'char' || kind === 'arrow') {
             data.forEach(function (d, i) {
                 var v = d.value; if (v == null || v === false || (typeof v === 'number' && isNaN(v))) return;
@@ -256,8 +262,11 @@ function render(s, rt, plots) {
             pointMarkersVisible: kind === 'circles' || kind === 'cross', pointMarkersRadius: Math.max(1.5, width)
         });
         se.setData(seriesData(rt, values, colors, off, base, ps.c, kind));
+        rt.plots[key].drawn = { base: base, forced: ps.c, width: width, type: type };
+        if (off > 0) rt.ahead = Math.max(rt.ahead, off);
         if (!rt.anchor) rt.anchor = se;
     });
+    CF.barTint(s.id, tints, CF.symbol() + '|' + CF.interval());
     // series of plots that are gone or hidden
     Object.keys(rt.series).forEach(function (k) { if (k !== '__carrier' && !keep[k]) { try { chart.removeSeries(rt.series[k]); } catch (e) { /* gone */ } delete rt.series[k]; } });
     if (rt.anchor && !keep[keyOf(rt, rt.anchor)]) rt.anchor = null;
@@ -299,7 +308,7 @@ function render(s, rt, plots) {
     rt.fills = fills; rt.bgs = bgs; rt.drawings = drawings;
     var pTarget = rt.overlay ? CF.mainSeries() : rt.anchor;
     if (rt.prim && rt.primOn !== pTarget) { try { rt.primOn.detachPrimitive(rt.prim); } catch (e) { /* gone */ } rt.prim = null; }
-    if (pTarget && !rt.prim && (fills.length || bgs.length || drawings.lines.length || drawings.labels.length || drawings.boxes.length)) {
+    if (pTarget && !rt.prim && (rt.ahead || fills.length || bgs.length || drawings.lines.length || drawings.labels.length || drawings.boxes.length)) {
         rt.prim = makePrimitive(rt); rt.primOn = pTarget; pTarget.attachPrimitive(rt.prim);
     }
     if (rt.prim && rt.prim._req) rt.prim._req();
@@ -355,7 +364,7 @@ function makePrimitive(rt) {
 function yScale(rt) { var s = rt.overlay ? CF.mainSeries() : rt.anchor; return function (p) { return s ? s.priceToCoordinate(p) : null; }; }
 function visibleIdx(rt) {
     var r = chart.timeScale().getVisibleLogicalRange(); if (!r) return null;
-    return { a: Math.max(0, Math.floor(r.from) - rt.feedStart - 1), z: Math.min(rt.n - 1, Math.ceil(r.to) - rt.feedStart + 1) };
+    return { a: Math.max(0, Math.floor(r.from) - rt.feedStart - 1), z: Math.min(rt.n - 1 + (rt.ahead || 0), Math.ceil(r.to) - rt.feedStart + 1) };
 }
 function xOfIdx(rt, i) { return chart.timeScale().logicalToCoordinate(rt.feedStart + i); }
 function barW() { var ts = chart.timeScale(), a = ts.logicalToCoordinate(0), b = ts.logicalToCoordinate(1); return a == null || b == null ? 6 : Math.max(1, b - a); }
@@ -373,8 +382,10 @@ function drawBottom(rt, target) {
             }
         });
         (rt.fills || []).forEach(function (f) {
-            var a = rt.plots[f.plot1], b = rt.plots[f.plot2]; if (!a || !b) return;
-            var col = colorOk(f.color) ? f.color : 'rgba(41,98,255,.1)';
+            var a = rt.plots[f.o.plot1], b = rt.plots[f.o.plot2]; if (!a || !b) return;
+            var def = colorOk(f.o.color) ? f.o.color : 'rgba(41,98,255,.1)', col = null;
+            // the color is per bar (fill(p1, p2, color = a > b ? up : down)); it moves with the plots when both are shifted
+            var shift = !a.hline && !b.hline && (a.offset || 0) === (b.offset || 0) ? a.offset || 0 : 0;
             var top = [], bot = [];
             for (var i = vis.a; i <= vis.z; i++) {
                 var va = a.hline ? a.values[a.values.length - 1] : a.values[i - (a.offset || 0)];
@@ -382,11 +393,18 @@ function drawBottom(rt, target) {
                 var x = xOfIdx(rt, i);
                 if (typeof va !== 'number' || typeof vb !== 'number' || !isFinite(va) || !isFinite(vb) || x == null) { flush(); continue; }
                 var ya = y(va), yb = y(vb); if (ya == null || yb == null) { flush(); continue; }
+                var fd = f.data[i - shift], fc = fd && fd.options ? fd.options.color : undefined;
+                var c = colorOk(fc) ? fc : fc === null ? null : def;
+                if (c !== col) {                                        // a new color starts where the last one ended
+                    var lt = top.slice(-2), lb = bot.slice(-2);
+                    flush(); col = c; top = lt; bot = lb;
+                }
+                if (c == null) { top = []; bot = []; continue; }
                 top.push(x, ya); bot.push(x, yb);
             }
             flush();
             function flush() {
-                if (top.length >= 4) {
+                if (top.length >= 4 && col) {
                     ctx.beginPath(); ctx.moveTo(top[0], top[1]);
                     for (var j = 2; j < top.length; j += 2) ctx.lineTo(top[j], top[j + 1]);
                     for (var k = bot.length - 2; k >= 0; k -= 2) ctx.lineTo(bot[k], bot[k + 1]);
@@ -403,8 +421,32 @@ function xOfDraw(rt, x, xloc) {
     return chart.timeScale().logicalToCoordinate(rt.feedStart + x);
 }
 function dashFor(st) { st = String(st || ''); return st.indexOf('dash') >= 0 ? [6, 4] : st.indexOf('dot') >= 0 ? [2, 3] : []; }
+// Plots shifted forward (offset > 0) run past the newest candle; the series stop there (the time scale only has
+// candle times), so the part ahead of price is drawn here, continuing from the series' last point.
+function drawAhead(rt, ctx) {
+    if (!rt.ahead) return;
+    var y = yScale(rt), vis = visibleIdx(rt); if (!vis || vis.z < rt.n - 1) return;
+    Object.keys(rt.plots).forEach(function (k) {
+        var p = rt.plots[k], d = p.drawn; if (!d || !(p.offset > 0) || d.type === 'hist' || !rt.series[k]) return;
+        var dots = p.kind === 'circles' || p.kind === 'cross', step = p.kind.indexOf('stepline') === 0, prev = null;
+        ctx.lineWidth = d.width; ctx.lineJoin = 'round';
+        for (var j = Math.max(0, rt.n - 1 - p.offset); j < p.values.length; j++) {
+            var v = p.values[j], x = xOfIdx(rt, j + p.offset), yy = typeof v === 'number' && isFinite(v) ? y(v) : null;
+            if (x == null || yy == null) { prev = null; continue; }
+            var c = d.forced || (colorOk(p.colors[j]) ? p.colors[j] : d.base);
+            if (dots) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, yy, Math.max(1.5, d.width), 0, Math.PI * 2); ctx.fill(); }
+            else if (prev) {
+                ctx.strokeStyle = colorOk(prev.c) ? prev.c : d.base; ctx.beginPath(); ctx.moveTo(prev.x, prev.y);
+                if (step) ctx.lineTo(x, prev.y); ctx.lineTo(x, yy); ctx.stroke();
+            }
+            prev = { x: x, y: yy, c: c };
+        }
+    });
+}
 function drawTop(rt, target) {
-    var dr = rt.drawings; if (!dr) return;
+    var dr = rt.drawings;
+    if (rt.ahead) target.useMediaCoordinateSpace(function (sc) { drawAhead(rt, sc.context); });
+    if (!dr) return;
     var y = yScale(rt);
     target.useMediaCoordinateSpace(function (sc) {
         var ctx = sc.context, w = sc.mediaSize.width;
@@ -464,6 +506,7 @@ function teardown(id) {
     var rt = rts[id]; if (!rt) return;
     if (rt.markers) { try { rt.markers.detach(); } catch (e) { /* gone */ } }
     if (rt.prim && rt.primOn) { try { rt.primOn.detachPrimitive(rt.prim); } catch (e) { /* gone */ } }
+    CF.barTint(id, null);
     rt.priceLines.forEach(function (pl) { try { pl.s.removePriceLine(pl.l); } catch (e) { /* gone */ } });
     removeAll(rt);
     delete rts[id];

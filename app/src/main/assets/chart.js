@@ -19,8 +19,7 @@ var PAGE = 1500;                     // candles per history request (the exchang
 // a higher interval shows the same span far cheaper.
 var MIN_BAR_SPACING = 0.08, MAX_BAR_SPACING = 50;
 // Multiple moving averages: periods are in candles of the current interval. Colors: red, yellow, green, blue, white, purple.
-// 20 / 50 / 200 on by default in colors that never read as up/down candles; three more slots start off
-var MA_DEFAULT = [[20, '#F0B90B'], [50, '#00BCD4'], [200, '#E040FB'], [5, '#F6465D', false], [10, '#FF9800', false], [100, '#B2B5BE', false]];
+var MA_DEFAULT = [[5, '#F6465D'], [10, '#F0B90B'], [50, '#0ECB81'], [100, '#00BCD4'], [200, '#FFFFFF'], [400, '#B388FF']];
 var EMA_DEFAULT = [[20, '#FF9800'], [50, '#2962FF']];
 var PALETTE = ['#F6465D', '#FF7043', '#F0B90B', '#FFEB3B', '#0ECB81', '#00BCD4', '#2962FF', '#B388FF', '#E040FB', '#FFFFFF', '#B2B5BE', '#787B86'];
 var LS = {
@@ -417,7 +416,7 @@ function stepInd(i) {
     else {
         var ps = D.sig[i - 1];
         if (P.sigS) D.sig[i] = i >= P.slow - 1 + P.sig - 1 ? (D.mcs[i] - D.mcs[i - P.sig]) / P.sig : null;
-        else D.sig[i] = ps == null ? D.macd[i] : ps + ag * (D.macd[i] - ps);
+        else D.sig[i] = ps != null ? ps + ag * (D.macd[i] - ps) : i >= P.slow - 1 + P.sig - 1 ? (D.mcs[i] - D.mcs[i - P.sig]) / P.sig : null;
         D.hist[i] = D.sig[i] == null ? null : D.macd[i] - D.sig[i];
     }
     // volume moving average
@@ -477,11 +476,29 @@ function haAt(i) {
     var open = i === 0 ? (c.open + c.close) / 2 : (haBars[i - 1].open + haBars[i - 1].close) / 2;
     return { time: c.time, open: open, close: close, high: Math.max(c.high, open, close), low: Math.min(c.low, open, close) };
 }
-function mainBar(i) { return chartType === 'ha' ? haBars[i] : barOf(candles[i]); }
+function mainBar(i) { return tinted(chartType === 'ha' ? haBars[i] : barOf(candles[i])); }
 function mainData() {
     if (chartType === 'line' || chartType === 'area') return candles.map(function (c) { return { time: c.time, value: c.close }; });
-    if (chartType === 'ha') return haBars.slice();
-    return candles.map(barOf);
+    if (chartType === 'ha') return haBars.map(tinted);
+    return candles.map(function (c) { return tinted(barOf(c)); });
+}
+// Candle colors set by add-on scripts (Pine barcolor): owner -> { time: color }, for one symbol and interval
+var barTints = {}, barTint = null;
+function tinted(b) {
+    var t = barTint && barTint.map[b.time];
+    return t && barTint.key === symbol + '|' + interval ? Object.assign({}, b, { color: t, wickColor: t, borderColor: t }) : b;
+}
+function setBarTint(owner, map, key) {
+    var had = !!barTints[owner];
+    if (map && Object.keys(map).length) barTints[owner] = { map: map, key: key }; else if (had) delete barTints[owner]; else return;
+    var prev = barTint && barTint.map || {}, merged = {}, owners = Object.keys(barTints);
+    owners.forEach(function (o) { if (barTints[o].key === key) Object.assign(merged, barTints[o].map); });
+    barTint = owners.length ? { map: merged, key: key } : null;
+    if (chartType !== 'candle' && chartType !== 'ha') return;
+    // a live run usually changes only the forming candle: update it instead of resending every candle
+    var last = candles.length ? candles[candles.length - 1].time : null, other = false;
+    Object.keys(prev).concat(Object.keys(merged)).some(function (t) { if (prev[t] !== merged[t] && +t !== last) other = true; return other; });
+    if (other) candleSeries.setData(mainData()); else if (last != null) candleSeries.update(mainBar(candles.length - 1));
 }
 
 // push the complete data set into every series (initial load, type/indicator change, older history)
@@ -2460,7 +2477,8 @@ window.CF = {
     onData: function (fn) { dataHooks.push(fn); }, indicatorRows: function (fn) { indicatorRowHooks.push(fn); },
     legend: function (fn) { legendHooks.push(fn); }, openSheet: openSheet, closeSheet: closeSheet, sectionTitle: sectionTitle,
     noteRow: noteRow, colorStrip: colorStrip, openIndicators: function () { openIndicators(); }, bridge: bridge,
-    backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); }
+    backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); },
+    barTint: setBarTint
 };
 
 // =====================================================================================================

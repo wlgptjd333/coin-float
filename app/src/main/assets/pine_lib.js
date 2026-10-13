@@ -18,7 +18,7 @@ plot(base, "기준선", color=#B71C1C)
 plot(close, "후행스팬", offset=-disp + 1, color=#43A047)
 p1 = plot(spanA, "선행스팬 A", offset=disp - 1, color=#A5D6A7)
 p2 = plot(spanB, "선행스팬 B", offset=disp - 1, color=#EF9A9A)
-fill(p1, p2, color=color.rgb(67, 160, 71, 88), title="구름")
+fill(p1, p2, color = spanA > spanB ? color.rgb(67, 160, 71, 85) : color.rgb(244, 67, 54, 85), title="구름")
 ` },
 { id: 'emacross', cat: '추세', name: 'EMA 크로스 신호', desc: '빠른 · 느린 EMA와 골든 · 데드 크로스 표시', src: `//@version=5
 indicator("EMA 크로스 신호", shorttitle="EMA Cross", overlay=true)

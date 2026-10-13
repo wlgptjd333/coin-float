@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.3] - 2026-10-13
+
+### Fixed
+- **Ichimoku's cloud stopped at the newest candle.** Pine plots shifted forward (`offset` > 0) are now drawn past the
+  last candle, with their fills, so the cloud projected 25 bars ahead shows like on TradingView.
+- **`fill()` ignored per-bar colors.** A fill colored by a condition (e.g. `spanA > spanB ? green : red`) now changes
+  color where the condition does; the Ichimoku cloud is green above and red below, like TradingView's.
+- **MACD signal line started 8 candles early.** It was seeded from a single MACD value; it now starts from the simple
+  average of its first values, like `ta.ema`, and matches TradingView from the first point.
+
+### Added
+- **Pine `barcolor()`** recolors candles (it was ignored), so community scripts that color candles work.
+
+### Changed
+- **Moving average defaults** are 5 / 10 / 50 / 100 / 200 / 400, all on (red, yellow, green, light blue, white,
+  purple). Settings already changed in the app are kept.
+
 ## [1.15.2] - 2026-10-13
 
 ### Changed
