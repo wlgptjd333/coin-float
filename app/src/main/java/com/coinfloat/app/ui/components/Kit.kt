@@ -340,10 +340,28 @@ private val COIN_FALLBACK = listOf(
     0xFF2962FF, 0xFF7E57C2, 0xFF00897B, 0xFFE65100, 0xFFC2185B, 0xFF0097A7, 0xFF5D4037, 0xFF6D4C41, 0xFF3949AB, 0xFF00796B
 )
 
-/** Round coin badge in the coin's brand color with its initial ("1000PEPE" shows P). */
+/** The coin's own logo; until it is loaded (or when there is none) a badge in its brand color with its initial. */
 @Composable
 fun CoinAvatar(base: String, size: Int = 36) {
-    val name = base.uppercase().trimStart { it.isDigit() }.ifEmpty { base.uppercase() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val preview = androidx.compose.ui.platform.LocalInspectionMode.current
+    val logo by androidx.compose.runtime.produceState(CoinIcons.cached(base), base) {
+        if (value == null && !preview) value = CoinIcons.load(context, base)
+    }
+    val img = logo
+    if (img != null) {
+        androidx.compose.foundation.Image(
+            bitmap = img, contentDescription = null,
+            modifier = Modifier.size(size.dp).clip(CircleShape)
+        )
+        return
+    }
+    LetterAvatar(base, size)
+}
+
+@Composable
+private fun LetterAvatar(base: String, size: Int) {
+    val name = CoinIcons.logoName(base)
     val c = Color(COIN_COLORS[name] ?: COIN_FALLBACK[(name.hashCode() and 0x7fffffff) % COIN_FALLBACK.size])
     val light = c.luminance() > 0.55f
     Box(

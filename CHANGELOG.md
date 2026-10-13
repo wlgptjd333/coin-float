@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.1] - 2026-10-13
+
+### Changed
+- **Coins show their real logos.** Logos come from Binance's image server by base asset (CoinCap as a second source;
+  "1000PEPE" uses PEPE's), are downloaded once and kept on the device for 30 days, so new listings need no app update.
+  A coin without a logo is not asked for again for a day and shows the brand-colored letter badge, as it does while
+  its logo loads.
+
 ## [1.14.0] - 2026-10-13
 
 ### Changed
