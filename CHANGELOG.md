@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.2] - 2026-10-13
+
+### Changed
+- **Large-trade and liquidation bubbles are adjustable so they cover less of the chart.** Bubble size now goes from
+  0.2x to 2.5x, a new maximum bubble size (6-40 px) caps the biggest prints, the fill opacity goes down to 0 %, and the
+  border has its own opacity (0 % = no border). The default fill is lighter (large trades 20 %, liquidations 22 %).
+
 ## [1.15.1] - 2026-10-13
 
 ### Fixed

@@ -57,8 +57,10 @@ CF.defineSettings('liq', {
         { k: 'bubbles', t: 'bool', label: '차트에 청산 버블 표시', def: true },
         { k: 'ttl', t: 'sel', label: '버블 유지 시간 (지나면 서서히 사라짐)', def: '3600', opts: [['60', '1분'], ['300', '5분'], ['900', '15분'], ['3600', '1시간'], ['14400', '4시간'], ['0', '계속 표시']], showIf: function (c) { return c.bubbles; } },
         { k: 'minUsd', t: 'num', label: '표시 최소 금액 ($)', def: 0, min: 0, max: 5000000, step: 1000, showIf: function (c) { return c.bubbles; } },
-        { k: 'size', t: 'range', label: '버블 크기', def: 0.9, min: 0.4, max: 2, step: 0.1, showIf: function (c) { return c.bubbles; } },
-        { k: 'opacity', t: 'range', label: '버블 진하기', def: 28, min: 10, max: 80, step: 1, unit: '%', showIf: function (c) { return c.bubbles; } },
+        { k: 'size', t: 'range', label: '버블 크기', def: 0.9, min: 0.2, max: 2.5, step: 0.1, unit: '×', showIf: function (c) { return c.bubbles; } },
+        { k: 'maxR', t: 'range', label: '버블 최대 크기', def: 24, min: 6, max: 40, step: 1, unit: 'px', showIf: function (c) { return c.bubbles; } },
+        { k: 'opacity', t: 'range', label: '채우기 진하기', def: 22, min: 0, max: 90, step: 1, unit: '%', showIf: function (c) { return c.bubbles; } },
+        { k: 'lineA', t: 'range', label: '테두리 진하기', def: 70, min: 0, max: 100, step: 1, unit: '%', showIf: function (c) { return c.bubbles; } },
         { k: 'labels', t: 'bool', label: '금액 숫자 표시', def: true, showIf: function (c) { return c.bubbles; } },
         { k: 'labelMin', t: 'num', label: '숫자 표시 최소 금액 ($)', def: 150000, min: 0, max: 5000000, step: 10000, showIf: function (c) { return c.bubbles && c.labels; } },
         { t: 'note', label: '청산 데이터는 앱이 켜져 있는 동안 받은 것만 쌓입니다. (롱청산 = 빨강 계열, 숏청산 = 초록 계열)' }
@@ -74,11 +76,13 @@ CF.defineSettings('trades', {
         { t: 'sec', label: '어떻게 보일까' },
         { k: 'group', t: 'sel', label: '묶기', def: 'off', opts: [['off', '개별 체결'], ['candle', '봉마다 합산 (매수·매도 각 1개)']] },
         { k: 'ttl', t: 'sel', label: '버블 유지 시간 (지나면 서서히 사라짐)', def: '900', opts: [['60', '1분'], ['300', '5분'], ['900', '15분'], ['3600', '1시간'], ['14400', '4시간'], ['0', '계속 표시']], showIf: function (c) { return c.group === 'off'; } },
-        { k: 'size', t: 'range', label: '버블 크기', def: 0.8, min: 0.4, max: 2, step: 0.1 },
-        { k: 'opacity', t: 'range', label: '버블 진하기', def: 28, min: 8, max: 90, step: 1, unit: '%' },
+        { k: 'size', t: 'range', label: '버블 크기', def: 0.8, min: 0.2, max: 2.5, step: 0.1, unit: '×' },
+        { k: 'maxR', t: 'range', label: '버블 최대 크기', def: 24, min: 6, max: 40, step: 1, unit: 'px' },
         { k: 'ring', t: 'bool', label: '테두리만 표시 (속 비우기)', def: false },
+        { k: 'opacity', t: 'range', label: '채우기 진하기', def: 20, min: 0, max: 90, step: 1, unit: '%', showIf: function (c) { return !c.ring; } },
+        { k: 'lineA', t: 'range', label: '테두리 진하기', def: 70, min: 0, max: 100, step: 1, unit: '%' },
         { k: 'labels', t: 'bool', label: '금액 숫자 표시', def: true },
-        { t: 'note', label: '초록 = 공격적 매수 체결, 빨강 = 공격적 매도 체결. 버블이 많아 가려지면 유지 시간을 줄이거나 "봉마다 합산"을 쓰세요.' }
+        { t: 'note', label: '초록 = 공격적 매수 체결, 빨강 = 공격적 매도 체결. 버블이 차트를 가리면 크기·진하기를 낮추거나 유지 시간을 줄이거나 "봉마다 합산"을 쓰세요.' }
     ]
 });
 CF.defineSettings('depth', {
@@ -243,7 +247,7 @@ function liqItems(w, h, fn) {
         var fade = ttl ? 1 - 0.85 * age / ttl : 1;                                         // older → fainter
         var x = CF.xOf(e.t), y = CF.yOf(e.price);
         if (x == null || y == null || x < -30 || x > w + 30 || y < -30 || y > h + 30) continue;
-        fn(e, x, y, clamp((3 + Math.sqrt(e.usd) / 30) * cfg.size, 2.5, 26), fade, cfg);
+        fn(e, x, y, clamp((3 + Math.sqrt(e.usd) / 30) * cfg.size, 2, cfg.maxR), fade, cfg);
     }
 }
 // bubbles behind the candles, amounts on top (outlined), like the large-trade bubbles
@@ -252,8 +256,8 @@ function paintLiq(ctx, w, h) {
     liqItems(w, h, function (e, x, y, r, fade, cfg) {
         var col = e.side === 'L' ? DOWN() : UP();
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = CF.hexA(col, cfg.opacity / 100 * fade); ctx.fill();
-        ctx.lineWidth = 1.5; ctx.strokeStyle = CF.hexA(col, 0.3 + 0.65 * fade); ctx.stroke();
+        if (cfg.opacity) { ctx.fillStyle = CF.hexA(col, cfg.opacity / 100 * fade); ctx.fill(); }
+        if (cfg.lineA) { ctx.lineWidth = 1.5; ctx.strokeStyle = CF.hexA(col, cfg.lineA / 100 * (0.35 + 0.65 * fade)); ctx.stroke(); }
     });
 }
 function paintLiqLabels(ctx, w, h) {
@@ -333,7 +337,7 @@ function bigItems(w, h, fn) {
         var fade = ttl ? 1 - 0.8 * age / ttl : 1;
         var x = CF.xOf(e.t), y = CF.yOf(e.price);
         if (x == null || y == null || x < -30 || x > w + 30 || y < -30 || y > h + 30) continue;
-        fn(e, x, y, clamp((3.5 + Math.sqrt(e.usd / lim) * 5) * cfg.size, 3, 28), fade, cfg);
+        fn(e, x, y, clamp((3.5 + Math.sqrt(e.usd / lim) * 5) * cfg.size, 2, cfg.maxR), fade, cfg);
     }
 }
 function paintBig(ctx, w, h) {
@@ -341,8 +345,8 @@ function paintBig(ctx, w, h) {
     bigItems(w, h, function (e, x, y, r, fade, cfg) {
         var col = e.buy ? UP() : DOWN();
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-        if (!cfg.ring) { ctx.fillStyle = CF.hexA(col, cfg.opacity / 100 * fade); ctx.fill(); }
-        ctx.lineWidth = 1.5; ctx.strokeStyle = CF.hexA(col, 0.35 + 0.6 * fade); ctx.stroke();
+        if (!cfg.ring && cfg.opacity) { ctx.fillStyle = CF.hexA(col, cfg.opacity / 100 * fade); ctx.fill(); }
+        if (cfg.lineA) { ctx.lineWidth = 1.5; ctx.strokeStyle = CF.hexA(col, cfg.lineA / 100 * (0.35 + 0.65 * fade)); ctx.stroke(); }
     });
 }
 function paintBigLabels(ctx, w, h) {
