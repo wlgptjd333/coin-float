@@ -19,7 +19,8 @@ var PAGE = 1500;                     // candles per history request (the exchang
 // a higher interval shows the same span far cheaper.
 var MIN_BAR_SPACING = 0.08, MAX_BAR_SPACING = 50;
 // Multiple moving averages: periods are in candles of the current interval. Colors: red, yellow, green, blue, white, purple.
-var MA_DEFAULT = [[5, '#F6465D'], [10, '#F0B90B'], [50, '#0ECB81'], [100, '#2962FF'], [200, '#FFFFFF'], [400, '#B388FF']];
+// 20 / 50 / 200 on by default in colors that never read as up/down candles; three more slots start off
+var MA_DEFAULT = [[20, '#F0B90B'], [50, '#00BCD4'], [200, '#E040FB'], [5, '#F6465D', false], [10, '#FF9800', false], [100, '#B2B5BE', false]];
 var EMA_DEFAULT = [[20, '#FF9800'], [50, '#2962FF']];
 var PALETTE = ['#F6465D', '#FF7043', '#F0B90B', '#FFEB3B', '#0ECB81', '#00BCD4', '#2962FF', '#B388FF', '#E040FB', '#FFFFFF', '#B2B5BE', '#787B86'];
 var LS = {
@@ -79,7 +80,7 @@ function setCfg(key, k, v) {
 }
 function resetCfg(key) { delete CFGS[key]; delete cfgCache[key]; saveCfg(); var d = SCHEMA[key]; if (d.onChange) d.onChange(S(key), null); }
 
-function lineDef(arr, type, width) { return arr.map(function (d) { return { p: d[0], c: d[1], w: width || 1, t: type, on: true }; }); }
+function lineDef(arr, type, width) { return arr.map(function (d) { return { p: d[0], c: d[1], w: width || 1, t: type, on: d[2] !== false }; }); }
 var calcChanged = function () { scheduleRefresh(true); }, styleChanged = function () { scheduleRefresh(false); };
 
 defineSettings('chart', {

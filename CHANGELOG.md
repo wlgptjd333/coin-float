@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.1] - 2026-10-13
+
+### Fixed
+- **A big market order showed up as several small bubbles.** An order that sweeps several price levels arrives as one
+  trade record per level (same time, same side); they are merged back into the order with its volume-weighted price,
+  so a bubble is the size of what one trader did, and the automatic threshold (top 0.5 %) is measured on orders.
+- **Big trades took a minute or more to appear** after switching them on (the automatic threshold first collected 200
+  live prints). The last 1,000 trades are loaded on start: the threshold is known at once and the last minutes' big
+  orders show right away; live trades that arrive meanwhile are joined without duplicates.
+
+### Changed
+- **Bubbles no longer cover the candles:** large-trade and liquidation bubbles are drawn behind the candles, their
+  amounts on top with a dark outline so they read on any background.
+- **Cleaner default moving averages:** 20 / 50 / 200 in gold, cyan and magenta (colors that never read as up/down
+  candles); 5 / 10 / 100 are there but off. Settings you changed are kept.
+
 ## [1.15.0] - 2026-10-13
 
 ### Added

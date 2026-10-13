@@ -234,11 +234,8 @@ CF.registerSub('liq', {
         return '<span style="color:' + DOWN() + '">롱청산 ' + fmtUsd(b ? b.L : 0) + '</span> <span style="color:' + UP() + '">숏청산 ' + fmtUsd(b ? b.S : 0) + '</span>';
     }
 });
-function paintLiq(ctx, w, h) {
-    var cfg = CF.S('liq');
-    if (!liq.list.length || !cfg.bubbles) return;
-    var ttl = +cfg.ttl, now = Date.now() / 1000;
-    ctx.font = '600 10px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+function liqItems(w, h, fn) {
+    var cfg = CF.S('liq'), ttl = +cfg.ttl, now = Date.now() / 1000;
     for (var i = 0; i < liq.list.length; i++) {
         var e = liq.list[i];
         if (e.usd < cfg.minUsd) continue;
@@ -246,12 +243,28 @@ function paintLiq(ctx, w, h) {
         var fade = ttl ? 1 - 0.85 * age / ttl : 1;                                         // older → fainter
         var x = CF.xOf(e.t), y = CF.yOf(e.price);
         if (x == null || y == null || x < -30 || x > w + 30 || y < -30 || y > h + 30) continue;
-        var r = clamp((3 + Math.sqrt(e.usd) / 30) * cfg.size, 2.5, 26), col = e.side === 'L' ? DOWN() : UP();
+        fn(e, x, y, clamp((3 + Math.sqrt(e.usd) / 30) * cfg.size, 2.5, 26), fade, cfg);
+    }
+}
+// bubbles behind the candles, amounts on top (outlined), like the large-trade bubbles
+function paintLiq(ctx, w, h) {
+    if (!liq.list.length || !CF.S('liq').bubbles) return;
+    liqItems(w, h, function (e, x, y, r, fade, cfg) {
+        var col = e.side === 'L' ? DOWN() : UP();
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fillStyle = CF.hexA(col, cfg.opacity / 100 * fade); ctx.fill();
-        ctx.lineWidth = 1.2; ctx.strokeStyle = CF.hexA(col, 0.25 + 0.7 * fade); ctx.stroke();
-        if (cfg.labels && e.usd >= cfg.labelMin) { ctx.fillStyle = 'rgba(255,255,255,' + (0.35 + 0.65 * fade).toFixed(2) + ')'; ctx.fillText(fmtUsd(e.usd), x, y); }
-    }
+        ctx.lineWidth = 1.5; ctx.strokeStyle = CF.hexA(col, 0.3 + 0.65 * fade); ctx.stroke();
+    });
+}
+function paintLiqLabels(ctx, w, h) {
+    var c = CF.S('liq'); if (!liq.list.length || !c.bubbles || !c.labels) return;
+    ctx.font = '700 10px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+    liqItems(w, h, function (e, x, y, r, fade, cfg) {
+        if (e.usd < cfg.labelMin) return;
+        var t = fmtUsd(e.usd);
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(11,14,17,' + (0.75 * fade).toFixed(2) + ')'; ctx.strokeText(t, x, y);
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.35 + 0.65 * fade).toFixed(2) + ')'; ctx.fillText(t, x, y);
+    });
     ctx.textAlign = 'start';
 }
 CF.registerFeature('liq', {
@@ -259,7 +272,8 @@ CF.registerFeature('liq', {
         var sym = CF.symbol(), cutoff = Date.now() / 1000 - 3 * 86400;
         liq.name = sym.toLowerCase() + '@forceOrder'; liq.key = liqKey();
         liq.list = (LS.get(liq.key, []) || []).filter(function (e) { return e && e.t > cutoff; });
-        liq.off = CF.layer('top', paintLiq);
+        var offLb = CF.layer('bottom', paintLiq), offLl = CF.layer('top', paintLiqLabels);
+        liq.off = function () { offLb(); offLl(); };
         liq.fade = setInterval(function () { if (liq.list.length && +CF.S('liq').ttl) CF.redraw(); }, 4000);     // let bubbles fade out
         CF.refreshSub('liq');
         streams.market.sub(liq.name, function (d) {
@@ -289,6 +303,7 @@ var big = { list: [], recent: new Float64Array(2000), filled: 0, pos: 0, thr: 0,
 function updateThreshold() {
     var a = Array.prototype.slice.call(big.recent, 0, big.filled).sort(function (x, y) { return x - y; });
     big.thr = a[Math.floor(a.length * 0.995)] || 0;
+    big.thrReady = a.length >= 50;
 }
 function bigLimit(cfg) { return cfg.mode === 'fixed' ? cfg.fixed : Math.max(cfg.floor, big.thr); }
 // one buy and one sell bubble per candle (volume-weighted price), for a calm picture on busy markets
@@ -306,50 +321,113 @@ function groupBig(lim) {
     big.gKey = key;
     return big.gItems;
 }
-function paintBig(ctx, w, h) {
-    if (!big.list.length) return;
+// Bubbles are painted behind the candles (the candle under a big print stays readable) and their amounts on top,
+// outlined so they read on any background. Each bubble is one taker order (see the stream handler).
+function bigItems(w, h, fn) {
     var cfg = CF.S('trades'), lim = bigLimit(cfg), grouped = cfg.group === 'candle', ttl = grouped ? 0 : +cfg.ttl, now = Date.now() / 1000;
     var items = grouped ? groupBig(lim) : big.list;
-    ctx.font = '600 10px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
     for (var i = 0; i < items.length; i++) {
         var e = items[i];
         if (e.usd < lim) continue;
         var age = now - e.t; if (ttl && age > ttl) continue;
-        var fade = ttl ? 1 - 0.85 * age / ttl : 1;
+        var fade = ttl ? 1 - 0.8 * age / ttl : 1;
         var x = CF.xOf(e.t), y = CF.yOf(e.price);
         if (x == null || y == null || x < -30 || x > w + 30 || y < -30 || y > h + 30) continue;
-        var r = clamp((3.5 + Math.sqrt(e.usd / lim) * 5) * cfg.size, 3, 26), col = e.buy ? UP() : DOWN();
+        fn(e, x, y, clamp((3.5 + Math.sqrt(e.usd / lim) * 5) * cfg.size, 3, 28), fade, cfg);
+    }
+}
+function paintBig(ctx, w, h) {
+    if (!big.list.length) return;
+    bigItems(w, h, function (e, x, y, r, fade, cfg) {
+        var col = e.buy ? UP() : DOWN();
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
         if (!cfg.ring) { ctx.fillStyle = CF.hexA(col, cfg.opacity / 100 * fade); ctx.fill(); }
-        ctx.lineWidth = 1.2; ctx.strokeStyle = CF.hexA(col, 0.25 + 0.65 * fade); ctx.stroke();
-        if (cfg.labels && r >= 10) { ctx.fillStyle = 'rgba(255,255,255,' + (0.4 + 0.6 * fade).toFixed(2) + ')'; ctx.fillText(fmtUsd(e.usd), x, y); }
-    }
+        ctx.lineWidth = 1.5; ctx.strokeStyle = CF.hexA(col, 0.35 + 0.6 * fade); ctx.stroke();
+    });
+}
+function paintBigLabels(ctx, w, h) {
+    if (!big.list.length || !CF.S('trades').labels) return;
+    ctx.font = '700 10px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+    bigItems(w, h, function (e, x, y, r, fade) {
+        if (r < 9) return;
+        var t = fmtUsd(e.usd);
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(11,14,17,' + (0.75 * fade).toFixed(2) + ')'; ctx.strokeText(t, x, y);
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.45 + 0.55 * fade).toFixed(2) + ')'; ctx.fillText(t, x, y);
+    });
     ctx.textAlign = 'start';
 }
 CF.registerFeature('trades', {
     start: function () {
         var sym = CF.symbol();
         big.name = sym.toLowerCase() + '@aggTrade';
-        big.list = []; big.filled = 0; big.pos = 0; big.n = 0; big.thr = 15000;
-        big.off = CF.layer('top', paintBig);
+        big.list = []; big.filled = 0; big.pos = 0; big.n = 0; big.thr = 15000; big.thrReady = false;
+        var offB = CF.layer('bottom', paintBig), offL = CF.layer('top', paintBigLabels);
+        big.off = function () { offB(); offL(); };
         big.fade = setInterval(function () { var c = CF.S('trades'); if (big.list.length && c.group === 'off' && +c.ttl) CF.redraw(); }, 4000);
-        streams.market.sub(big.name, function (d) {
-            if (!d || d.s !== sym) return;
-            var usd = +d.p * +d.q;
+        // One market order that sweeps several price levels arrives as several aggTrades with the same time and side;
+        // they are merged back into the order (volume-weighted price), so a bubble is the size of what someone did.
+        var pend = null, pendT = 0, seeding = true, buffered = [], lastId = 0, gen = big.gen = (big.gen || 0) + 1;
+        function sample(usd) {
             big.recent[big.pos] = usd; big.pos = (big.pos + 1) % big.recent.length;
             if (big.filled < big.recent.length) big.filled++;
-            if (++big.n % 150 === 0 || big.filled === 200) updateThreshold();
+        }
+        function keep(o) {
             var cfg = CF.S('trades');
-            if (usd >= bigLimit(cfg) && (cfg.mode === 'fixed' || big.filled >= 200)) {
-                big.list.push({ t: Math.floor(d.T / 1000), price: +d.p, usd: usd, buy: !d.m });         // m = buyer is the maker → a sell
-                var ttl = +cfg.ttl, nowS = Date.now() / 1000;
-                while (big.list.length && ((ttl && cfg.group === 'off' && nowS - big.list[0].t > ttl) || big.list.length > 400)) big.list.shift();
-                CF.redraw();
-            }
+            if (o.usd < bigLimit(cfg) || (cfg.mode !== 'fixed' && !big.thrReady)) return false;
+            big.list.push({ t: Math.floor(o.T / 1000), price: o.pu / o.usd, usd: o.usd, buy: o.buy });
+            var ttl = +cfg.ttl, nowS = Date.now() / 1000;
+            while (big.list.length && ((ttl && cfg.group === 'off' && nowS - big.list[0].t > ttl) || big.list.length > 400)) big.list.shift();
+            return true;
+        }
+        function onOrder(o) {
+            sample(o.usd);
+            if (++big.n % 150 === 0 || (!big.thrReady && big.filled >= 50)) updateThreshold();
+            if (keep(o)) CF.redraw();
+        }
+        big.flush = function () { clearTimeout(pendT); pendT = 0; if (pend) { var o = pend; pend = null; onOrder(o); } };
+        function take(d) {
+            if (d.a && d.a <= lastId) return;                                            // already in the history page
+            var price = +d.p, usd = price * +d.q, buy = !d.m;                            // m = buyer is the maker → a sell
+            if (pend && pend.T === d.T && pend.buy === buy) { pend.usd += usd; pend.pu += price * usd; return; }
+            big.flush();
+            pend = { T: d.T, buy: buy, usd: usd, pu: price * usd };
+            pendT = setTimeout(big.flush, 150);
+        }
+        streams.market.sub(big.name, function (d) {
+            if (!d || d.s !== sym) return;
+            if (seeding) { if (buffered.length < 5000) buffered.push(d); return; }
+            take(d);
         });
+        // Seed with the last 1,000 trades: the automatic threshold is known at once and the last minutes' big orders
+        // show right away, instead of an empty chart until 200 orders have streamed in.
+        fetch('https://fapi.binance.com/fapi/v1/aggTrades?symbol=' + encodeURIComponent(sym) + '&limit=1000')
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function (rows) {
+                if (gen !== big.gen || !Array.isArray(rows)) return;
+                var orders = [], cur = null;
+                rows.forEach(function (d) {
+                    var price = +d.p, usd = price * +d.q, buy = !d.m;
+                    if (cur && cur.T === d.T && cur.buy === buy) { cur.usd += usd; cur.pu += price * usd; }
+                    else { cur = { T: d.T, buy: buy, usd: usd, pu: price * usd }; orders.push(cur); }
+                    if (d.a > lastId) lastId = d.a;
+                });
+                orders.forEach(function (o) { sample(o.usd); });
+                updateThreshold();
+                orders.forEach(keep);
+                CF.redraw();
+            })
+            .catch(function () { /* history is a nicety: the live stream still fills in */ })
+            .then(function () {
+                if (gen !== big.gen) return;
+                seeding = false;
+                var b = buffered; buffered = [];
+                b.forEach(take);
+            });
     },
     stop: function () {
         streams.market.unsub(big.name);
+        big.gen = (big.gen || 0) + 1;                                                    // a pending history page is dropped
+        if (big.flush) { big.flush(); big.flush = null; }
         if (big.off) { big.off(); big.off = null; }
         clearInterval(big.fade); big.fade = null; big.gKey = null;
         big.list = []; big.filled = 0; big.pos = 0;
