@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.20.0] - 2026-10-14
+
+### Added
+- **Trades from other exchanges** (indicator sheet: 다른 거래소 체결 합산): live trades of the same perpetual from
+  Bybit, OKX, Hyperliquid and (optionally) Bitfinex are added to the footprint, the tape (with the exchange's letter)
+  and the ladder's traded volume. Prices and sizes are converted to the Binance contract's units (1000PEPE: OKX
+  contract value and price x1000, Hyperliquid kPEPE); a source whose prices are more than 1 % off is dropped as a
+  wrong pairing, and a coin an exchange does not list is shown as missing. Other exchanges are live only (no history).
+
 ## [1.19.0] - 2026-10-14
 
 ### Added

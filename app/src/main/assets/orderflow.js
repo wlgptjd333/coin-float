@@ -257,6 +257,7 @@ function engineUse(history) {
             }
             E.pruneT = setInterval(prune, 5 * 60000);
             E.handler = onAgg;
+            xStart();
             streams.market.sub(sym.toLowerCase() + '@aggTrade', E.handler);
             CF.redraw();
         });
@@ -271,6 +272,7 @@ function engineRelease(history) {
     if (E.users === 0 || --E.users > 0) return;
     if (E.handler) streams.market.unsub(E.sym.toLowerCase() + '@aggTrade', E.handler);
     E.handler = null;
+    xStop();
     clearInterval(E.pruneT); E.pruneT = 0;
     clearTimeout(E.bf.timer); E.bf.timer = 0; E.bf.q = [];
     save();
@@ -387,7 +389,7 @@ function lastLabel() {
     if (col !== fp.plc) { fp.plc = col; CF.mainSeries().applyOptions({ priceLineColor: col }); }
 }
 CF.onData(function () { if (fp.active) lastLabel(); });
-function srcKey() { return 'bn'; }
+function srcKey() { return liveSources().join(','); }
 function paintFpCells(ctx, w, h) {
     if (!fp.active) return;
     var cfg = CF.S('fp'), vis = visibleIdx(); if (!vis || !E.tick) return;
@@ -567,10 +569,10 @@ function domTrade(t) {
     dom.recent.push(t);
     while (dom.recent.length && (dom.recent[0].T < now - 300000 || dom.recent.length > 20000)) dom.recent.shift();
     var o = dom.pend;
-    if (o && o.T === t.T && o.buy === t.buy) { o.q += t.q; o.pq += t.p * t.q; }
+    if (o && o.T === t.T && o.buy === t.buy && o.src === t.src) { o.q += t.q; o.pq += t.p * t.q; }
     else {
         if (o) domOrder(o);
-        dom.pend = { T: t.T, buy: t.buy, q: t.q, pq: t.p * t.q };
+        dom.pend = { T: t.T, buy: t.buy, q: t.q, pq: t.p * t.q, src: t.src };
     }
     dom.tver++;
 }
@@ -578,6 +580,7 @@ function domOrder(o) {
     o.p = o.pq / o.q; o.usd = o.pq;
     dom.orders.unshift(o); if (dom.orders.length > 400) dom.orders.length = 400;
 }
+var XLETTER = { by: 'Y', ok: 'O', hl: 'H', bf: 'F' };
 function fmtTime(ms) { var d = new Date(ms); return CF.pad2(d.getMinutes()) + ':' + CF.pad2(d.getSeconds()); }   // mm:ss fits a narrow panel
 function fmtUsdShort(v) { return v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? '$' + (v / 1e3).toFixed(v >= 1e4 ? 0 : 1) + 'K' : '$' + v.toFixed(0); }
 function domDraw(force) {
@@ -643,7 +646,8 @@ function tapeDraw(force) {
     for (var i = 0; i < dom.orders.length && shown < 120; i++) {
         var o = dom.orders[i]; if (o.usd < min) continue; shown++;
         var col = o.buy ? CF.C.up : CF.C.down, hi = o.usd >= big;
-        html += '<div class="tp' + (hi ? ' big' : '') + '"' + (hi ? ' style="background:' + CF.hexA(col, 0.22) + '"' : '') + '><span class="t">' + fmtTime(o.T) + '</span><span class="p" style="color:' + col + '">' + CF.fmtPrice(o.p) +
+        html += '<div class="tp' + (hi ? ' big' : '') + '"' + (hi ? ' style="background:' + CF.hexA(col, 0.22) + '"' : '') + '><span class="t">' + fmtTime(o.T) + '</span>' +
+            (o.src && o.src !== 'bn' ? '<span class="x">' + XLETTER[o.src] + '</span>' : '') + '<span class="p" style="color:' + col + '">' + CF.fmtPrice(o.p) +
             '</span><span class="v" style="color:' + (hi ? '#fff' : col) + '">' + fmtUsdShort(o.usd) + '</span></div>';
     }
     dom.list.innerHTML = html || '<div class="tp-empty">체결을 기다리는 중…</div>';
@@ -673,5 +677,144 @@ CF.registerFeature('dom', {
     }
 });
 
-window.__of = { E: E, cells: cells, fp: fp, save: save, coverOf: coverOf };
+// =====================================================================================================
+// Other exchanges: live trades of the same perpetual from Bybit, OKX, Hyperliquid and Bitfinex, converted to the
+// Binance contract's price and size units, added to the engine as their own sources (footprint, tape, ladder volume).
+// =====================================================================================================
+CF.defineSettings('xex', {
+    title: '다른 거래소 체결 합산', onChange: function () { if (X.want) { xStop(); xStart(); } CF.redraw(); },
+    fields: [
+        { k: 'by', t: 'bool', label: 'Bybit', def: true },
+        { k: 'ok', t: 'bool', label: 'OKX', def: true },
+        { k: 'hl', t: 'bool', label: 'Hyperliquid', def: true },
+        { k: 'bf', t: 'bool', label: 'Bitfinex', sub: '비트코인 · 이더리움 등 일부 코인만 무기한 선물이 있습니다', def: false },
+        { t: 'note', label: '켜 둔 거래소의 실시간 체결을 풋프린트 · 체결 목록 · 호가 패널의 체결량에 더합니다. 다른 거래소는 과거 체결을 받지 않아서, 켠 뒤부터 합산됩니다. 1000PEPE처럼 단위가 다른 코인은 바이낸스 단위로 환산하고, 가격이 1% 넘게 다르면 잘못 짝지어진 것으로 보고 자동으로 뺍니다.' }
+    ]
+});
+var X = { want: false, conns: {}, status: {} };
+var XNAME = { bn: 'Binance', by: 'Bybit', ok: 'OKX', hl: 'Hyperliquid', bf: 'Bitfinex' };
+// "1000PEPEUSDT" -> { base: 'PEPE', mult: 1000 }
+function splitSym(sym) {
+    var m = /^(1000000|10000|1000|100|1M)?([A-Z0-9]+?)USDT$/.exec(sym); if (!m) return null;
+    var mult = { '1000000': 1e6, '10000': 1e4, '1000': 1e3, '100': 100, '1M': 1e6 }[m[1]] || 1;
+    return { base: m[2], mult: mult };
+}
+function refPrice() { var cs = CF.candles(); return cs.length ? cs[cs.length - 1].close : 0; }
+function xTrade(src, T, p, q, buy) {
+    var st = X.status[src];
+    if (!st || st.state === 'mismatch') return;
+    var ref = refPrice();
+    if (ref && Math.abs(p / ref - 1) > 0.01) {                         // wrong pairing (another coin, other units): drop it
+        if (++st.bad > 5) { st.state = 'mismatch'; var c = X.conns[src]; if (c) c.close(); CF.scheduleLegend(); }
+        return;
+    }
+    st.bad = 0; st.state = 'live'; st.n++;
+    addTrade(src, T, p, q, buy);
+    for (var i = 0; i < E.listeners.length; i++) { try { E.listeners[i]({ src: src, T: T, p: p, q: q, buy: buy }); } catch (e) { console.error(e); } }
+}
+// a WebSocket that reconnects with back-off and keeps itself alive with the exchange's ping
+function xSocket(src, url, onOpen, onMsg, ping, pingMs) {
+    var s = { ws: null, closed: false, delay: 1000, timer: 0, pinger: 0 };
+    function open() {
+        if (s.closed) return;
+        try { s.ws = new WebSocket(url); } catch (e) { retry(); return; }
+        s.ws.onopen = function () { if (s.closed || !X.status[src]) return; s.delay = 1000; X.status[src].state = X.status[src].state === 'mismatch' ? 'mismatch' : 'wait'; onOpen(s.ws); if (ping) s.pinger = setInterval(function () { try { s.ws.send(ping); } catch (e) { /* closing */ } }, pingMs); };
+        s.ws.onmessage = function (e) { var m; try { m = JSON.parse(e.data); } catch (err) { return; } try { onMsg(m); } catch (err2) { console.error(err2); } };
+        s.ws.onclose = function () { clearInterval(s.pinger); s.ws = null; if (!s.closed && X.status[src]) { X.status[src].state = 'retry'; retry(); } };
+        s.ws.onerror = function () { /* onclose follows */ };
+    }
+    function retry() { clearTimeout(s.timer); s.timer = setTimeout(open, s.delay); s.delay = Math.min(s.delay * 2, 30000); }
+    s.close = function () { s.closed = true; clearTimeout(s.timer); clearInterval(s.pinger); if (s.ws) { try { s.ws.close(); } catch (e) { /* ignore */ } } };
+    open();
+    return s;
+}
+var XS = {
+    by: function (sym) {
+        return xSocket('by', 'wss://stream.bybit.com/v5/public/linear', function (ws) {
+            ws.send(JSON.stringify({ op: 'subscribe', args: ['publicTrade.' + sym] }));
+        }, function (m) {
+            if (m.success === false && m.op === 'subscribe') { X.status.by.state = 'none'; X.conns.by && X.conns.by.close(); return; }
+            if (!m.topic || m.topic.indexOf('publicTrade.') !== 0 || !Array.isArray(m.data)) return;
+            m.data.forEach(function (t) { xTrade('by', +t.T, +t.p, +t.v, t.S === 'Buy'); });
+        }, JSON.stringify({ op: 'ping' }), 20000);
+    },
+    ok: function (sym) {
+        var sp = splitSym(sym); if (!sp) return null;
+        var inst = sp.base + '-USDT-SWAP', ct = 0, s = null;
+        fetch('https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=' + inst).then(function (r) { return r.json(); }).then(function (j) {
+            if (!X.status.ok || X.status.ok.sym !== sym) return;                   // stopped meanwhile
+            var d = j && j.data && j.data[0]; if (!d) { X.status.ok.state = 'none'; return; }
+            ct = (+d.ctVal || 0) * (+d.ctMult || 1); if (!(ct > 0) || !X.status.ok || X.status.ok.sym !== sym) return;
+            s = xSocket('ok', 'wss://ws.okx.com:8443/ws/v5/public', function (ws) {
+                ws.send(JSON.stringify({ op: 'subscribe', args: [{ channel: 'trades', instId: inst }] }));
+            }, function (m) {
+                if (m.event === 'error') { X.status.ok.state = 'none'; s && s.close(); return; }
+                if (!m.data || !m.arg || m.arg.channel !== 'trades') return;
+                m.data.forEach(function (t) { xTrade('ok', +t.ts, +t.px * sp.mult, +t.sz * ct / sp.mult, t.side === 'buy'); });
+            }, 'ping', 25000);
+            X.conns.ok = s;
+        }).catch(function () { if (X.status.ok) X.status.ok.state = 'none'; });
+        return { close: function () { if (s) s.close(); } };
+    },
+    hl: function (sym) {
+        var sp = splitSym(sym); if (!sp || (sp.mult !== 1 && sp.mult !== 1000)) return null;
+        var coin = (sp.mult === 1000 ? 'k' : '') + sp.base;                      // Hyperliquid lists 1000x coins as kPEPE, kSHIB ...
+        return xSocket('hl', 'wss://api.hyperliquid.xyz/ws', function (ws) {
+            ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades', coin: coin } }));
+        }, function (m) {
+            if (m.channel === 'error') { X.status.hl.state = 'none'; X.conns.hl && X.conns.hl.close(); return; }
+            if (m.channel !== 'trades' || !Array.isArray(m.data)) return;
+            m.data.forEach(function (t) { if (t.coin === coin) xTrade('hl', +t.time, +t.px, +t.sz, t.side === 'B'); });   // side = the taker's side
+        }, JSON.stringify({ method: 'ping' }), 50000);
+    },
+    bf: function (sym) {
+        var sp = splitSym(sym); if (!sp || sp.mult !== 1) return null;
+        var chan = null, pair = 't' + sp.base + 'F0:USTF0';
+        return xSocket('bf', 'wss://api-pub.bitfinex.com/ws/2', function (ws) {
+            ws.send(JSON.stringify({ event: 'subscribe', channel: 'trades', symbol: pair }));
+        }, function (m) {
+            if (m.event === 'subscribed') { chan = m.chanId; return; }
+            if (m.event === 'error') { X.status.bf.state = 'none'; X.conns.bf && X.conns.bf.close(); return; }
+            if (!Array.isArray(m) || m[0] !== chan || m[1] !== 'te' || !Array.isArray(m[2])) return;   // "te": executed (no "tu" duplicate)
+            var t = m[2]; xTrade('bf', +t[1], +t[3], Math.abs(+t[2]), +t[2] > 0);
+        }, null, 0);
+    }
+};
+function xStart() {
+    if (!X.want || !E.users || !E.sym) return;
+    var cfg = CF.S('xex'), sym = E.sym;
+    Object.keys(XS).forEach(function (id) {
+        if (!cfg[id] || X.conns[id]) return;
+        X.status[id] = { state: 'wait', bad: 0, n: 0, sym: sym };
+        var c = XS[id](sym);
+        if (!c) { X.status[id].state = 'none'; return; }
+        if (id !== 'ok') X.conns[id] = c; else if (!X.conns.ok) X.conns.ok = c;
+    });
+}
+function xStop() {
+    Object.keys(X.conns).forEach(function (id) { try { X.conns[id].close(); } catch (e) { /* ignore */ } });
+    X.conns = {}; X.status = {};
+}
+// sources the footprint adds up: Binance and every other exchange that delivered trades for this coin
+function liveSources() {
+    var ids = ['bn'];
+    Object.keys(X.status).forEach(function (id) { var st = X.status[id]; if (st && st.n > 0 && st.state !== 'mismatch') ids.push(id); });
+    return ids;
+}
+function xLegend() {
+    if (!X.want) return '';
+    var parts = [];
+    Object.keys(X.status).forEach(function (id) {
+        var st = X.status[id], txt = st.state === 'live' ? '✓' : st.state === 'none' ? '없음' : st.state === 'mismatch' ? '제외' : '연결 중';
+        parts.push(XNAME[id] + ' ' + txt);
+    });
+    return parts.length ? '<span style="color:#B2B5BE">합산: ' + parts.join(' · ') + '</span>' : '';
+}
+CF.registerFeature('xex', {
+    legend: xLegend,
+    start: function () { X.want = true; xStart(); },
+    stop: function () { X.want = false; xStop(); }
+});
+
+window.__of = { E: E, X: X, cells: cells, fp: fp, dom: dom, save: save, coverOf: coverOf };
 })();
