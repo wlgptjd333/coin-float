@@ -1189,8 +1189,13 @@ var DR = {
         this.nextId = this.list.reduce(function (m, d) { return Math.max(m, d.id || 0); }, 0) + 1;
         this.sel = null; this.draft = null; this.measure = null; this.redraw();
     },
-    save: function () { LS.set('dr.' + symbol, this.list.slice(-100)); }
+    save: function () {
+        LS.set('dr.' + symbol, this.list.slice(-100));
+        var sym = symbol, list = this.list;
+        drSaveHooks.forEach(function (fn) { try { fn(sym, list); } catch (e) { console.error(e); } });   // alerts follow their line
+    }
 };
+var drSaveHooks = [], drAlertHook = null;
 
 // ---- paint layers ---------------------------------------------------------------------------------
 // Everything that is drawn on top of / behind the candles (drawings, heatmap, bubbles, profiles) renders
@@ -1762,6 +1767,7 @@ function refreshDrBar() {
     }
     if (d.type !== 'fib') html += '<button class="tag" data-a="w">' + Math.round(d.w || 1.6) + 'px</button>' +
         '<button class="tag" data-a="s">' + (d.ds === 1 ? '- - -' : d.ds === 2 ? '· · ·' : '───') + '</button><span class="vsep"></span>';
+    if (drAlertHook && (d.type === 'hline' || d.type === 'trend' || d.type === 'ray')) html += '<button class="tag" data-a="alert" aria-label="알람">🔔 알람</button><span class="vsep"></span>';
     html += '<button class="tag" data-a="cfg" aria-label="설정">⚙ 설정</button>' +
         '<span class="vsep"></span><button class="tag" data-a="x" style="color:' + C.down + '">삭제</button>';
     bar.innerHTML = html; bar.className = 'show';
@@ -1774,6 +1780,7 @@ $('dr_bar').addEventListener('click', function (e) {
     else if (b.getAttribute('data-a') === 's') d.ds = ((d.ds || 0) + 1) % 3;
     else if (b.getAttribute('data-a') === 'x') { onTrash(); return; }
     else if (b.getAttribute('data-a') === 'cfg') { openDrawingSettings(d); return; }
+    else if (b.getAttribute('data-a') === 'alert') { if (drAlertHook) drAlertHook(d); return; }
     DR.save(); DR.redraw(); refreshDrBar();
 });
 
@@ -2659,9 +2666,13 @@ function applyKline(k) {
 // =====================================================================================================
 // Native API
 // =====================================================================================================
-window.loadSymbol = function (sym, defaultInterval) {
+window.loadSymbol = function (sym, defaultInterval, force) {
     var next = String(sym || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!next) return;
+    if (force && SEC[force] && force !== interval) {                    // opened from an alert: show its interval
+        interval = force; LS.set('interval', force); markInterval();
+        if (started && next === symbol && candles.length) { reload(false); return; }
+    }
     if (defaultInterval && !started && !LS.get('interval', null)) { interval = normInterval(defaultInterval); markInterval(); }
     if (started && next === symbol && candles.length) return;
     started = true;
@@ -2729,6 +2740,8 @@ window.CF = {
     noteRow: noteRow, colorStrip: colorStrip, openIndicators: function () { openIndicators(); }, bridge: bridge,
     backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); },
     barTint: setBarTint,
+    onDrawingsSaved: function (fn) { drSaveHooks.push(fn); }, onDrawingAlert: function (fn) { drAlertHook = fn; },
+    drawings: function () { return DR.list; }, changeInterval: function (i) { changeInterval(i); }, intervals: function () { return INTERVALS; },
     chartType: function () { return chartType; }, barSpacing: barSpacingPx,
     candleOverride: function (o) { candleOv = o; candleSeries.applyOptions(o || { borderVisible: !!S('chart').hollow, borderUpColor: C.up, borderDownColor: C.down }); },
     vpTrades: function (fn) { vpTradeHook = fn; vpCache.key = ''; },

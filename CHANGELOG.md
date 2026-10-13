@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.18.0] - 2026-10-14
+
+### Added
+- **Chart alerts** (🔔 in the chart toolbar), checked at every candle close of the chosen interval (1m - 1w) and sent
+  as notifications, also while the app is closed:
+  - volume spike: the closed candle traded N times (2 / 3 / 5 / 10 or any) the average of the previous 20
+  - divergence: RSI, MACD, CVD (from taker buy volume) or volume; regular and / or hidden; bullish and / or bearish;
+    pivots as TradingView's divergence script (5 bars left, 2 / 3 / 5 bars to confirm, 5-60 bars apart)
+  - N-candle high / low breakout (20 / 50 / 100 / 200), optionally only on 1.5x volume; default 50 with volume
+  - price level, or a horizontal / trend line drawn on the chart (🔔 알람 in the line's bar): the alert follows the
+    line when it is moved and goes when the line is deleted
+  - "once" switches an alert off after it fires; fired alerts are listed and marked on the chart (🔔)
+- Tapping an alert notification opens the chart on that coin and interval.
+
+### How it works
+- No service runs for alerts: AlarmManager wakes the app at the next candle close, the closed candles are fetched
+  once per coin and interval, every due rule is checked, and the next close is scheduled (also after a reboot or an
+  update). With "alarms & reminders" allowed they are on time; otherwise Android may deliver them a few minutes late.
+- Replayed on real data: on BTC 15m each divergence kind fires about 0.5-1.6 times a day, a 3x volume spike about
+  2.7 times; a 20-candle breakout fired 27 times a day on 5m, hence the 50 + volume default.
+
 ## [1.17.0] - 2026-10-14
 
 ### Added

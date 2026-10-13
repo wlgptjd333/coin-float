@@ -19,6 +19,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_TARGET_TAB = "TARGET_TAB"
         const val EXTRA_TARGET_SYMBOL = "TARGET_SYMBOL"
+        const val EXTRA_TARGET_INTERVAL = "TARGET_INTERVAL"
     }
 
     private val viewModel: SettingsViewModel by viewModels()
@@ -78,9 +79,11 @@ class MainActivity : ComponentActivity() {
         if (!targetSymbol.isNullOrBlank()) {
             viewModel.selectChartSymbol(targetSymbol)
         }
+        intent.getStringExtra(EXTRA_TARGET_INTERVAL)?.let { viewModel.showChartInterval(it) }
         // Consume the request so it is applied exactly once.
         intent.removeExtra(EXTRA_TARGET_TAB)
         intent.removeExtra(EXTRA_TARGET_SYMBOL)
+        intent.removeExtra(EXTRA_TARGET_INTERVAL)
     }
 
     private fun requestNotificationPermissionIfNeeded() {

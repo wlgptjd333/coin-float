@@ -16,6 +16,8 @@ class CoinFloatApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CoinFloatNotification.createNotificationChannel(this)
+        com.coinfloat.app.alerts.AlertNotifier.ensureChannel(this)
+        com.coinfloat.app.alerts.AlertScheduler.schedule(this)      // a force stop cancels alarms: set the next check again
 
         // Initialize repositories
         SettingsRepository.getInstance(this)

@@ -68,6 +68,7 @@ fun SettingsScreen(
     val fundingInfoMap by viewModel.fundingInfoMap.collectAsState()
     val selectedTab by viewModel.selectedTabIndex.collectAsState()
     val activeChartSymbol by viewModel.activeChartSymbol.collectAsState()
+    val pendingChartInterval by viewModel.pendingChartInterval.collectAsState()
 
     var isChartFullscreen by rememberSaveable { mutableStateOf(false) }
     // the chart page survives tab switches; it is torn down with the activity
@@ -131,6 +132,8 @@ fun SettingsScreen(
                     isFullscreen = isChartFullscreen,
                     onToggleFullscreen = { isChartFullscreen = !isChartFullscreen },
                     webHolder = chartWeb,
+                    pendingInterval = pendingChartInterval,
+                    onIntervalShown = viewModel::chartIntervalShown,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {

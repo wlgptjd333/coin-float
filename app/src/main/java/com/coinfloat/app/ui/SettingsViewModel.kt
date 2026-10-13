@@ -93,6 +93,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    // an alert notification opens the chart on the alert's interval; the chart consumes it once
+    private val _pendingChartInterval = MutableStateFlow<String?>(null)
+    val pendingChartInterval: StateFlow<String?> = _pendingChartInterval.asStateFlow()
+    fun showChartInterval(interval: String) { if (ChartInterval.isValid(interval)) _pendingChartInterval.value = interval }
+    fun chartIntervalShown() { _pendingChartInterval.value = null }
+
     fun selectChartSymbol(symbol: String) {
         val upper = symbol.uppercase()
         _activeChartSymbol.value = upper

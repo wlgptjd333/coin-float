@@ -140,6 +140,8 @@ fun TradingViewChartScreen(
     isFullscreen: Boolean = false,
     onToggleFullscreen: () -> Unit = {},
     webHolder: ChartWebHolder,
+    pendingInterval: String? = null,
+    onIntervalShown: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -252,6 +254,14 @@ fun TradingViewChartScreen(
             )
         }
 
+        // an alert notification was tapped: show its interval (now if the page is loaded, else when it finishes loading)
+        LaunchedEffect(pendingInterval) {
+            val iv = pendingInterval ?: return@LaunchedEffect
+            val view = webViewHolder.view
+            if (view != null) { view.tag = currentSymbol; view.loadChart(currentSymbol, chartInterval, iv) }
+            else webViewHolder.forceInterval = iv
+            onIntervalShown()
+        }
         ChartWebView(
             symbol = currentSymbol,
             defaultInterval = chartInterval,
@@ -759,6 +769,8 @@ class ChartWebHolder {
     var onOpenSearch: () -> Unit = {}
     var onExitImmersive: () -> Unit = {}
     var onBackState: (Boolean) -> Unit = {}
+    /** Interval to switch to on the next load (an alert notification was tapped), used once. */
+    var forceInterval: String? = null
 
     /** Interval and close time of the candle the page is forming (null while it loads), for the header countdown. */
     var candleClose by mutableStateOf<CandleClose?>(null)
@@ -826,6 +838,7 @@ private fun ChartWebView(
                         onExitImmersive = { holder.onExitImmersive() },
                         onBackState = { holder.onBackState(it) },
                         onCandleClose = { holder.candleClose = parseCandleClose(it) },
+                        forceInterval = { holder.forceInterval.also { holder.forceInterval = null } },
                         onRendererGone = {
                             // the renderer died: throw this WebView away and build a fresh one
                             holder.view?.destroyChart()
@@ -865,10 +878,11 @@ internal fun parseCandleClose(arg: String): CandleClose? {
     return CandleClose(interval, at)
 }
 
-private fun WebView.loadChart(symbol: String, interval: String) {
+private fun WebView.loadChart(symbol: String, interval: String, force: String? = null) {
     val safeSymbol = ChartInterval.sanitizeSymbol(symbol)
     val safeInterval = ChartInterval.normalize(interval)
-    evaluateJavascript("window.loadSymbol && window.loadSymbol('$safeSymbol','$safeInterval');", null)
+    val safeForce = force?.let { ChartInterval.normalize(it) }.orEmpty()
+    evaluateJavascript("window.loadSymbol && window.loadSymbol('$safeSymbol','$safeInterval','$safeForce');", null)
 }
 
 /**
@@ -925,6 +939,49 @@ private class ChartBridge(
         return item.coerceToText(webView.context)?.toString().orEmpty().take(200_000)
     }
 
+    // ---- chart alerts: the page edits the rules, the app stores them and checks them at every candle close ----------
+    @JavascriptInterface
+    fun alertsGet(arg: String?): String {
+        val ctx = webView.context.applicationContext
+        val store = com.coinfloat.app.alerts.AlertStore(ctx)
+        val o = org.json.JSONObject()
+        o.put("rules", org.json.JSONArray().apply { store.rules().forEach { put(it.toJson()) } })
+        o.put("history", org.json.JSONArray().apply { store.history().forEach { put(it.toJson()) } })
+        o.put("exact", com.coinfloat.app.alerts.AlertScheduler.canExact(ctx))
+        o.put("notif", androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled())
+        return o.toString()
+    }
+
+    @JavascriptInterface
+    fun alertsPut(json: String?): String {
+        val ctx = webView.context.applicationContext
+        val store = com.coinfloat.app.alerts.AlertStore(ctx)
+        val rules = com.coinfloat.app.alerts.AlertRule.listFromJson(json)
+        // a new rule only looks at candles that close from now on (no alert for what happened before it existed)
+        val st = store.state(); val now = System.currentTimeMillis()
+        rules.forEach { r -> if (!st.has(r.id)) st.put(r.id, org.json.JSONObject().put("last", com.coinfloat.app.alerts.AlertTime.lastClosedOpen(r.interval, now))) }
+        store.saveRules(rules)
+        val ids = rules.map { it.id }.toSet()
+        st.keys().asSequence().toList().filter { it !in ids }.forEach { st.remove(it) }
+        store.saveState(st)
+        com.coinfloat.app.alerts.AlertScheduler.schedule(ctx)
+        return rules.size.toString()
+    }
+
+    @JavascriptInterface
+    fun alertsAction(arg: String?) {
+        val ctx = webView.context
+        when (arg) {
+            "clear" -> com.coinfloat.app.alerts.AlertStore(ctx).clearHistory()
+            "exact" -> if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) runCatching {
+                ctx.startActivity(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:" + ctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            "notif" -> runCatching {
+                ctx.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }
+    }
+
     @JavascriptInterface
     fun openSymbolSearch(arg: String?) {
         webView.post { onOpenSearch() }
@@ -946,7 +1003,8 @@ private fun createChartWebView(
     onExitImmersive: () -> Unit,
     onBackState: (Boolean) -> Unit,
     onCandleClose: (String) -> Unit,
-    onRendererGone: () -> Unit
+    onRendererGone: () -> Unit,
+    forceInterval: () -> String? = { null }
 ): WebView {
     val debuggable = (ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     if (debuggable) WebView.setWebContentsDebuggingEnabled(true)
@@ -994,7 +1052,7 @@ private fun createChartWebView(
         webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                view?.loadChart(symbol(), defaultInterval())
+                view?.loadChart(symbol(), defaultInterval(), forceInterval())
                 view?.evaluateJavascript("window.setImmersive && window.setImmersive(${immersive()});", null)
             }
 
