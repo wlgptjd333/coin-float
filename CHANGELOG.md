@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.19.0] - 2026-10-14
+
+### Added
+- **DOM and time & sales panel** (indicator sheet, order-flow section): a panel on the right of the chart; the chart
+  gets narrower instead of being covered, and the panel folds to a thin tab.
+  - 호가 (ladder): asks above, bids below, grouped by a price step (auto about 0.005 % of the price, or x1-x100 of
+    the tick), size bars (or cumulative), levels 3x the median in bold, the last trade in the middle, and a column
+    with the volume traded at each row in the last 5 minutes (buys / sells)
+  - 체결 (tape): market orders merged from their fills, with a minimum size filter and highlighted big orders
+  - optional 100 ms book updates while the ladder is on screen (500 ms otherwise)
+
+### Changed
+- The trade engine fetches history only for the footprint; the ladder and the tape use live trades only.
+
 ## [1.18.0] - 2026-10-14
 
 ### Added

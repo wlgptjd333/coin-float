@@ -69,7 +69,7 @@ function onAgg(d) {
     if (!d || d.s !== E.sym) return;
     var id = d.a, T = d.T, price = +d.p, qty = +d.q, buy = !d.m;      // m = buyer is the maker → a sell
     if (E.liveLast && id <= E.liveLast) return;
-    if (!E.liveFirst) { E.liveFirst = id; startHistory(id); }
+    if (!E.liveFirst) { E.liveFirst = id; if (E.histUsers) startHistory(id); }
     else if (id !== E.liveLast + 1) {                                   // a gap (reconnect, dropped frames): fetch it again
         queueIds(E.liveLast + 1, id - 1);
     }
@@ -129,6 +129,7 @@ function pump() {
 function histHours() { return +CF.S('fp').hist || 4; }
 // what is missing between the start of the history window and the first live trade, minus what the phone already has
 function startHistory(firstLive) {
+    E.histStarted = true;
     var gen = E.gen, from = Date.now() - histHours() * 3600000;
     getJson(FAPI + '/fapi/v1/aggTrades?symbol=' + E.sym + '&startTime=' + from + '&limit=1').then(function (r) {
         if (gen !== E.gen || !Array.isArray(r) || !r.length) return;
@@ -233,8 +234,14 @@ function tickFor(sym) {
     });
 }
 var visHook = null;
-function engineUse() {
+// history: the footprint wants the hours before the app was opened; the tape and the ladder only need what comes next
+function engineUse(history) {
+    if (history) {
+        E.histUsers = (E.histUsers || 0) + 1;
+        if (E.users && E.liveFirst && !E.histStarted) startHistory(E.liveFirst);
+    }
     if (++E.users > 1) return;
+    E.histStarted = false;
     var sym = CF.symbol(), gen = ++E.gen;
     E.sym = sym; E.min = new Map(); E.cov = []; E.ver++; E.liveFirst = E.liveLast = 0; E.dirty = new Set();
     E.bf = { q: [], busy: false, timer: 0, done: 0, total: 0, pauseUntil: 0 };
@@ -259,7 +266,8 @@ function engineUse() {
         document.addEventListener('visibilitychange', visHook);
     }
 }
-function engineRelease() {
+function engineRelease(history) {
+    if (history) E.histUsers = Math.max(0, (E.histUsers || 0) - 1);
     if (E.users === 0 || --E.users > 0) return;
     if (E.handler) streams.market.unsub(E.sym.toLowerCase() + '@aggTrade', E.handler);
     E.handler = null;
@@ -471,7 +479,7 @@ CF.registerFeature('fp', {
         return '<span style="color:#B2B5BE">' + parts + '</span>';
     },
     start: function () {
-        fp.on = true; engineUse();
+        fp.on = true; engineUse(true);
         var offA = CF.layer('bottom', paintFpCells), offB = CF.layer('top', paintFpText);
         fpOff = function () { offA(); offB(); };
         chart.timeScale().subscribeVisibleLogicalRangeChange(onRange);
@@ -485,7 +493,7 @@ CF.registerFeature('fp', {
         clearInterval(fpTimer); fpTimer = 0;
         if (fpOff) { fpOff(); fpOff = null; }
         fpSync(true);
-        engineRelease();
+        engineRelease(true);
     }
 });
 
@@ -496,6 +504,173 @@ CF.vpTrades(function (i) {
     var cl = cells(c.time, candleEnd(i), 'bn');
     if (!cl || cl.cover < 0.98) return null;
     return { rows: cl.rows, tick: E.tick, ver: E.ver };
+});
+
+// =====================================================================================================
+// DOM ladder and time & sales: a panel on the right of the chart (the chart gets narrower, nothing is covered)
+// =====================================================================================================
+CF.defineSettings('dom', {
+    title: '호가 · 체결 패널 설정', onChange: function (c, k) { if (k === 'fast' && dom.on) domFast(); domLayout(); domDraw(true); },
+    fields: [
+        { k: 'width', t: 'range', label: '패널 너비', def: 38, min: 28, max: 60, step: 1, unit: '%' },
+        { t: 'sec', label: '호가' },
+        { k: 'step', t: 'sel', label: '가격 묶음', def: 'auto', opts: [['auto', '자동'], ['1', '최소'], ['5', '×5'], ['10', '×10'], ['50', '×50'], ['100', '×100']] },
+        { k: 'cum', t: 'bool', label: '누적 잔량으로 막대 표시', def: false },
+        { k: 'traded', t: 'bool', label: '가격별 최근 5분 체결량', sub: '각 줄 왼쪽의 얇은 막대 (초록 매수 · 빨강 매도)', def: true },
+        { k: 'fast', t: 'bool', label: '빠른 갱신 (0.1초)', sub: '데이터와 배터리를 조금 더 씁니다', def: false },
+        { t: 'sec', label: '체결' },
+        { k: 'min', t: 'sel', label: '표시할 최소 금액', def: '1000', opts: [['0', '전체'], ['1000', '$1K'], ['10000', '$10K'], ['50000', '$50K'], ['100000', '$100K']] },
+        { k: 'big', t: 'sel', label: '강조할 금액', def: '100000', opts: [['50000', '$50K'], ['100000', '$100K'], ['250000', '$250K'], ['1000000', '$1M']] },
+        { t: 'note', label: '바이낸스 선물의 실시간 호가와 체결입니다. 체결은 한 주문이 여러 호가를 쓸고 간 것을 하나로 합쳐 보여줍니다. 보기 전용이며 주문 기능은 없습니다.' }
+    ]
+});
+var dom = { on: false, el: null, cv: null, list: null, tab: LS.get('domTab', 'book'), shut: LS.get('domShut', false), recent: [], orders: [], pend: null, ver: -1, tver: 0, timer: 0, fastOn: false };
+var STEP_NICE = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2500, 5000, 10000];
+function domStep() {
+    var c = CF.S('dom'), q = FL.Book.quotes(), t = E.tick || Math.pow(10, -CF.precision());
+    if (c.step !== 'auto') return t * (+c.step || 1);
+    var p = q ? q.bid : 0, want = p * 0.00005;                          // about 0.005 % of the price per row (BTC: $5)
+    for (var i = 0; i < STEP_NICE.length; i++) if (t * STEP_NICE[i] >= want) return +(t * STEP_NICE[i]).toPrecision(6);
+    return t * STEP_NICE[STEP_NICE.length - 1];
+}
+function domBuild() {
+    var wrap = document.getElementById('main'); if (!wrap || dom.el) return;
+    var p = document.createElement('div'); p.id = 'flowpanel';
+    p.innerHTML = '<div class="fp-head"><button class="fp-shut" aria-label="패널 접기">▸</button><button class="fp-tab" data-t="book">호가</button><button class="fp-tab" data-t="tape">체결</button>' +
+        '<button class="fp-cfg" aria-label="설정">⚙</button></div><div class="fp-body"><canvas></canvas><div class="fp-tape"></div></div>';
+    wrap.appendChild(p);
+    dom.el = p; dom.cv = p.querySelector('canvas'); dom.list = p.querySelector('.fp-tape');
+    p.querySelector('.fp-shut').onclick = function () { dom.shut = !dom.shut; LS.set('domShut', dom.shut); domLayout(); domFast(); domDraw(true); };
+    p.querySelector('.fp-cfg').onclick = function () { CF.openSettings('dom'); };
+    Array.prototype.forEach.call(p.querySelectorAll('.fp-tab'), function (b) {
+        b.onclick = function () { dom.tab = b.getAttribute('data-t'); LS.set('domTab', dom.tab); if (dom.shut) { dom.shut = false; LS.set('domShut', false); } domLayout(); domFast(); domDraw(true); };
+    });
+    domLayout();
+}
+function domLayout() {
+    if (!dom.el) return;
+    var land = window.innerWidth > window.innerHeight, w = dom.shut ? 26 : Math.round(Math.max(130, Math.min(land ? 300 : 260, window.innerWidth * CF.S('dom').width / 100)));
+    dom.el.style.width = w + 'px';
+    dom.el.classList.toggle('shut', dom.shut);
+    Array.prototype.forEach.call(dom.el.querySelectorAll('.fp-tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === dom.tab); });
+    dom.el.querySelector('.fp-shut').textContent = dom.shut ? '◂' : '▸';
+    dom.cv.style.display = dom.tab === 'book' && !dom.shut ? 'block' : 'none';
+    dom.list.style.display = dom.tab === 'tape' && !dom.shut ? 'block' : 'none';
+}
+function domFast() {                                    // 100 ms book only while the ladder is on screen and asked for
+    var want = dom.on && !dom.shut && dom.tab === 'book' && !!CF.S('dom').fast;
+    if (want !== dom.fastOn) { dom.fastOn = want; FL.Book.setFast(want); }
+}
+// trades for the ladder's "traded at price" bars and the tape
+function domTrade(t) {
+    var now = Date.now();
+    dom.recent.push(t);
+    while (dom.recent.length && (dom.recent[0].T < now - 300000 || dom.recent.length > 20000)) dom.recent.shift();
+    var o = dom.pend;
+    if (o && o.T === t.T && o.buy === t.buy) { o.q += t.q; o.pq += t.p * t.q; }
+    else {
+        if (o) domOrder(o);
+        dom.pend = { T: t.T, buy: t.buy, q: t.q, pq: t.p * t.q };
+    }
+    dom.tver++;
+}
+function domOrder(o) {
+    o.p = o.pq / o.q; o.usd = o.pq;
+    dom.orders.unshift(o); if (dom.orders.length > 400) dom.orders.length = 400;
+}
+function fmtTime(ms) { var d = new Date(ms); return CF.pad2(d.getMinutes()) + ':' + CF.pad2(d.getSeconds()); }   // mm:ss fits a narrow panel
+function fmtUsdShort(v) { return v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? '$' + (v / 1e3).toFixed(v >= 1e4 ? 0 : 1) + 'K' : '$' + v.toFixed(0); }
+function domDraw(force) {
+    if (!dom.on || !dom.el || dom.shut || document.hidden || !CF.active()) return;
+    if (dom.tab === 'tape') { tapeDraw(force); return; }
+    var B = FL.Book;
+    if (!B.has) return;
+    if (!force && B.ver === dom.ver && dom.tver === dom.tverDrawn) return;
+    dom.ver = B.ver; dom.tverDrawn = dom.tver;
+    var cv = dom.cv, r = cv.parentNode.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, W = Math.floor(r.width), H = Math.floor(r.height);
+    if (W < 20 || H < 40) return;
+    if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
+    var ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    var cfg = CF.S('dom'), q = B.quotes(); if (!q) return;
+    var step = domStep(), rowH = 17, midH = 30, n = Math.max(3, Math.floor((H - midH) / 2 / rowH));
+    var a0 = Math.ceil(q.ask / step - 1e-9), b0 = Math.floor(q.bid / step + 1e-9);
+    var asks = new Float64Array(n), bids = new Float64Array(n), i;
+    B.asks.forEach(function (qty, p) { var k = Math.ceil(p / step - 1e-9) - a0; if (k >= 0 && k < n) asks[k] += qty; });
+    B.bids.forEach(function (qty, p) { var k = b0 - Math.floor(p / step + 1e-9); if (k >= 0 && k < n) bids[k] += qty; });
+    var single = Array.prototype.slice.call(asks).concat(Array.prototype.slice.call(bids)).filter(function (v) { return v > 0; }).sort(function (x, y) { return x - y; });
+    var med = single.length ? single[Math.floor(single.length / 2)] : 0;
+    if (cfg.cum) { for (i = 1; i < n; i++) { asks[i] += asks[i - 1]; bids[i] += bids[i - 1]; } }
+    var max = 0; for (i = 0; i < n; i++) max = Math.max(max, asks[i], bids[i]); if (!max) max = 1;
+    // traded in the last 5 minutes, per row: asks 0..n-1, bids n..2n-1
+    var tBuy = new Float64Array(n * 2), tSell = new Float64Array(n * 2), tmax = 0;
+    if (cfg.traded) dom.recent.forEach(function (t) {
+        var ka = Math.ceil(t.p / step - 1e-9) - a0, kb = b0 - Math.floor(t.p / step + 1e-9), idx = -1;
+        if (ka >= 0 && ka < n) idx = ka; else if (kb >= 0 && kb < n) idx = n + kb;
+        if (idx < 0) return;
+        if (t.buy) tBuy[idx] += t.q; else tSell[idx] += t.q;
+        tmax = Math.max(tmax, tBuy[idx] + tSell[idx]);
+    });
+    var up = CF.C.up, dn = CF.C.down, dec = Math.max(0, -Math.floor(Math.log10(step) + 1e-9)), TW = cfg.traded ? 16 : 2;
+    ctx.textBaseline = 'middle';
+    function row(y, price, qty, single, isAsk, idx) {
+        var big = med > 0 && single >= med * 3;
+        var bw = qty / max * (W - 4);
+        ctx.fillStyle = CF.hexA(isAsk ? dn : up, big ? 0.4 : 0.17); ctx.fillRect(W - bw, y + 1, bw, rowH - 2);
+        if (cfg.traded && tmax > 0) {                    // own column on the left: buys on top, sells below
+            ctx.fillStyle = CF.hexA(up, 0.85); ctx.fillRect(2, y + 3, tBuy[idx] / tmax * (TW - 4), (rowH - 7) / 2);
+            ctx.fillStyle = CF.hexA(dn, 0.85); ctx.fillRect(2, y + 4 + (rowH - 7) / 2, tSell[idx] / tmax * (TW - 4), (rowH - 7) / 2);
+        }
+        ctx.textAlign = 'left'; ctx.fillStyle = isAsk ? dn : up; ctx.font = (big ? '700 ' : '') + '11px ui-monospace, monospace';
+        ctx.fillText(price.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }), TW + 2, y + rowH / 2);
+        ctx.textAlign = 'right'; ctx.fillStyle = big ? '#FFFFFF' : 'rgba(209,212,220,.85)';
+        if (qty > 0) ctx.fillText(fmtQ(qty), W - 4, y + rowH / 2);
+    }
+    var top = Math.floor(H / 2 - midH / 2), ra = cfg.cum ? null : asks, rb = cfg.cum ? null : bids;
+    for (var k = 0; k < n; k++) row(top - (k + 1) * rowH, (a0 + k) * step, asks[k], ra ? ra[k] : asks[k] - (k ? asks[k - 1] : 0), true, k);
+    for (k = 0; k < n; k++) row(top + midH + k * rowH, (b0 - k) * step, bids[k], rb ? rb[k] : bids[k] - (k ? bids[k - 1] : 0), false, n + k);
+    // middle: last trade price and the row step
+    var last = dom.orders[0] || dom.pend, lp = last ? (last.p || last.pq / last.q) : (q.bid + q.ask) / 2;
+    ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.fillRect(0, top, W, midH);
+    ctx.textAlign = 'left'; ctx.font = '700 14px ui-monospace, monospace'; ctx.fillStyle = last ? (last.buy ? up : dn) : '#D1D4DC';
+    ctx.fillText(CF.fmtPrice(lp), 4, top + midH / 2);
+    ctx.textAlign = 'right'; ctx.font = '10px ui-monospace, monospace'; ctx.fillStyle = 'rgba(178,181,190,.9)';
+    ctx.fillText('±' + CF.fmtPrice(step), W - 4, top + midH / 2);
+}
+function tapeDraw(force) {
+    if (!force && dom.tver === dom.tapeDrawn) return;
+    dom.tapeDrawn = dom.tver;
+    var cfg = CF.S('dom'), min = +cfg.min, big = +cfg.big, html = '', shown = 0;
+    for (var i = 0; i < dom.orders.length && shown < 120; i++) {
+        var o = dom.orders[i]; if (o.usd < min) continue; shown++;
+        var col = o.buy ? CF.C.up : CF.C.down, hi = o.usd >= big;
+        html += '<div class="tp' + (hi ? ' big' : '') + '"' + (hi ? ' style="background:' + CF.hexA(col, 0.22) + '"' : '') + '><span class="t">' + fmtTime(o.T) + '</span><span class="p" style="color:' + col + '">' + CF.fmtPrice(o.p) +
+            '</span><span class="v" style="color:' + (hi ? '#fff' : col) + '">' + fmtUsdShort(o.usd) + '</span></div>';
+    }
+    dom.list.innerHTML = html || '<div class="tp-empty">체결을 기다리는 중…</div>';
+}
+var domHandler = null;
+CF.registerFeature('dom', {
+    start: function () {
+        dom.on = true; dom.recent = []; dom.orders = []; dom.pend = null; dom.ver = -1;
+        domBuild(); dom.el.style.display = '';
+        FL.Book.start(); engineUse(false);
+        E.listeners.push(domHandler = domTrade);
+        domFast(); domLayout();
+        dom.timer = setInterval(function () {
+            if (dom.pend && Date.now() - dom.pend.T > 300) { domOrder(dom.pend); dom.pend = null; dom.tver++; }
+            domDraw(false);
+        }, 200);
+        window.addEventListener('resize', domLayout);
+    },
+    stop: function () {
+        dom.on = false;
+        clearInterval(dom.timer); dom.timer = 0;
+        var i = E.listeners.indexOf(domHandler); if (i >= 0) E.listeners.splice(i, 1);
+        if (dom.fastOn) { dom.fastOn = false; FL.Book.setFast(false); }
+        FL.Book.stop(); engineRelease(false);
+        if (dom.el) dom.el.style.display = 'none';
+        window.removeEventListener('resize', domLayout);
+    }
 });
 
 window.__of = { E: E, cells: cells, fp: fp, save: save, coverOf: coverOf };

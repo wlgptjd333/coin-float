@@ -458,17 +458,26 @@ function applyDiff(bids, asks, d) {
 }
 var Book = {
     users: 0, bids: new Map(), asks: new Map(), has: false, syncing: false, buf: [], lastU: 0, first: false, ver: 0,
-    name: null, sym: null, seq: 0, pruneT: 0, snapAt: 0, best: null,
+    name: null, sym: null, seq: 0, pruneT: 0, snapAt: 0, best: null, fast: 0, handler: null,
+    // 500 ms updates are plenty for walls and the heatmap; the DOM ladder asks for 100 ms while it is open
+    streamName: function () { return this.sym.toLowerCase() + (this.fast ? '@depth@100ms' : '@depth@500ms'); },
+    setFast: function (on) {
+        this.fast = Math.max(0, this.fast + (on ? 1 : -1));
+        if (!this.users) return;
+        var want = this.streamName(); if (want === this.name) return;
+        streams.pub.unsub(this.name, this.handler); this.name = want; streams.pub.sub(this.name, this.handler);
+        this.resync();                                                    // another stream: its update chain starts anew
+    },
     start: function () {
         if (++this.users > 1) return;
-        var self = this; this.sym = CF.symbol(); this.name = this.sym.toLowerCase() + '@depth@500ms';
+        var self = this; this.sym = CF.symbol(); this.name = this.streamName();
         this.reset();
-        streams.pub.sub(this.name, function (d) { self.onDiff(d); });
+        streams.pub.sub(this.name, this.handler = function (d) { self.onDiff(d); });
         this.snapshot();
     },
     stop: function () {
         if (this.users === 0 || --this.users > 0) return;
-        streams.pub.unsub(this.name); this.reset(); this.seq++;
+        streams.pub.unsub(this.name, this.handler); this.reset(); this.seq++;
     },
     reset: function () { this.bids = new Map(); this.asks = new Map(); this.has = false; this.syncing = false; this.buf = []; this.lastU = 0; this.first = false; this.best = null; },
     snapshot: function () {

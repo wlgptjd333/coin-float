@@ -77,6 +77,22 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 #app.rail-closed #rail_toggle { left: 0; }
 #app.rail-closed #rail_toggle svg { transform: rotate(180deg); }
 #chart_wrap { position: relative; flex: 1 1 auto; min-width: 0; touch-action: none; }
+#flowpanel { flex: 0 0 auto; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--bg); min-width: 0; }
+#flowpanel .fp-head { display: flex; align-items: center; gap: 2px; height: 30px; padding: 0 2px; border-bottom: 1px solid var(--line); }
+#flowpanel .fp-head button { height: 26px; padding: 0 8px; border-radius: 6px; font-size: 12px; color: var(--muted); }
+#flowpanel .fp-head .fp-tab.on { color: var(--text); background: var(--line); }
+#flowpanel .fp-head .fp-cfg { margin-left: auto; }
+#flowpanel .fp-head .fp-shut { padding: 0 6px; }
+#flowpanel.shut .fp-tab, #flowpanel.shut .fp-cfg, #flowpanel.shut .fp-body { display: none; }
+#flowpanel .fp-body { position: relative; flex: 1 1 auto; min-height: 0; }
+#flowpanel canvas { position: absolute; inset: 0; }
+#flowpanel .fp-tape { position: absolute; inset: 0; overflow-y: auto; font: 11px ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+#flowpanel .tp { display: flex; gap: 4px; padding: 2px 5px; border-bottom: 1px solid rgba(42,46,57,.5); white-space: nowrap; }
+#flowpanel .tp .t { color: var(--muted); }
+#flowpanel .tp .p { flex: 1; text-align: right; }
+#flowpanel .tp .v { min-width: 44px; text-align: right; }
+#flowpanel .tp.big .v { font-weight: 700; }
+#flowpanel .tp-empty { padding: 12px 8px; color: var(--muted); font-family: inherit; }
 #chart { position: absolute; inset: 0; }
 
 #legend {

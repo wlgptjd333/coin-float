@@ -246,7 +246,7 @@ var chartType = LS.get('type', 'candle');                       // candle | ha |
 var ind = Object.assign({
     vol: true, ma: true, ema: false, boll: false, rsi: false, macd: false,
     cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: false,
-    vwap: false, st: false, fp: false
+    vwap: false, st: false, fp: false, dom: false
 }, LS.get('ind', {}));
 var railOpen = LS.get('rail', false);
 var active = true, immersive = false, started = false;
@@ -2267,6 +2267,7 @@ function openIndicators() {
         switchRow('실시간 청산', '청산 주문 버블 + 봉별 청산량', 'liq', true),
         switchRow('대량 체결', '큰 체결만 버블로 표시', 'trades', true),
         switchRow('풋프린트', '확대하면 가격별 매수·매도 체결량 · 불균형 · POC', 'fp', true),
+        switchRow('호가 · 체결 패널 (DOM)', '차트 오른쪽에 호가 사다리와 실시간 체결 목록', 'dom', true),
         sectionTitle('호가창 · 청산맵'),
         switchRow('호가 벽', '매수/매도 벽 · 우측 깊이 막대', 'depth', true),
         switchRow('호가 히트맵', '유동성 변화를 시간별 색으로', 'heat', true),
@@ -2739,7 +2740,7 @@ window.CF = {
     legend: function (fn) { legendHooks.push(fn); }, openSheet: openSheet, closeSheet: closeSheet, sectionTitle: sectionTitle,
     noteRow: noteRow, colorStrip: colorStrip, openIndicators: function () { openIndicators(); }, bridge: bridge,
     backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); },
-    barTint: setBarTint,
+    barTint: setBarTint, openSettings: function (k) { openSettings(k); },
     onDrawingsSaved: function (fn) { drSaveHooks.push(fn); }, onDrawingAlert: function (fn) { drAlertHook = fn; },
     drawings: function () { return DR.list; }, changeInterval: function (i) { changeInterval(i); }, intervals: function () { return INTERVALS; },
     chartType: function () { return chartType; }, barSpacing: barSpacingPx,
