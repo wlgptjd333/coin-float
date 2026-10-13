@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.0] - 2026-10-13
+
+### Changed
+- **New app icon:** a floating price window with a rising line on a mint gradient (the app's overlay), readable down
+  to small launcher sizes, with a themed (monochrome) version for Android 13+ and a matching status-bar icon.
+- **Home header shows the logo**, and coin badges use each coin's brand color (BTC orange, ETH blue, SOL purple ...;
+  others get a stable color from their name; "1000PEPE" shows P).
+
+### Fixed
+- **"오프라인" banner in the chart while the internet worked.** The banner trusted the WebView's online flag, which
+  can stay "offline" after the app comes back from the background. It now shows only when the live price connection
+  is really down (for 3.5 s), and the app tells the chart the real network state when it returns, so the chart
+  reconnects at once instead of waiting out the retry delay.
+
 ## [1.13.0] - 2026-10-12
 
 ### Added

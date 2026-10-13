@@ -184,6 +184,7 @@ fun TradingViewChartScreen(
                 Lifecycle.Event.ON_RESUME -> webViewHolder.view?.let { view ->
                     view.onResume()
                     view.resumeTimers()
+                    view.syncNetworkState()
                     view.evaluateJavascript("window.setActive && window.setActive(true);", null)
                 }
                 else -> Unit
@@ -812,6 +813,7 @@ private fun ChartWebView(
                     (kept.parent as? ViewGroup)?.removeView(kept)
                     kept.onResume()
                     kept.resumeTimers()
+                    kept.syncNetworkState()
                     kept.evaluateJavascript("window.setActive && window.setActive(true);", null)
                     kept
                 } else {
@@ -867,6 +869,16 @@ private fun WebView.loadChart(symbol: String, interval: String) {
     val safeSymbol = ChartInterval.sanitizeSymbol(symbol)
     val safeInterval = ChartInterval.normalize(interval)
     evaluateJavascript("window.loadSymbol && window.loadSymbol('$safeSymbol','$safeInterval');", null)
+}
+
+/**
+ * Tells the page whether the device is online (navigator.onLine and its "online" event). A paused WebView misses
+ * network changes and could keep reporting "offline"; when the network is back the page reconnects at once.
+ */
+private fun WebView.syncNetworkState() {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+    setNetworkAvailable(caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true)
 }
 
 private fun WebView.destroyChart() {

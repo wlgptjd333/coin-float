@@ -1,10 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- A floating price window (the app's overlay) with a rising line; the soft shadow below makes it float. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- shadow -->
     <path
-        android:fillColor="#65D69A"
-        android:pathData="M54,20 C35.2,20 20,35.2 20,54 C20,72.8 35.2,88 54,88 C72.8,88 88,72.8 88,54 C88,35.2 72.8,20 54,20 Z M54,28 C68.4,28 80,39.6 80,54 C80,68.4 68.4,80 54,80 C39.6,80 28,68.4 28,54 C28,39.6 39.6,28 54,28 Z M46,38 L62,38 C65.3,38 68,40.7 68,44 C68,46.2 66.8,48.1 65,49.2 C67.4,50.4 69,52.8 69,55.7 C69,59.2 66.1,62 62.5,62 L46,62 L46,38 Z M52,43 L52,48 L61,48 C62.1,48 63,47.1 63,46 C63,44.9 62.1,44 61,44 L52,44 Z M52,52 L52,57 L62,57 C63.1,57 64,56.1 64,55 C64,53.9 63.1,53 62,53 L52,53 Z"/>
+        android:fillColor="#000000"
+        android:fillAlpha="0.18"
+        android:pathData="M32,80 a22,3 0 1,0 44,0 a22,3 0 1,0 -44,0z" />
+    <!-- window -->
+    <path
+        android:fillColor="#0C1219"
+        android:fillAlpha="0.95"
+        android:pathData="M39,31 H69 A11,11 0 0,1 80,42 V64 A11,11 0 0,1 69,75 H39 A11,11 0 0,1 28,64 V42 A11,11 0 0,1 39,31 Z" />
+    <!-- title bar sheen -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.04"
+        android:pathData="M39,31.6 H69 A10.4,10.4 0 0,1 79.4,42 V44 H28.6 V42 A10.4,10.4 0 0,1 39,31.6 Z" />
+    <!-- live dot + title -->
+    <path
+        android:fillColor="#3CF0B4"
+        android:pathData="M35,38.5 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.4"
+        android:pathData="M44.3,37.2 h10.4 a1.3,1.3 0 0,1 0,2.6 h-10.4 a1.3,1.3 0 0,1 0,-2.6z" />
+    <!-- rising line -->
+    <path
+        android:pathData="M35.5,66 L45,58.5 L53,62.5 L68.5,49.5"
+        android:strokeColor="#3CF0B4"
+        android:strokeWidth="3.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- glowing last price -->
+    <path
+        android:fillColor="#3CF0B4"
+        android:fillAlpha="0.22"
+        android:pathData="M62,49.5 a6.5,6.5 0 1,0 13,0 a6.5,6.5 0 1,0 -13,0z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M65.1,49.5 a3.4,3.4 0 1,0 6.8,0 a3.4,3.4 0 1,0 -6.8,0z" />
 </vector>

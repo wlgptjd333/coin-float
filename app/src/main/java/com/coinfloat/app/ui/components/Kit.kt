@@ -1,5 +1,9 @@
 package com.coinfloat.app.ui.components
 
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,7 +53,12 @@ import com.coinfloat.app.ui.theme.Cf
 // settings screens of polished banking / exchange apps.
 
 @Composable
-fun ScreenHeader(title: String, modifier: Modifier = Modifier, trailing: @Composable RowScope.() -> Unit = {}) {
+fun ScreenHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    brand: Boolean = false,
+    trailing: @Composable RowScope.() -> Unit = {}
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -57,6 +66,10 @@ fun ScreenHeader(title: String, modifier: Modifier = Modifier, trailing: @Compos
             .padding(start = 20.dp, end = 16.dp, top = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (brand) {
+            BrandMark(28)
+            Spacer(Modifier.width(10.dp))
+        }
         Text(title, style = MaterialTheme.typography.headlineSmall, color = Cf.Text, modifier = Modifier.weight(1f))
         trailing()
     }
@@ -290,25 +303,61 @@ fun StatusPill(text: String, color: Color, modifier: Modifier = Modifier) {
     }
 }
 
-/** Round coin badge with the base asset's initial; the color is stable per symbol. */
+/** The app icon (floating price window on mint) as a small mark for headers. */
+@Composable
+fun BrandMark(size: Int) {
+    Box(
+        modifier = Modifier
+            .size(size.dp)
+            .clip(RoundedCornerShape((size * 0.28f).dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        // the adaptive-icon layers are 108 units with the visible part in the middle 72: draw them 1.5x and clip
+        val layer = (size * 1.5f).dp
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(com.coinfloat.app.R.drawable.ic_launcher_background), null,
+            modifier = Modifier.requiredSize(layer)
+        )
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(com.coinfloat.app.R.drawable.ic_launcher_foreground), null,
+            modifier = Modifier.requiredSize(layer)
+        )
+    }
+}
+
+// Brand colors of well-known coins; anything else gets a stable color from its name.
+private val COIN_COLORS = mapOf(
+    "BTC" to 0xFFF7931A, "ETH" to 0xFF627EEA, "SOL" to 0xFF9945FF, "XRP" to 0xFF2E3640, "BNB" to 0xFFF3BA2F,
+    "DOGE" to 0xFFC2A633, "ADA" to 0xFF0033AD, "TRX" to 0xFFEB0029, "AVAX" to 0xFFE84142, "LINK" to 0xFF2A5ADA,
+    "DOT" to 0xFFE6007A, "LTC" to 0xFF345D9D, "BCH" to 0xFF8DC351, "TON" to 0xFF0098EA, "SUI" to 0xFF4DA2FF,
+    "PEPE" to 0xFF3D9A3B, "SHIB" to 0xFFFFA409, "HYPE" to 0xFF50D2C1, "ARB" to 0xFF28A0F0, "OP" to 0xFFFF0420,
+    "NEAR" to 0xFF00C08B, "APT" to 0xFF2F3437, "UNI" to 0xFFFF007A, "ATOM" to 0xFF2E3148, "ETC" to 0xFF328332,
+    "FIL" to 0xFF0090FF, "WIF" to 0xFFA07855, "ENA" to 0xFF3A3A44, "TIA" to 0xFF7B2BF9, "INJ" to 0xFF0082FA,
+    "SEI" to 0xFF9B1C2E, "WLD" to 0xFF3A3A3A, "POL" to 0xFF8247E5, "MATIC" to 0xFF8247E5, "XLM" to 0xFF3A3F45,
+    "AAVE" to 0xFFB6509E, "BONK" to 0xFFF8A30B, "ONDO" to 0xFF2C4B8F, "TAO" to 0xFF3B3B3B, "FET" to 0xFF1D2A4A
+)
+private val COIN_FALLBACK = listOf(
+    0xFF2962FF, 0xFF7E57C2, 0xFF00897B, 0xFFE65100, 0xFFC2185B, 0xFF0097A7, 0xFF5D4037, 0xFF6D4C41, 0xFF3949AB, 0xFF00796B
+)
+
+/** Round coin badge in the coin's brand color with its initial ("1000PEPE" shows P). */
 @Composable
 fun CoinAvatar(base: String, size: Int = 36) {
-    val palette = listOf(
-        Color(0xFFF7931A), Color(0xFF627EEA), Color(0xFF14F195), Color(0xFFE84142), Color(0xFF26A17B),
-        Color(0xFFF3BA2F), Color(0xFF8247E5), Color(0xFF00AAE4), Color(0xFFE6007A), Color(0xFF2A5ADA)
-    )
-    val c = palette[(base.hashCode() and 0x7fffffff) % palette.size]
+    val name = base.uppercase().trimStart { it.isDigit() }.ifEmpty { base.uppercase() }
+    val c = Color(COIN_COLORS[name] ?: COIN_FALLBACK[(name.hashCode() and 0x7fffffff) % COIN_FALLBACK.size])
+    val light = c.luminance() > 0.55f
     Box(
         modifier = Modifier
             .size(size.dp)
             .clip(CircleShape)
-            .background(c.copy(alpha = 0.16f))
-            .border(1.dp, c.copy(alpha = 0.35f), CircleShape),
+            .background(Brush.verticalGradient(listOf(c, lerp(c, Color.Black, 0.22f))))
+            // near-black brand colors (XRP, APT ...) would vanish into the dark background
+            .border(1.dp, Color.White.copy(alpha = if (c.luminance() < 0.06f) 0.16f else 0f), CircleShape),
         contentAlignment = Alignment.Center
     ) {
         Text(
-            base.take(1),
-            color = c,
+            name.take(1),
+            color = if (light) Color(0xFF15181E) else Color.White,
             fontWeight = FontWeight.Bold,
             fontSize = (size * 0.42f).sp
         )

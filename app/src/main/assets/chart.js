@@ -2101,7 +2101,10 @@ var cdTimer = null;
 var connLostAt = 0;
 function checkConn() {
     var pill = $('conn'); if (!pill) return;
-    var down = active && started && candles.length > 0 && (!streams.market.open || navigator.onLine === false);
+    // Only the live socket decides. navigator.onLine is a hint for the wording: an Android WebView can report
+    // "offline" long after the network is back (it misses the change while the app is in the background), which kept
+    // the banner up although prices were streaming.
+    var down = active && started && candles.length > 0 && !streams.market.open;
     if (!down) { connLostAt = 0; pill.className = ''; return; }
     if (!connLostAt) connLostAt = Date.now();
     if (Date.now() - connLostAt < 3500) return;                      // short blips are not worth a banner

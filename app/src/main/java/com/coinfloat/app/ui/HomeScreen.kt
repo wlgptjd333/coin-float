@@ -94,7 +94,7 @@ fun HomeContent(
     }
 
     Column {
-        ScreenHeader(title = "CoinFloat") {
+        ScreenHeader(title = "CoinFloat", brand = true) {
             val (label, color) = when {
                 !isServiceActive -> "시세창 꺼짐" to Cf.TextMuted
                 connectionState == ConnectionState.CONNECTED -> "실시간" to Cf.Brand
