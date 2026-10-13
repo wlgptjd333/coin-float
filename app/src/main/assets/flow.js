@@ -404,7 +404,7 @@ CF.registerFeature('trades', {
             pend = { T: d.T, buy: buy, usd: usd, pu: price * usd };
             pendT = setTimeout(big.flush, 150);
         }
-        streams.market.sub(big.name, function (d) {
+        streams.market.sub(big.name, big.handler = function (d) {
             if (!d || d.s !== sym) return;
             if (seeding) { if (buffered.length < 5000) buffered.push(d); return; }
             take(d);
@@ -436,7 +436,7 @@ CF.registerFeature('trades', {
             });
     },
     stop: function () {
-        streams.market.unsub(big.name);
+        streams.market.unsub(big.name, big.handler);
         big.gen = (big.gen || 0) + 1;                                                    // a pending history page is dropped
         if (big.flush) { big.flush(); big.flush = null; }
         if (big.off) { big.off(); big.off = null; }

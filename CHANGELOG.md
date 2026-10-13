@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.17.0] - 2026-10-14
+
+### Added
+- **Footprint** (indicator sheet, order-flow section). Zoomed in, each candle becomes price cells with the market
+  sells (left) and buys (right) traded there; cell shade follows the volume. Diagonal imbalances (buy at a row vs sell
+  one row lower, 300 % by default) are bold, 3+ stacked imbalances get a bar on the candle's side, the candle's POC is
+  outlined and its delta and volume sit under it. Cells only, or delta / volume numbers, are available in the settings;
+  numbers appear once a cell is wide enough. Candles without trade data stay ordinary candles.
+- **Trade engine.** Every Binance aggTrade of the open symbol, live and back-filled for the last 1-12 hours (newest
+  first, at under half of Binance's request budget), binned per minute and price step and kept on the phone for 48
+  hours, so the next start only fetches what is missing. aggTrade ids are consecutive, so reconnect gaps are fetched
+  again and nothing is counted twice; the per-candle sums match Binance's candle volume and taker-buy volume.
+
+### Changed
+- **Volume profile** uses the real trade prices for candles whose trades are all held (footprint on), and the even
+  high-low spread only for the rest.
+- Several features can listen to one market stream (large trades and the trade engine share aggTrade).
+
 ## [1.16.0] - 2026-10-13
 
 ### Added

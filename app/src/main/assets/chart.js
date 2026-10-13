@@ -161,7 +161,8 @@ defineSettings('vp', {
         { k: 'split', t: 'bool', label: '매수 · 매도 체결 나눠 보기', def: true },
         { k: 'va', t: 'bool', label: '가치 영역(거래량 70%) 강조', def: true },
         { k: 'poc', t: 'bool', label: 'POC (최대 거래 가격) 선', def: true },
-        { t: 'note', label: '가격대별 거래량입니다. 막대가 긴 가격대(매물대)는 지지·저항이 되기 쉽습니다. 각 봉의 거래량을 고가~저가 구간에 고르게 나눠 계산합니다.' }
+        { k: 'trades', t: 'bool', label: '실제 체결 가격 사용', sub: '풋프린트가 켜져 체결이 모인 구간은 실제 체결된 가격으로 계산합니다', def: true },
+        { t: 'note', label: '가격대별 거래량입니다. 막대가 긴 가격대(매물대)는 지지·저항이 되기 쉽습니다. 체결 기록이 없는 봉은 거래량을 고가~저가 구간에 고르게 나눠 추정합니다.' }
     ]
 });
 defineSettings('rsi', {
@@ -245,7 +246,7 @@ var chartType = LS.get('type', 'candle');                       // candle | ha |
 var ind = Object.assign({
     vol: true, ma: true, ema: false, boll: false, rsi: false, macd: false,
     cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: false,
-    vwap: false, st: false
+    vwap: false, st: false, fp: false
 }, LS.get('ind', {}));
 var railOpen = LS.get('rail', false);
 var active = true, immersive = false, started = false;
@@ -495,7 +496,8 @@ function mainData() {
 var barTints = {}, barTint = null;
 function tinted(b) {
     var t = barTint && barTint.map[b.time];
-    return t && barTint.key === symbol + '|' + interval ? Object.assign({}, b, { color: t, wickColor: t, borderColor: t }) : b;
+    if (!t || barTint.key !== symbol + '|' + interval) return b;
+    return Object.assign({}, b, typeof t === 'string' ? { color: t, wickColor: t, borderColor: t } : t);
 }
 function setBarTint(owner, map, key) {
     var had = !!barTints[owner];
@@ -506,7 +508,7 @@ function setBarTint(owner, map, key) {
     if (chartType !== 'candle' && chartType !== 'ha') return;
     // a live run usually changes only the forming candle: update it instead of resending every candle
     var last = candles.length ? candles[candles.length - 1].time : null, other = false;
-    Object.keys(prev).concat(Object.keys(merged)).some(function (t) { if (prev[t] !== merged[t] && +t !== last) other = true; return other; });
+    Object.keys(prev).concat(Object.keys(merged)).some(function (t) { if (JSON.stringify(prev[t]) !== JSON.stringify(merged[t]) && +t !== last) other = true; return other; });
     if (other) candleSeries.setData(mainData()); else if (last != null) candleSeries.update(mainBar(candles.length - 1));
 }
 
@@ -1007,7 +1009,7 @@ function scheduleRefresh(calc) {                  // slider drags fire many chan
 }
 var chartCfgRaf = 0;
 function scheduleChartCfg() { if (chartCfgRaf) return; chartCfgRaf = requestAnimationFrame(function () { chartCfgRaf = 0; applyChartCfg(); }); }
-var lastMerge = null;
+var lastMerge = null, candleOv = null;
 function applyChartCfg() {
     computeColors();
     var c = S('chart');
@@ -1026,8 +1028,9 @@ function applyChartCfg() {
     });
     candleSeries.applyOptions({
         upColor: c.hollow ? 'rgba(0,0,0,0)' : C.up, downColor: C.down, borderVisible: !!c.hollow, borderUpColor: C.up, borderDownColor: C.down,
-        wickUpColor: C.up, wickDownColor: C.down, priceLineVisible: c.lastLine, lastValueVisible: c.lastLine
+        wickUpColor: C.up, wickDownColor: C.down, priceLineVisible: c.lastLine, lastValueVisible: c.lastLine, wickVisible: true
     });
+    if (candleOv) candleSeries.applyOptions(candleOv);
     [lineSeries, areaSeries].forEach(function (x) { x.applyOptions({ priceLineVisible: c.lastLine, lastValueVisible: c.lastLine }); });
     syncScaleBtns();
     scheduleRefresh(false);                       // volume colors, indicator styles
@@ -1339,7 +1342,8 @@ function paint(ctx, d, selected, w, h) {
     }
 }
 // ---- volume profile -----------------------------------------------------------------------------------------
-var vpCache = { key: '', rows: null };
+var vpCache = { key: '', rows: null }, vpTradeHook = null;
+function vpTradeVer() { var t = vpTradeHook(candles.length - 1); return t ? t.ver : 0; }
 function vpCompute() {
     var c = S('vp'), n = candles.length; if (!n) return null;
     var a = 0, z = n - 1;
@@ -1348,7 +1352,8 @@ function vpCompute() {
         a = Math.max(0, Math.floor(r.from)); z = Math.min(n - 1, Math.ceil(r.to));
         if (z - a < 2) return null;
     }
-    var last = candles[n - 1], key = a + '|' + z + '|' + c.rows + '|' + n + '|' + last.volume + '|' + last.high + '|' + last.low;
+    var last = candles[n - 1], tv = vpTradeHook ? vpTradeHook(n - 1) : null;
+    var key = a + '|' + z + '|' + c.rows + '|' + n + '|' + last.volume + '|' + last.high + '|' + last.low + '|' + (vpTradeHook && c.trades ? vpTradeVer() : 0);
     if (vpCache.key === key) return vpCache.res;
     var lo = Infinity, hi = -Infinity, i, j;
     for (i = a; i <= z; i++) { if (candles[i].low < lo) lo = candles[i].low; if (candles[i].high > hi) hi = candles[i].high; }
@@ -1357,6 +1362,11 @@ function vpCompute() {
     for (i = a; i <= z; i++) {
         var k = candles[i], span = k.high - k.low, b0 = Math.min(rows - 1, Math.floor((k.low - lo) / step)), b1 = Math.min(rows - 1, Math.floor((k.high - lo) / step));
         var bv = k.buy, sv = Math.max(0, k.volume - k.buy);
+        var tr = vpTradeHook && c.trades ? vpTradeHook(i) : null;
+        if (tr) {                                                        // every trade of this candle is known: use its real price
+            tr.rows.forEach(function (q, tk) { var jj = clampN(Math.floor((tk * tr.tick - lo) / step), 0, rows - 1); buy[jj] += q[0]; sell[jj] += q[1]; });
+            continue;
+        }
         if (!(span > 0) || b0 === b1) { buy[b0] += bv; sell[b0] += sv; continue; }
         for (j = b0; j <= b1; j++) {                                     // share of the candle's range inside this row
             var top = Math.min(k.high, lo + (j + 1) * step), bot = Math.max(k.low, lo + j * step), f = Math.max(0, top - bot) / span;
@@ -2249,6 +2259,7 @@ function openIndicators() {
         switchRow('미결제약정 (OI)', 'Binance 선물 · 별도 창', 'oi', true),
         switchRow('실시간 청산', '청산 주문 버블 + 봉별 청산량', 'liq', true),
         switchRow('대량 체결', '큰 체결만 버블로 표시', 'trades', true),
+        switchRow('풋프린트', '확대하면 가격별 매수·매도 체결량 · 불균형 · POC', 'fp', true),
         sectionTitle('호가창 · 청산맵'),
         switchRow('호가 벽', '매수/매도 벽 · 우측 깊이 막대', 'depth', true),
         switchRow('호가 히트맵', '유동성 변화를 시간별 색으로', 'heat', true),
@@ -2530,8 +2541,8 @@ Stream.prototype.connect = function () {
     sock.onmessage = function (e) {
         if (gen !== self.gen) return;
         var m; try { m = JSON.parse(e.data); } catch (err) { return; }
-        var h = m && m.stream && self.subs[m.stream];
-        if (h) { try { h(m.data); } catch (err2) { console.error(err2); } }
+        var hs = m && m.stream && self.subs[m.stream];
+        if (hs) for (var i = 0; i < hs.length; i++) { try { hs[i](m.data); } catch (err2) { console.error(err2); } }
     };
     sock.onclose = function () { if (gen !== self.gen) return; self.ws = null; self.open = false; self.retry(); };
     sock.onerror = function () { /* onclose follows */ };
@@ -2543,12 +2554,17 @@ Stream.prototype.retry = function () {
     this.delay = Math.min(this.delay * 2, 15000);
 };
 Stream.prototype.send = function (method, params) { try { this.ws.send(JSON.stringify({ method: method, params: params, id: 2 })); } catch (e) { /* socket gone */ } };
+// several features can listen to one stream (big trades and the trade engine both read aggTrade): a handler is removed
+// with unsub(name, handler); unsub(name) drops every listener
 Stream.prototype.sub = function (name, handler) {
-    var had = !!this.subs[name]; this.subs[name] = handler;
+    var list = this.subs[name], had = !!list;
+    if (!list) list = this.subs[name] = [];
+    if (list.indexOf(handler) < 0) list.push(handler);
     if (this.open) { if (!had) this.send('SUBSCRIBE', [name]); } else this.connect();
 };
-Stream.prototype.unsub = function (name) {
-    if (!this.subs[name]) return;
+Stream.prototype.unsub = function (name, handler) {
+    var list = this.subs[name]; if (!list) return;
+    if (handler) { var i = list.indexOf(handler); if (i >= 0) list.splice(i, 1); if (list.length) return; }
     delete this.subs[name];
     if (this.open) this.send('UNSUBSCRIBE', [name]);
     if (!this.names().length) this.shutdown(true);
@@ -2713,6 +2729,9 @@ window.CF = {
     noteRow: noteRow, colorStrip: colorStrip, openIndicators: function () { openIndicators(); }, bridge: bridge,
     backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); },
     barTint: setBarTint,
+    chartType: function () { return chartType; }, barSpacing: barSpacingPx,
+    candleOverride: function (o) { candleOv = o; candleSeries.applyOptions(o || { borderVisible: !!S('chart').hollow, borderUpColor: C.up, borderDownColor: C.down }); },
+    vpTrades: function (fn) { vpTradeHook = fn; vpCache.key = ''; },
     // a pane member from an add-on (Pine script drawn in its own pane); null removes it, forget drops its place
     paneMember: function (key, m) { if (m) pineMembers[key] = m; else if (pineMembers[key]) delete pineMembers[key]; else return; relayout(); },
     paneForget: function (key) { forgetPaneKey(key); },
