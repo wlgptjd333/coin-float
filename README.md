@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/wlgptjd333/coin-float?color=blue&label=version)](https://github.com/wlgptjd333/coin-float/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-green.svg)](https://developer.android.com)
-[![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 > **Android 초소형 암호화폐 실시간 시세 오버레이 앱**
 
@@ -51,6 +51,7 @@ TradingView의 오픈소스 차트 엔진([Lightweight Charts™](https://www.tr
 - 그리기 도구 (추세선·연장선·수평선·수직선·피보나치·사각형·측정) — 왼쪽 도구바는 화살표로 접을 수 있고, 종목별로 저장됩니다
 - 오더플로우: CVD·델타, 미결제약정(OI), 실시간 청산, 대량 체결(시간이 지나면 사라짐), 호가 벽·히트맵, Bid/Ask, 추정 청산맵(모델)
 - 하단 지표 창 합치기, 지표 이름/설정/닫기 태그, 캔들 마감 카운트다운
+- **Pine Script® 지표**: 지표 라이브러리 22종(일목균형표 · 스토캐스틱 RSI · DMI/ADX · 파라볼릭 SAR · 스퀴즈 모멘텀 등)과 트레이딩뷰 오픈소스 스크립트 붙여넣기. [PineTS](https://github.com/LuxAlgo/PineTS)로 기기에서 실행하며 `input()` 설정 · `request.security` 다른 시간대를 지원합니다.
   - 데이터는 Binance 선물 공개 API/WebSocket이며, 켜 둔 동안·차트가 보이는 동안에만 수신합니다.
   - 추정 청산맵은 OI 변화와 일반적인 레버리지 구간으로 계산한 **추정치**이며 거래소 실제 데이터가 아닙니다.
 
@@ -60,6 +61,7 @@ TradingView의 오픈소스 차트 엔진([Lightweight Charts™](https://www.tr
 
 - 개인정보를 수집하지 않습니다. 자세한 내용은 [PRIVACY.md](PRIVACY.md) (앱 설정 하단에서도 볼 수 있습니다).
 - 오픈소스 고지: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). 이 앱은 TradingView와 제휴 관계가 없으며 차트 엔진(Lightweight Charts™)만 사용합니다.
+- **라이선스: GNU AGPL-3.0** ([LICENSE](LICENSE)). 차트의 Pine Script 실행기 [PineTS](https://github.com/LuxAlgo/PineTS)가 AGPL-3.0이라 1.15.0부터 앱 전체를 AGPL-3.0으로 배포합니다(1.14.1까지는 MIT). 배포본을 수정해 다시 배포하면 그 소스도 같은 라이선스로 공개해야 합니다.
 - 표시되는 시세·지표·추정치는 정보 제공용이며 투자 권유가 아닙니다.
 - **릴리즈 서명**: 업데이트가 기존 설치본 위에 설치되려면 매번 같은 키로 서명해야 합니다.
   `keystore.properties`(`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) 또는 CI 시크릿

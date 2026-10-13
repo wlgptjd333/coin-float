@@ -916,6 +916,15 @@ private class ChartBridge(
         webView.post { onBackState(consume) }
     }
 
+    // The chart page has no long-press menu (it would fight the chart gestures), so the Pine editor's "paste" button
+    // reads the clipboard through here. Only called on that tap, while the app is in front.
+    @JavascriptInterface
+    fun readClipboard(arg: String?): String {
+        val cm = webView.context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager ?: return ""
+        val item = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0) ?: return ""
+        return item.coerceToText(webView.context)?.toString().orEmpty().take(200_000)
+    }
+
     @JavascriptInterface
     fun openSymbolSearch(arg: String?) {
         webView.post { onOpenSearch() }

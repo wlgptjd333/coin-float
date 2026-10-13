@@ -499,6 +499,13 @@ function setAllData() {
     setStData();
     subsSetData();
     reportClose();
+    emitData('all');
+}
+// Add-on modules (Pine scripts) follow the data: 'all' (new data set), 'new' (a candle opened), 'last' (forming candle moved)
+var dataHooks = [], lastPushTime = 0;
+function emitData(kind) {
+    if (kind === 'all') lastPushTime = candles.length ? candles[candles.length - 1].time : 0;
+    dataHooks.forEach(function (h) { try { h(kind); } catch (e) { console.error(e); } });
 }
 // The engine joins a line across whitespace, and a segment takes the color of the point it starts at; so a break
 // (VWAP reset, Supertrend flip) is a transparent point right before it.
@@ -562,6 +569,8 @@ function pushLast() {
         if (same) { stS.update(stPoint(i, true)); stDrawn = { i: i, dir: D.stDir[i] }; } else setStData();
     }
     subsUpdate(i);
+    var isNew = c.time !== lastPushTime; lastPushTime = c.time;
+    emitData(isNew ? 'new' : 'last');
 }
 
 // ---- bottom panes (RSI, MACD, CVD, OI, liquidations ...) -----------------------------------------------------
@@ -1993,11 +2002,13 @@ function openIndicators() {
         switchRow('호가 히트맵', '유동성 변화를 시간별 색으로', 'heat', true),
         switchRow('추정 청산맵', 'OI·레버리지 기반 추정(모델)', 'liqmap', true),
         switchRow('Bid / Ask 라인', '최우선 매수·매도 호가 · 스프레드 (무료 공개 데이터)', 'bidask', true),
+    ].concat(indicatorRowHooks.reduce(function (acc, h) { try { return acc.concat(h() || []); } catch (e) { console.error(e); return acc; } }, [])).concat([
         sectionTitle('표시'),
         mergeRow(),
         noteRow('⚙ 를 누르면 지표별 색상·두께·기간 등 세부 설정을 바꿀 수 있습니다. 실시간 항목은 켜 둔 동안에만 데이터를 받고, 차트를 벗어나면 자동으로 멈춥니다.')
-    ]);
+    ]));
 }
+var indicatorRowHooks = [], legendHooks = [];
 $('ind_btn').onclick = openIndicators;
 var TYPE_NAMES = [['candle', '캔들'], ['ha', '하이킨 아시'], ['line', '라인'], ['area', '에어리어']];
 function refreshTypeBtn() { $('type_btn').innerHTML = ICON[chartType]; }
@@ -2066,6 +2077,7 @@ function renderLegend() {
             var f = features[key]; if (!f.running || !f.legend) return;
             var h = f.legend(i, c); if (h) parts.push(h);
         });
+        legendHooks.forEach(function (fn) { try { var h = fn(i); if (h) parts.push(h); } catch (e) { console.error(e); } });
     }
     var l2 = parts.length ? '<div class="row">' + parts.join(' &nbsp;') + '</div>' : '';
     setLegend(l1 + l2);
@@ -2442,7 +2454,12 @@ window.CF = {
     refreshSub: function (key) { if (subLive[key]) SUBS[key].setData(subLive[key]); scheduleLegend(); },
     scheduleLegend: scheduleLegend, hexA: hexA,
     defineSettings: defineSettings, S: S, setCfg: setCfg, scheduleRefresh: scheduleRefresh,
-    styleSubs: function () { Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); }); scheduleLegend(); }
+    styleSubs: function () { Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); }); scheduleLegend(); },
+    // for pine.js
+    onData: function (fn) { dataHooks.push(fn); }, indicatorRows: function (fn) { indicatorRowHooks.push(fn); },
+    legend: function (fn) { legendHooks.push(fn); }, openSheet: openSheet, closeSheet: closeSheet, sectionTitle: sectionTitle,
+    noteRow: noteRow, colorStrip: colorStrip, openIndicators: function () { openIndicators(); }, bridge: bridge,
+    backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); }
 };
 
 // =====================================================================================================

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.0] - 2026-10-13
+
+### Added
+- **Pine Script® indicators on the in-app chart**, run by [PineTS](https://github.com/LuxAlgo/PineTS) over the
+  candles the chart already has (no extra network). Loaded only when a script is on.
+  - **Indicator library (22):** Ichimoku, EMA cross signals, Parabolic SAR, HMA, VWMA, Keltner, Donchian, pivot
+    highs/lows, Stochastic RSI, Stochastic, CCI, Williams %R, Awesome Oscillator, ROC, Squeeze Momentum, DMI/ADX,
+    Aroon, ATR, Z-score, OBV, MFI, Chaikin Money Flow. Written from the standard published formulas; all 22 checked
+    to run on 1,500 BTC 15m candles.
+  - **Paste your own script** (or TradingView open-source scripts) with the 클립보드에서 붙여넣기 button; the code is
+    checked before it is added and errors are shown.
+  - Each script gets a settings sheet built from its `input()`s, plus color / width / visibility per plot.
+  - Scripts run in a Web Worker, so even heavy ones never stall panning or the live price; the forming candle is
+    recomputed at most every 4 s (less often when scripts are slow: never more than 1/4 of the time busy).
+  - `request.security` works: other intervals of the symbol come from Binance futures (cached 30 s). Checked with a
+    community-style script using var state, arrays, loops, labels and a 1h security call.
+  - Drawn: plot (line, step, histogram, columns, area, circles), hline, fill, bgcolor, plotshape / plotchar markers,
+    and line / label / box drawings. Overlay scripts sit on the price chart, others in their own pane; values show in
+    the legend. Scripts compute on the newest 1,500 candles, at once when a new candle opens.
+    Not drawn: barcolor, tables, strategy results; offsets into the future are cut at the last candle.
+
+### Changed
+- **License: GNU AGPL-3.0** (PineTS is AGPL-3.0). Versions up to 1.14.1 stay MIT. Notices updated in the app, README
+  and THIRD_PARTY_NOTICES; PineTS's license is in third_party/pinets/LICENSE.
+
 ## [1.14.1] - 2026-10-13
 
 ### Changed
