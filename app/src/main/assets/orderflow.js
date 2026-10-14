@@ -514,7 +514,7 @@ CF.vpTrades(function (i) {
 CF.defineSettings('dom', {
     title: '호가 · 체결 패널 설정', onChange: function (c, k) { if (k === 'fast' && dom.on) domFast(); domLayout(); domDraw(true); },
     fields: [
-        { k: 'width', t: 'range', label: '패널 너비', def: 38, min: 28, max: 60, step: 1, unit: '%' },
+        { k: 'width', t: 'range', label: '패널 너비', def: 38, min: 15, max: 60, step: 1, unit: '%' },
         { t: 'sec', label: '호가' },
         { k: 'step', t: 'sel', label: '가격 묶음', def: 'auto', opts: [['auto', '자동'], ['1', '최소'], ['5', '×5'], ['10', '×10'], ['50', '×50'], ['100', '×100']] },
         { k: 'cum', t: 'bool', label: '누적 잔량으로 막대 표시', def: false },
@@ -551,9 +551,10 @@ function domBuild() {
 }
 function domLayout() {
     if (!dom.el) return;
-    var land = window.innerWidth > window.innerHeight, w = dom.shut ? 26 : Math.round(Math.max(130, Math.min(land ? 300 : 260, window.innerWidth * CF.S('dom').width / 100)));
+    var land = window.innerWidth > window.innerHeight, w = dom.shut ? 26 : Math.round(Math.max(76, Math.min(land ? 300 : 260, window.innerWidth * CF.S('dom').width / 100)));
     dom.el.style.width = w + 'px';
     dom.el.classList.toggle('shut', dom.shut);
+    dom.el.classList.toggle('narrow', !dom.shut && w < 130);
     Array.prototype.forEach.call(dom.el.querySelectorAll('.fp-tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === dom.tab); });
     dom.el.querySelector('.fp-shut').textContent = dom.shut ? '◂' : '▸';
     dom.cv.style.display = dom.tab === 'book' && !dom.shut ? 'block' : 'none';
@@ -613,7 +614,8 @@ function domDraw(force) {
         if (t.buy) tBuy[idx] += t.q; else tSell[idx] += t.q;
         tmax = Math.max(tmax, tBuy[idx] + tSell[idx]);
     });
-    var up = CF.C.up, dn = CF.C.down, dec = Math.max(0, -Math.floor(Math.log10(step) + 1e-9)), TW = cfg.traded ? 16 : 2;
+    var up = CF.C.up, dn = CF.C.down, dec = Math.max(0, -Math.floor(Math.log10(step) + 1e-9)), TW = cfg.traded ? (W < 120 ? 8 : 16) : 2;
+    var FS = W < 100 ? 9 : W < 130 ? 10 : 11;                           // narrow panel: smaller digits so price and size never meet
     ctx.textBaseline = 'middle';
     function row(y, price, qty, single, isAsk, idx) {
         var big = med > 0 && single >= med * 3;
@@ -623,7 +625,7 @@ function domDraw(force) {
             ctx.fillStyle = CF.hexA(up, 0.85); ctx.fillRect(2, y + 3, tBuy[idx] / tmax * (TW - 4), (rowH - 7) / 2);
             ctx.fillStyle = CF.hexA(dn, 0.85); ctx.fillRect(2, y + 4 + (rowH - 7) / 2, tSell[idx] / tmax * (TW - 4), (rowH - 7) / 2);
         }
-        ctx.textAlign = 'left'; ctx.fillStyle = isAsk ? dn : up; ctx.font = (big ? '700 ' : '') + '11px ui-monospace, monospace';
+        ctx.textAlign = 'left'; ctx.fillStyle = isAsk ? dn : up; ctx.font = (big ? '700 ' : '') + FS + 'px ui-monospace, monospace';
         ctx.fillText(price.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }), TW + 2, y + rowH / 2);
         ctx.textAlign = 'right'; ctx.fillStyle = big ? '#FFFFFF' : 'rgba(209,212,220,.85)';
         if (qty > 0) ctx.fillText(fmtQ(qty), W - 4, y + rowH / 2);
@@ -634,10 +636,9 @@ function domDraw(force) {
     // middle: last trade price and the row step
     var last = dom.orders[0] || dom.pend, lp = last ? (last.p || last.pq / last.q) : (q.bid + q.ask) / 2;
     ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.fillRect(0, top, W, midH);
-    ctx.textAlign = 'left'; ctx.font = '700 14px ui-monospace, monospace'; ctx.fillStyle = last ? (last.buy ? up : dn) : '#D1D4DC';
+    ctx.textAlign = 'left'; ctx.font = '700 ' + (FS + 3) + 'px ui-monospace, monospace'; ctx.fillStyle = last ? (last.buy ? up : dn) : '#D1D4DC';
     ctx.fillText(CF.fmtPrice(lp), 4, top + midH / 2);
-    ctx.textAlign = 'right'; ctx.font = '10px ui-monospace, monospace'; ctx.fillStyle = 'rgba(178,181,190,.9)';
-    ctx.fillText('±' + CF.fmtPrice(step), W - 4, top + midH / 2);
+    if (W >= 130) { ctx.textAlign = 'right'; ctx.font = '10px ui-monospace, monospace'; ctx.fillStyle = 'rgba(178,181,190,.9)'; ctx.fillText('±' + CF.fmtPrice(step), W - 4, top + midH / 2); }
 }
 function tapeDraw(force) {
     if (!force && dom.tver === dom.tapeDrawn) return;

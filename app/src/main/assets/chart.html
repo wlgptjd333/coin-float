@@ -80,6 +80,15 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 #flowpanel { flex: 0 0 auto; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--bg); min-width: 0; }
 #flowpanel .fp-head { display: flex; align-items: center; gap: 2px; height: 30px; padding: 0 2px; border-bottom: 1px solid var(--line); }
 #flowpanel .fp-head button { height: 26px; padding: 0 8px; border-radius: 6px; font-size: 12px; color: var(--muted); }
+#flowpanel.narrow .fp-head button { padding: 0 3px; font-size: 11px; }
+#flowpanel.narrow .fp-head .fp-shut { padding: 0 2px; }
+#flowpanel.narrow .fp-head .fp-cfg { display: none; }
+#flowpanel.narrow .tp .t { display: none; }
+#flowpanel .fp-head button { white-space: nowrap; }
+#flowpanel.narrow .fp-tape { font-size: 9.5px; }
+#flowpanel.narrow .tp { gap: 2px; padding: 2px 3px; }
+#flowpanel.narrow .tp .p { min-width: 0; overflow: hidden; }
+#flowpanel.narrow .tp .v { min-width: 0; }
 #flowpanel .fp-head .fp-tab.on { color: var(--text); background: var(--line); }
 #flowpanel .fp-head .fp-cfg { margin-left: auto; }
 #flowpanel .fp-head .fp-shut { padding: 0 6px; }

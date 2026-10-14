@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.20.1] - 2026-10-14
+
+### Fixed
+- **Changing the coin kept the previous coin's price axis** once the axis had been dragged (BTC's 82,000-85,000 for a
+  coin at 0.004, the chart looked empty until "A" was tapped). A new coin fits every pane's axis again, and so does a
+  new interval whose price is outside the view.
+- **Indicators merged into one pane did not scale together.** Dragging a pane's price axis now stretches every
+  indicator in it by the same ratio (and in the main pane the indicators laid over the chart), auto-fit ("A" or a
+  double tap) brings them all back, and all scales of a pane share the same margins so their levels line up.
+- **Pane heights jumped when panes were merged, split or reordered**: a height now belongs to every indicator of the
+  pane, so the merged pane keeps its size.
+
+### Changed
+- The order book panel can be much narrower (down to about 76 px); narrow panels use smaller digits, a thinner
+  traded-volume column and drop the time in the tape.
+
 ## [1.20.0] - 2026-10-14
 
 ### Added

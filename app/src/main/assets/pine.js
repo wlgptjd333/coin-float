@@ -327,7 +327,7 @@ function render(s, rt, plots) {
 }
 function keyOf(rt, se) { var k = null; Object.keys(rt.series).forEach(function (x) { if (rt.series[x] === se) k = x; }); return k; }
 // own scale inside a shared pane (or laid over the main chart: the lower part, like volume)
-function fitScale(se, pane) { try { se.priceScale().applyOptions({ scaleMargins: pane ? { top: 0.15, bottom: 0.12 } : { top: 0.62, bottom: 0.04 } }); } catch (e) { /* ignore */ } }
+function fitScale(se, pane) { try { se.priceScale().applyOptions({ scaleMargins: pane ? { top: 0.12, bottom: 0.1 } : { top: 0.62, bottom: 0.04 } }); } catch (e) { /* ignore */ } }
 function detachVisuals(rt) {
     if (rt.markers) { try { rt.markers.detach(); } catch (e) { /* gone */ } }
     if (rt.prim && rt.primOn) { try { rt.primOn.detachPrimitive(rt.prim); } catch (e) { /* gone */ } }
@@ -345,6 +345,7 @@ function memberFor(s, rt) {
         settings: function () { openScriptSettings(s); },
         close: function () { setOn(s, false); },
         mount: function (pane, sid) { rt.pane = pane; rt.sid = sid; rt.mountedNow = true; if (rt.lastPlots) render(s, rt, rt.lastPlots); },
+        series: function () { return Object.keys(rt.series).map(function (k) { return rt.series[k]; }); },
         unmount: function () { rt.mountedNow = false; detachVisuals(rt); }
     };
 }
