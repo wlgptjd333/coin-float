@@ -198,6 +198,8 @@ CF.onDrawingsSaved(function (sym, list) {
 });
 
 var btn = document.getElementById('alert_btn');
+// from elsewhere (a tap on the order book): an alert at a price
+CF.alertAt = function (price) { openForm(null, { kind: 'line', once: true, p1: price, p2: price, t1: 0, t2: 0, label: '' }); };
 if (btn) btn.onclick = openList;
 load();
 // fired alerts arrive while the page is open: pick them up now and then (a cheap read from the app's storage)

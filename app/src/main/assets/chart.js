@@ -232,8 +232,12 @@ defineSettings('cvd', {
         { k: 'color', t: 'color', label: 'CVD 선 색', def: '#00BCD4' },
         { k: 'width', t: 'range', label: '선 두께', def: 2, min: 1, max: 4, step: 1, unit: 'px' },
         { k: 'delta', t: 'bool', label: '봉별 델타 막대', def: true },
-        { k: 'reset', t: 'sel', label: '누적 기준', def: 'none', opts: [['none', '불러온 구간 전체'], ['day', '매일 0시(UTC) 리셋']] },
-        { t: 'note', label: 'CVD = 매수 체결량 − 매도 체결량의 누적. 위로 가면 공격적 매수 우세입니다.' }
+        { k: 'unit', t: 'sel', label: '단위', def: 'usd', opts: [['usd', '금액 ($)'], ['coin', '수량 (코인)']] },
+        { k: 'reset', t: 'sel', label: '누적 초기화', def: 'none', opts: [['none', '안 함'], ['day', '매일'], ['week', '매주'], ['month', '매월']] },
+        { t: 'sec', label: '현물 CVD 비교' },
+        { k: 'spot', t: 'bool', label: '바이낸스 현물 CVD 함께 보기', sub: '같은 축에 겹쳐 그립니다. 선물만 오르면 레버리지 주도, 현물이 같이 오르면 실수요 주도로 봅니다', def: true, showIf: function (c) { return c.unit === 'usd'; } },
+        { k: 'spotColor', t: 'color', label: '현물 CVD 선 색', def: '#F0B90B', showIf: function (c) { return c.unit === 'usd' && c.spot; } },
+        { t: 'note', label: 'CVD = 시장가 매수 체결 − 시장가 매도 체결의 누적입니다. 거래소가 기록한 체결 방향을 그대로 써서 추정치가 아닙니다. 현물 비교는 금액($) 단위일 때 보입니다(코인 수량은 선물·현물 단위가 다를 수 있음). 초기화 기준은 UTC입니다.' }
     ]
 });
 
@@ -367,7 +371,7 @@ function newD() {
     var b = S('boll'); P.bp = b.period; P.bm = b.mult;
     P.rsi = S('rsi').period;
     var m = S('macd'); P.fast = m.fast; P.slow = Math.max(m.slow, m.fast + 1); P.sig = m.signal;
-    P.cvdDay = S('cvd').reset === 'day';
+    var cv = S('cvd'); P.cvdReset = cv.reset; P.cvdUsd = cv.unit === 'usd';
     var r = S('rsi'); P.rsiMa = r.maOn ? r.maLen : 0; P.rsiMaE = r.maType === 'ema';
     P.oscS = m.oscType === 'sma'; P.sigS = m.sigType === 'sma';
     var vo = S('vol'); P.volMa = vo.maOn ? vo.maLen : 0;
@@ -391,9 +395,10 @@ function stepInd(i) {
     for (k = 0; k < P.ma.length; k++) D.ma[k][i] = P.ma[k].on ? avgAt(D.ma[k], i, P.ma[k].p, P.ma[k].t) : null;
     for (k = 0; k < P.ema.length; k++) D.ema[k][i] = P.ema[k].on ? avgAt(D.ema[k], i, P.ema[k].p, P.ema[k].t) : null;
     // order flow: the candle's taker-buy volume against the rest is the bar's delta; its running sum is CVD
-    D.delta[i] = 2 * candles[i].buy - candles[i].volume;
-    var newDay = P.cvdDay && i > 0 && Math.floor(candles[i].time / 86400) !== Math.floor(candles[i - 1].time / 86400);
-    D.cvd[i] = (i > 0 && !newDay ? D.cvd[i - 1] : 0) + D.delta[i];
+    var kc = candles[i];
+    D.delta[i] = P.cvdUsd && kc.qv != null ? 2 * kc.qb - kc.qv : 2 * kc.buy - kc.volume;
+    var fresh = i > 0 && P.cvdReset !== 'none' && cvdPeriod(kc.time) !== cvdPeriod(candles[i - 1].time);
+    D.cvd[i] = (i > 0 && !fresh ? D.cvd[i - 1] : 0) + D.delta[i];
     var bp = P.bp;
     if (i >= bp - 1) {
         var mean = (D.cs[i] - (i >= bp ? D.cs[i - bp] : 0)) / bp, sq = 0;
@@ -433,6 +438,11 @@ function stepInd(i) {
     D.vcs[i] = (i > 0 ? D.vcs[i - 1] : 0) + candles[i].volume;
     var vl = P.volMa; D.volMa[i] = vl && i >= vl - 1 ? (D.vcs[i] - (i >= vl ? D.vcs[i - vl] : 0)) / vl : null;
     stepVwap(i); stepSupertrend(i);
+}
+function cvdPeriod(t) {
+    if (P.cvdReset === 'month') { var d = new Date(t * 1000); return d.getUTCFullYear() * 12 + d.getUTCMonth(); }
+    if (P.cvdReset === 'week') return Math.floor((t / 86400 + 3) / 7);
+    return Math.floor(t / 86400);
 }
 // VWAP anchored to the start of each day / week / month (UTC), with standard-deviation bands
 function vwapPeriod(t) {
@@ -528,6 +538,7 @@ function setAllData() {
     setStData();
     subsSetData();
     reportClose();
+    if (features.cvdspot && features.cvdspot.running) spotFill();
     emitData('all');
 }
 // Add-on modules (Pine scripts) follow the data: 'all' (new data set), 'new' (a candle opened), 'last' (forming candle moved)
@@ -893,32 +904,107 @@ SUBS.cvd = {
     create: function (pane, sid) {
         return {
             delta: chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceScaleId: sid ? sid + '_d' : '' }, pane),
+            spot: chart.addSeries(LW.LineSeries, Object.assign({ color: '#F0B90B', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: COMPACT }, sidOpt(sid)), pane),
             line: chart.addSeries(LW.LineSeries, Object.assign({ color: '#00BCD4', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: COMPACT }, sidOpt(sid)), pane)
         };
     },
     style: function (o) {
         var c = S('cvd');
         o.line.applyOptions({ color: c.color, lineWidth: c.width }); o.delta.applyOptions({ visible: c.delta });
+        o.spot.applyOptions({ color: c.spotColor, lineWidth: Math.max(1, c.width - 0.5), visible: spotOn() });
     },
     setData: function (o) {
         o.delta.priceScale().applyOptions({ scaleMargins: { top: 0.55, bottom: 0 } });
         o.line.setData(pts(D.cvd));
+        o.spot.setData(spotOn() ? spotCvd() : []);
         o.delta.setData(candles.map(function (c, i) { return { time: c.time, value: D.delta[i], color: D.delta[i] >= 0 ? upFill() : downFill() }; }));
     },
     update: function (o, i) {
         o.line.update({ time: candles[i].time, value: D.cvd[i] });
         o.delta.update({ time: candles[i].time, value: D.delta[i], color: D.delta[i] >= 0 ? upFill() : downFill() });
+        if (spotOn() && spot.vals && spot.vals[i] != null) o.spot.update({ time: candles[i].time, value: spot.vals[i] });
     },
     legend: function (i) {
-        return D.cvd[i] == null ? '' : '<span style="color:' + S('cvd').color + '">CVD ' + signedVol(D.cvd[i]) + '</span> <span class="' + (D.delta[i] >= 0 ? 'up' : 'down') + '">Δ ' + signedVol(D.delta[i]) + '</span>';
+        if (D.cvd[i] == null) return '';
+        var h = '<span style="color:' + S('cvd').color + '">CVD ' + signedVol(D.cvd[i]) + '</span>';
+        if (spotOn()) h += spot.none ? ' <span style="color:#848E9C">현물 없음</span>' : spot.vals && spot.vals[i] != null ? ' <span style="color:' + S('cvd').spotColor + '">현물 ' + signedVol(spot.vals[i]) + '</span>' : '';
+        return h + ' <span class="' + (D.delta[i] >= 0 ? 'up' : 'down') + '">Δ ' + signedVol(D.delta[i]) + '</span>';
     }
+};
+// ---- spot CVD: Binance spot candles of the same coin (taker buy quote volume), live while the CVD pane is on ------------
+var spot = { sym: null, iv: null, map: new Map(), from: 0, none: false, busy: false, ws: null, wsT: 0, vals: null, seq: 0 };
+function spotOn() { var c = S('cvd'); return c.unit === 'usd' && c.spot; }
+function spotSymbol() { var m = /^(1000000|10000|1000|100|1M)?([A-Z0-9]+?)USDT$/.exec(symbol); return m ? m[2] + 'USDT' : null; }
+// the spot CVD on the chart's candles, reset like the perp one
+function spotCvd() {
+    var out = [], acc = 0, have = false;
+    spot.vals = new Array(candles.length);
+    for (var i = 0; i < candles.length; i++) {
+        var c = candles[i], k = spot.map.get(c.time);
+        if (i > 0 && P.cvdReset !== 'none' && cvdPeriod(c.time) !== cvdPeriod(candles[i - 1].time)) acc = 0;
+        if (k) { acc += 2 * k.qb - k.qv; have = true; }
+        if (have) { spot.vals[i] = acc; out.push({ time: c.time, value: acc }); }
+    }
+    return out;
+}
+function spotRefresh() { if (subLive.cvd) { SUBS.cvd.setData(subLive.cvd); scheduleLegend(); } }
+// fetch what the loaded candles need (older pages too), 1,000 spot candles a request
+function spotFill() {
+    if (!ind.cvd || !spotOn() || !candles.length || !active) return;
+    var sym = spotSymbol(); if (!sym) { spot.none = true; return; }
+    if (spot.sym !== sym || spot.iv !== interval) { spot.sym = sym; spot.iv = interval; spot.map = new Map(); spot.from = 0; spot.none = false; spot.seq++; }
+    if (spot.none || spot.busy) return;
+    var first = candles[0].time;
+    if (spot.from && spot.from <= first) return;
+    var end = spot.from ? spot.from * 1000 - 1 : Date.now(), seq = spot.seq;
+    spot.busy = true;
+    fetch('https://api.binance.com/api/v3/klines?symbol=' + sym + '&interval=' + interval + '&endTime=' + end + '&limit=1000').then(function (r) {
+        if (r.status === 400) { spot.none = true; return null; }               // no spot market for this coin
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    }).then(function (rows) {
+        if (seq !== spot.seq || !rows) return;
+        rows.forEach(function (k) { spot.map.set(Math.floor(k[0] / 1000), { qv: +k[7], qb: +k[10] }); });
+        spot.from = rows.length ? Math.floor(rows[0][0] / 1000) : first;
+        if (rows.length < 1000) spot.from = Math.min(spot.from, first);       // listed later than our first candle
+    }).catch(function () { /* the perp CVD still works */ }).then(function () {
+        spot.busy = false;
+        if (seq !== spot.seq) return;
+        spotRefresh();
+        if (!spot.none && spot.from > first) spotFill();
+    });
+}
+function spotLive(on) {
+    var sym = spotSymbol();
+    if (spot.ws && (!on || spot.wsKey !== sym + interval)) { try { spot.ws.close(); } catch (e) { /* ignore */ } spot.ws = null; }
+    clearTimeout(spot.wsT);
+    if (!on || !sym || spot.none || spot.ws) return;
+    var key = sym + interval, ws;
+    try { ws = new WebSocket('wss://stream.binance.com:9443/ws/' + sym.toLowerCase() + '@kline_' + interval); } catch (e) { return; }
+    spot.ws = ws; spot.wsKey = key;
+    ws.onmessage = function (e) {
+        var m; try { m = JSON.parse(e.data); } catch (err) { return; }
+        var k = m && m.k; if (!k || spot.wsKey !== key) return;
+        var t = Math.floor(k.t / 1000); spot.map.set(t, { qv: +k.q, qb: +k.Q });
+        var n = candles.length; if (!n || candles[n - 1].time !== t || !subLive.cvd || !spot.vals) return;
+        var prev = n > 1 ? spot.vals[n - 2] : 0, fresh = n > 1 && P.cvdReset !== 'none' && cvdPeriod(t) !== cvdPeriod(candles[n - 2].time);
+        spot.vals[n - 1] = (fresh || prev == null ? 0 : prev) + 2 * +k.Q - +k.q;
+        subLive.cvd.spot.update({ time: t, value: spot.vals[n - 1] });
+    };
+    ws.onclose = function () { if (spot.ws === ws) { spot.ws = null; spot.wsT = setTimeout(function () { spotLive(ind.cvd && active && spotOn()); }, 3000); } };
+}
+var CVDSPOT = {
+    byInterval: true,
+    start: function () { spotFill(); spotLive(true); },
+    stop: function () { spotLive(false); spot.seq++; spot.busy = false; spot.sym = null; }
 };
 
 // ---- features: self-contained data feeds/overlays (order book, liquidations ...) -----------------------------------
-var features = {};
+var features = { cvdspot: CVDSPOT }; CVDSPOT.running = false;
+var FEATURE_IND = { cvdspot: function () { return ind.cvd && spotOn(); } };
 function syncFeatures() {
     Object.keys(features).forEach(function (key) {
-        var f = features[key], want = !!ind[key] && active && candles.length > 0;
+        var f = features[key], want = !!(FEATURE_IND[key] ? FEATURE_IND[key]() : ind[key]) && active && candles.length > 0;
         if (want && !f.running) { f.running = true; try { f.start(); } catch (e) { console.error(e); } }
         else if (!want && f.running) { f.running = false; try { f.stop(); } catch (e) { console.error(e); } }
     });
@@ -2308,11 +2394,61 @@ function openSettings(key, back) {
 }
 $('cfg_btn').onclick = function () { openSettings('chart'); };
 
+// Indicator sets, like TradingView's indicator templates: which indicators are on and how the panes are arranged, saved
+// under a name and switched in one tap. Two come built in.
+var IND_SETS = LS.get('indSets', []); if (!Array.isArray(IND_SETS)) IND_SETS = [];
+var BUILTIN_SETS = [
+    { n: '기본', d: '거래량 · 이동평균', ind: { vol: true, ma: true } },
+    { n: '오더플로', d: '풋프린트 · 호가 패널 · CVD · 대량 체결 · 거래량', ind: { vol: true, ma: false, fp: true, dom: true, cvd: true, trades: true } },
+    { n: '스윙', d: '이동평균 · 볼린저 · RSI · MACD', ind: { vol: true, ma: true, boll: true, rsi: true, macd: true } }
+];
+var setsOpen = false;
+function applyIndSet(set) {
+    Object.keys(ind).forEach(function (k) { ind[k] = !!(set.ind && set.ind[k]); });
+    LS.set('ind', ind);
+    if (set.lay) { var l = JSON.parse(JSON.stringify(set.lay)); paneLay.groups = l.groups || []; paneLay.main = l.main || []; paneLay.h = l.h || {}; paneLay.col = l.col || {}; paneLay.mainH = l.mainH || 1; paneLay.max = null; savePaneLay(); relayout(true); }
+    applyIndicators();
+    toast('"' + set.n + '" 구성으로 바꿨어요');
+}
+function setsBox() {
+    var box = document.createElement('div'); box.className = 'tplbox';
+    var bar = document.createElement('div'); bar.className = 'drow';
+    bar.innerHTML = '<button class="tplb">지표 구성 ' + (setsOpen ? '▴' : '▾') + '</button><span style="flex:1;color:var(--muted);font-size:12px">켜 둔 지표와 창 배치를 저장 · 불러오기</span>';
+    bar.querySelector('.tplb').onclick = function () { setsOpen = !setsOpen; openIndicators(); };
+    box.appendChild(bar);
+    if (!setsOpen) return box;
+    var menu = document.createElement('div'); menu.className = 'tplmenu';
+    BUILTIN_SETS.concat(IND_SETS).forEach(function (st, i) {
+        var mine = i >= BUILTIN_SETS.length, r = document.createElement('div'); r.className = 'tplrow';
+        r.innerHTML = '<button class="ap"></button>' + (mine ? '<button class="rm" aria-label="삭제">✕</button>' : '');
+        r.querySelector('.ap').innerHTML = escHtml(st.n) + '<small style="display:block;color:var(--muted);font-size:11px">' + escHtml(st.d || Object.keys(st.ind).filter(function (k) { return st.ind[k]; }).length + '개 지표') + '</small>';
+        r.querySelector('.ap').onclick = function () { applyIndSet(st); openIndicators(); };
+        if (mine) r.querySelector('.rm').onclick = function () { IND_SETS.splice(i - BUILTIN_SETS.length, 1); LS.set('indSets', IND_SETS); openIndicators(); };
+        menu.appendChild(r);
+    });
+    var add = document.createElement('div'); add.className = 'tplrow';
+    add.innerHTML = '<input type="text" maxlength="24" placeholder="새 구성 이름"><button class="sv">현재 구성 저장</button>';
+    var inp = add.querySelector('input');
+    add.querySelector('.sv').onclick = function () {
+        readPaneHeights();
+        var name = inp.value.trim() || ('구성 ' + (IND_SETS.length + 1)), on = {};
+        Object.keys(ind).forEach(function (k) { if (ind[k]) on[k] = true; });
+        var st = { n: name, ind: on, lay: JSON.parse(JSON.stringify({ groups: paneLay.groups, main: paneLay.main, h: paneLay.h, col: paneLay.col, mainH: paneLay.mainH })) }, at = -1;
+        IND_SETS.forEach(function (x, j) { if (x.n === name) at = j; });
+        if (at >= 0) IND_SETS[at] = st; else IND_SETS.push(st);
+        if (IND_SETS.length > 20) IND_SETS.shift();
+        LS.set('indSets', IND_SETS); toast('"' + name + '" 저장'); openIndicators();
+    };
+    menu.appendChild(add);
+    box.appendChild(menu);
+    return box;
+}
 function openIndicators() {
     settingsKey = null;
     var maLines = S('ma').lines.filter(function (l) { return l.on; }).map(function (l) { return l.p; }).join(' · ');
     var b = S('boll'), r = S('rsi'), m = S('macd');
     openSheet('지표', [
+        setsBox(),
         sectionTitle('기본'),
         switchRow('거래량', '', 'vol', true),
         switchRow('이동평균선', maLines, 'ma', true),
@@ -2500,7 +2636,7 @@ function parseRows(raw) {
     var out = [], dec = 0;
     for (var i = 0; i < raw.length; i++) {
         var k = raw[i];
-        out.push({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5], buy: +k[9] });
+        out.push({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5], buy: +k[9], qv: +k[7], qb: +k[10] });
         // decimals actually used, sampled from the closes and OHLC: Binance pads prices to the contract's precision
         // ("83043.60" for a 0.1 tick), and keeping the padding widened the price axis and every price label
         if (i < 100) for (var f = 1; f <= 4; f++) { var s = String(k[f]).replace(/0+$/, ''), dot = s.indexOf('.'); if (dot >= 0) dec = Math.max(dec, s.length - dot - 1); }
@@ -2715,7 +2851,7 @@ function flushKline() {
 function applyKline(k) {
     klineLast = Date.now();
     var t = Math.floor(k.t / 1000), n = candles.length, last = candles[n - 1];
-    var bar = { time: t, open: +k.o, high: +k.h, low: +k.l, close: +k.c, volume: +k.v, buy: +k.V };
+    var bar = { time: t, open: +k.o, high: +k.h, low: +k.l, close: +k.c, volume: +k.v, buy: +k.V, qv: +k.q, qb: +k.Q };
     if (t === last.time) candles[n - 1] = bar;
     else if (t > last.time) candles.push(bar);
     else return;
@@ -2807,6 +2943,12 @@ window.CF = {
     noteRow: noteRow, colorStrip: colorStrip, openIndicators: function () { openIndicators(); }, bridge: bridge,
     backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); },
     barTint: setBarTint, openSettings: function (k) { openSettings(k); },
+    drawingBusy: function () { return DR.sel != null || !!DR.tool; },
+    addHline: function (p) {
+        if (!candles.length) return;
+        DR.list.push({ id: DR.nextId++, type: 'hline', a: { time: candles[candles.length - 1].time, price: p } });
+        DR.save(); DR.redraw(); toast('수평선을 그렸어요 · 누르면 색 · 알람을 바꿀 수 있어요');
+    },
     onDrawingsSaved: function (fn) { drSaveHooks.push(fn); }, onDrawingAlert: function (fn) { drAlertHook = fn; },
     drawings: function () { return DR.list; }, changeInterval: function (i) { changeInterval(i); }, intervals: function () { return INTERVALS; },
     chartType: function () { return chartType; }, barSpacing: barSpacingPx,

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.21.0] - 2026-10-15
+
+### Added
+- **Spot CVD next to the perp CVD** (Binance spot, same scale, live): perp-led vs spot-led moves at a glance; coins
+  without a spot market say so. CVD can be in dollars (taker buy quote volume, default) or coins, and reset daily,
+  weekly or monthly.
+- **Order book ladder**: a buy / sell share gauge of the resting size on screen; liquidity added (+) or pulled (−)
+  within the last 1.5-3 s per row; tap a row to draw a horizontal line or set a price alert there.
+- **Footprint details**: double-tap a candle (footprint on) for its trades per price in a table: sell, buy, delta,
+  POC, value area, volume, delta and buy share.
+- **Indicator sets** (top of the indicator sheet): save which indicators are on with the pane layout under a name and
+  switch in one tap; "기본", "오더플로" and "스윙" are built in.
+
 ## [1.20.1] - 2026-10-14
 
 ### Fixed

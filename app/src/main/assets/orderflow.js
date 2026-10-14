@@ -331,7 +331,7 @@ CF.defineSettings('fp', {
         { k: 'stack', t: 'bool', label: '연속 불균형(3칸 이상) 표시', def: true, showIf: function (c) { return c.imb; } },
         { k: 'poc', t: 'bool', label: '봉별 POC (최다 체결 가격) 테두리', def: true },
         { k: 'sum', t: 'bool', label: '봉 아래 델타 · 거래량', def: true },
-        { t: 'note', label: '차트를 확대해 봉이 넓어지면 캔들이 가격 칸으로 바뀌고, 칸마다 그 가격에서 체결된 시장가 매도(왼쪽)·매수(오른쪽) 수량을 보여줍니다. 체결 기록이 없는 봉은 일반 캔들로 남습니다.' }
+        { t: 'note', label: '봉을 두 번 탭하면 그 봉의 가격별 체결 내역(POC · 가치 영역 포함)을 표로 볼 수 있어요. 차트를 확대해 봉이 넓어지면 캔들이 가격 칸으로 바뀌고, 칸마다 그 가격에서 체결된 시장가 매도(왼쪽)·매수(오른쪽) 수량을 보여줍니다. 체결 기록이 없는 봉은 일반 캔들로 남습니다.' }
     ]
 });
 var fp = { on: false, active: false, k: 1, tintT: 0, tintKey: '' };
@@ -471,6 +471,40 @@ function paintFpText(ctx, w, h) {
     ctx.textAlign = 'start';
 }
 var fpOff = null, fpRange = null, fpTimer = 0;
+// Double-tap a candle (footprint on): its trades per price in a sheet, so the footprint can be read without zooming in
+function fpInspect(param) {
+    if (!param || param.time == null || !param.point || CF.drawingBusy()) return;
+    var i = CF.indexOfTime(param.time); if (i < 0) return;
+    var cs = CF.candles(), c = cs[i], cl = cells(c.time, candleEnd(i), srcKey());
+    if (!cl || !cl.rows.size) { CF.toast('이 봉은 체결 기록이 없어요 · 풋프린트를 켠 뒤 불러온 구간만 있어요'); return; }
+    var lo = Infinity, hi = -Infinity; cl.rows.forEach(function (v, k) { if (k < lo) lo = k; if (k > hi) hi = k; });
+    var k = 1; for (var n = 0; n < NICE.length && (hi - lo) / NICE[n] > 36; n++) k = NICE[Math.min(n + 1, NICE.length - 1)];
+    var bins = binned(cl, k), keys = Array.from(bins.keys()).sort(function (a, b) { return b - a; }), max = 0, poc = null, tot = 0;
+    bins.forEach(function (v, j) { var t = v[0] + v[1]; tot += t; if (t > max) { max = t; poc = j; } });
+    // value area: 70 % of the volume around the POC
+    var asc = keys.slice().sort(function (a, b) { return a - b; }), pi = asc.indexOf(poc), a = pi, z = pi, acc = max;
+    while (acc < tot * 0.7 && (a > 0 || z < asc.length - 1)) {
+        var upv = z < asc.length - 1 ? sum(bins.get(asc[z + 1])) : -1, dnv = a > 0 ? sum(bins.get(asc[a - 1])) : -1;
+        if (upv >= dnv) { z++; acc += upv; } else { a--; acc += dnv; }
+    }
+    function sum(v) { return v ? v[0] + v[1] : 0; }
+    var step = k * E.tick, up = CF.C.up, dn = CF.C.down, d = cl.bq - cl.sq;
+    var html = '<div class="fpi-sum"><span>거래량 <b>' + fmtQ(cl.bq + cl.sq) + '</b></span><span>델타 <b style="color:' + (d >= 0 ? up : dn) + '">' + (d >= 0 ? '+' : '') + fmtQ(d) + '</b></span>' +
+        '<span>매수 <b style="color:' + up + '">' + Math.round(cl.bq / Math.max(1e-12, cl.bq + cl.sq) * 100) + '%</b></span><span>POC <b style="color:#F0B90B">' + CF.fmtPrice(poc * step) + '</b></span>' +
+        '<span>가치 영역 <b>' + CF.fmtPrice(asc[a] * step) + ' – ' + CF.fmtPrice((asc[z] + 1) * step) + '</b></span>' + (cl.cover < 0.98 ? '<span style="color:#F0B90B">일부 구간만 있음</span>' : '') + '</div>' +
+        '<div class="fpi"><div class="fpi-h"><span>가격</span><span>매도</span><span>매수</span><span>델타</span></div>';
+    keys.forEach(function (j) {
+        var v = bins.get(j), t = v[0] + v[1], dd = v[0] - v[1], inVa = j >= asc[a] && j <= asc[z];
+        html += '<div class="fpi-r' + (j === poc ? ' poc' : '') + (inVa ? ' va' : '') + '"><span>' + CF.fmtPrice(j * step) + '</span>' +
+            '<span style="color:' + dn + '"><i style="width:' + (v[1] / max * 100).toFixed(0) + '%;background:' + CF.hexA(dn, 0.25) + '"></i><em>' + fmtQ(v[1]) + '</em></span>' +
+            '<span style="color:' + up + '"><i style="width:' + (v[0] / max * 100).toFixed(0) + '%;background:' + CF.hexA(up, 0.25) + '"></i><em>' + fmtQ(v[0]) + '</em></span>' +
+            '<span style="color:' + (dd >= 0 ? up : dn) + '">' + (dd > 0 ? '+' : '') + fmtQ(dd) + '</span></div>';
+    });
+    html += '</div>';
+    var body = document.createElement('div'); body.innerHTML = html;
+    var dt = new Date(c.time * 1000);
+    CF.openSheet('풋프린트 · ' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + CF.pad2(dt.getHours()) + ':' + CF.pad2(dt.getMinutes()) + ' · 칸 ' + CF.fmtPrice(step), [body]);
+}
 function onRange() { fpSync(false); }
 CF.registerFeature('fp', {
     legend: function () {
@@ -485,6 +519,7 @@ CF.registerFeature('fp', {
         var offA = CF.layer('bottom', paintFpCells), offB = CF.layer('top', paintFpText);
         fpOff = function () { offA(); offB(); };
         chart.timeScale().subscribeVisibleLogicalRangeChange(onRange);
+        chart.subscribeDblClick(fpInspect);
         fpTimer = setInterval(function () { fpSync(false); }, 2500);   // new data turns more candles into footprints
         fpSync(true);
         if (!fp.active) CF.toast('풋프린트: 차트를 확대하면 가격별 체결량이 보여요');
@@ -492,6 +527,7 @@ CF.registerFeature('fp', {
     stop: function () {
         fp.on = false;
         chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
+        chart.unsubscribeDblClick(fpInspect);
         clearInterval(fpTimer); fpTimer = 0;
         if (fpOff) { fpOff(); fpOff = null; }
         fpSync(true);
@@ -519,11 +555,12 @@ CF.defineSettings('dom', {
         { k: 'step', t: 'sel', label: '가격 묶음', def: 'auto', opts: [['auto', '자동'], ['1', '최소'], ['5', '×5'], ['10', '×10'], ['50', '×50'], ['100', '×100']] },
         { k: 'cum', t: 'bool', label: '누적 잔량으로 막대 표시', def: false },
         { k: 'traded', t: 'bool', label: '가격별 최근 5분 체결량', sub: '각 줄 왼쪽의 얇은 막대 (초록 매수 · 빨강 매도)', def: true },
+        { k: 'chg', t: 'bool', label: '잔량 변화 표시', sub: '1.5~3초 사이 크게 늘어난 잔량은 +(매수 초록 · 매도 빨강), 빠진 잔량은 −(노랑). 오른쪽 끝 막대로도 표시', def: true },
         { k: 'fast', t: 'bool', label: '빠른 갱신 (0.1초)', sub: '데이터와 배터리를 조금 더 씁니다', def: false },
         { t: 'sec', label: '체결' },
         { k: 'min', t: 'sel', label: '표시할 최소 금액', def: '1000', opts: [['0', '전체'], ['1000', '$1K'], ['10000', '$10K'], ['50000', '$50K'], ['100000', '$100K']] },
         { k: 'big', t: 'sel', label: '강조할 금액', def: '100000', opts: [['50000', '$50K'], ['100000', '$100K'], ['250000', '$250K'], ['1000000', '$1M']] },
-        { t: 'note', label: '바이낸스 선물의 실시간 호가와 체결입니다. 체결은 한 주문이 여러 호가를 쓸고 간 것을 하나로 합쳐 보여줍니다. 보기 전용이며 주문 기능은 없습니다.' }
+        { t: 'note', label: '바이낸스 선물의 실시간 호가와 체결입니다. 맨 위 막대는 보이는 호가의 매수·매도 잔량 비율입니다. 호가 줄을 누르면 그 가격에 수평선이나 알람을 만들 수 있어요. 보기 전용이며 주문 기능은 없습니다.' }
     ]
 });
 var dom = { on: false, el: null, cv: null, list: null, tab: LS.get('domTab', 'book'), shut: LS.get('domShut', false), recent: [], orders: [], pend: null, ver: -1, tver: 0, timer: 0, fastOn: false };
@@ -544,6 +581,7 @@ function domBuild() {
     dom.el = p; dom.cv = p.querySelector('canvas'); dom.list = p.querySelector('.fp-tape');
     p.querySelector('.fp-shut').onclick = function () { dom.shut = !dom.shut; LS.set('domShut', dom.shut); domLayout(); domFast(); domDraw(true); };
     p.querySelector('.fp-cfg').onclick = function () { CF.openSettings('dom'); };
+    dom.cv.addEventListener('click', domTap);
     Array.prototype.forEach.call(p.querySelectorAll('.fp-tab'), function (b) {
         b.onclick = function () { dom.tab = b.getAttribute('data-t'); LS.set('domTab', dom.tab); if (dom.shut) { dom.shut = false; LS.set('domShut', false); } domLayout(); domFast(); domDraw(true); };
     });
@@ -596,13 +634,18 @@ function domDraw(force) {
     if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
     var ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
     var cfg = CF.S('dom'), q = B.quotes(); if (!q) return;
-    var step = domStep(), rowH = 17, midH = 30, n = Math.max(3, Math.floor((H - midH) / 2 / rowH));
+    var step = domStep(), rowH = 17, midH = 30, GH = 18, n = Math.max(3, Math.floor((H - midH - GH) / 2 / rowH));
     var a0 = Math.ceil(q.ask / step - 1e-9), b0 = Math.floor(q.bid / step + 1e-9);
     var asks = new Float64Array(n), bids = new Float64Array(n), i;
     B.asks.forEach(function (qty, p) { var k = Math.ceil(p / step - 1e-9) - a0; if (k >= 0 && k < n) asks[k] += qty; });
     B.bids.forEach(function (qty, p) { var k = b0 - Math.floor(p / step + 1e-9); if (k >= 0 && k < n) bids[k] += qty; });
     var single = Array.prototype.slice.call(asks).concat(Array.prototype.slice.call(bids)).filter(function (v) { return v > 0; }).sort(function (x, y) { return x - y; });
     var med = single.length ? single[Math.floor(single.length / 2)] : 0;
+    var sumA = 0, sumB = 0; for (i = 0; i < n; i++) { sumA += asks[i]; sumB += bids[i]; }
+    // liquidity a second or two ago, per row, to show what was added or pulled since
+    var nowMs = Date.now(), ref = null, cur = new Map();
+    dom.snaps = dom.snaps || [];
+    for (i = 0; i < dom.snaps.length; i++) if (dom.snaps[i].step === step && nowMs - dom.snaps[i].t >= 1500) ref = dom.snaps[i];
     if (cfg.cum) { for (i = 1; i < n; i++) { asks[i] += asks[i - 1]; bids[i] += bids[i - 1]; } }
     var max = 0; for (i = 0; i < n; i++) max = Math.max(max, asks[i], bids[i]); if (!max) max = 1;
     // traded in the last 5 minutes, per row: asks 0..n-1, bids n..2n-1
@@ -617,8 +660,10 @@ function domDraw(force) {
     var up = CF.C.up, dn = CF.C.down, dec = Math.max(0, -Math.floor(Math.log10(step) + 1e-9)), TW = cfg.traded ? (W < 120 ? 8 : 16) : 2;
     var FS = W < 100 ? 9 : W < 130 ? 10 : 11;                           // narrow panel: smaller digits so price and size never meet
     ctx.textBaseline = 'middle';
+    dom.geo = [];
     function row(y, price, qty, single, isAsk, idx) {
-        var big = med > 0 && single >= med * 3;
+        var big = med > 0 && single >= med * 3, key = Math.round(price / step);
+        cur.set(key, single); dom.geo.push({ y0: y, y1: y + rowH, price: price });
         var bw = qty / max * (W - 4);
         ctx.fillStyle = CF.hexA(isAsk ? dn : up, big ? 0.4 : 0.17); ctx.fillRect(W - bw, y + 1, bw, rowH - 2);
         if (cfg.traded && tmax > 0) {                    // own column on the left: buys on top, sells below
@@ -629,8 +674,24 @@ function domDraw(force) {
         ctx.fillText(price.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }), TW + 2, y + rowH / 2);
         ctx.textAlign = 'right'; ctx.fillStyle = big ? '#FFFFFF' : 'rgba(209,212,220,.85)';
         if (qty > 0) ctx.fillText(fmtQ(qty), W - 4, y + rowH / 2);
+        if (!ref || !cfg.chg) return;
+        var was = ref.m.get(key) || 0, d = single - was;
+        if (!d || Math.abs(d) < med * 0.5 || Math.abs(d) < 0.3 * Math.max(single, was)) return;
+        var col = d > 0 ? (isAsk ? dn : up) : '#F0B90B';                // added: the side's color, pulled: amber
+        if (W >= 150) {
+            ctx.font = '600 ' + (FS - 1) + 'px ui-monospace, monospace'; ctx.fillStyle = col;
+            ctx.fillText((d > 0 ? '+' : '−') + fmtQ(Math.abs(d)), W - 8 - ctx.measureText(qty > 0 ? fmtQ(qty) : '').width - 4, y + rowH / 2);
+        }
+        ctx.fillStyle = col; ctx.fillRect(W - 3, y + 2, 3, rowH - 4);
     }
-    var top = Math.floor(H / 2 - midH / 2), ra = cfg.cum ? null : asks, rb = cfg.cum ? null : bids;
+    var top = Math.floor(GH + (H - GH) / 2 - midH / 2), ra = cfg.cum ? null : asks, rb = cfg.cum ? null : bids;
+    // buy / sell share of the resting size on screen
+    var tot = sumA + sumB, sb = tot ? sumB / tot : 0.5;
+    ctx.fillStyle = CF.hexA(up, 0.3); ctx.fillRect(0, 0, W * sb, GH - 2);
+    ctx.fillStyle = CF.hexA(dn, 0.3); ctx.fillRect(W * sb, 0, W * (1 - sb), GH - 2);
+    ctx.font = '600 10px ui-monospace, monospace'; ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left'; ctx.fillStyle = up; ctx.fillText((W >= 130 ? '매수 ' : '') + Math.round(sb * 100) + '%', 4, GH / 2 - 1);
+    ctx.textAlign = 'right'; ctx.fillStyle = dn; ctx.fillText(Math.round((1 - sb) * 100) + '%' + (W >= 130 ? ' 매도' : ''), W - 4, GH / 2 - 1);
     for (var k = 0; k < n; k++) row(top - (k + 1) * rowH, (a0 + k) * step, asks[k], ra ? ra[k] : asks[k] - (k ? asks[k - 1] : 0), true, k);
     for (k = 0; k < n; k++) row(top + midH + k * rowH, (b0 - k) * step, bids[k], rb ? rb[k] : bids[k] - (k ? bids[k - 1] : 0), false, n + k);
     // middle: last trade price and the row step
@@ -639,6 +700,26 @@ function domDraw(force) {
     ctx.textAlign = 'left'; ctx.font = '700 ' + (FS + 3) + 'px ui-monospace, monospace'; ctx.fillStyle = last ? (last.buy ? up : dn) : '#D1D4DC';
     ctx.fillText(CF.fmtPrice(lp), 4, top + midH / 2);
     if (W >= 130) { ctx.textAlign = 'right'; ctx.font = '10px ui-monospace, monospace'; ctx.fillStyle = 'rgba(178,181,190,.9)'; ctx.fillText('±' + CF.fmtPrice(step), W - 4, top + midH / 2); }
+    if (!dom.snaps.length || nowMs - dom.snaps[dom.snaps.length - 1].t >= 700) {
+        dom.snaps.push({ t: nowMs, step: step, m: cur });
+        while (dom.snaps.length && nowMs - dom.snaps[0].t > 3500) dom.snaps.shift();
+    }
+}
+// a tap on a ladder row: draw a line there or set an alert at that price
+function domTap(e) {
+    var r = dom.cv.getBoundingClientRect(), y = e.clientY - r.top, hit = null;
+    (dom.geo || []).forEach(function (g) { if (y >= g.y0 && y < g.y1) hit = g; });
+    if (!hit) return;
+    var p = hit.price, rows = [];
+    var line = document.createElement('button'); line.className = 'row-opt'; line.innerHTML = '<span>수평선 그리기<small>' + CF.fmtPrice(p) + '에 선을 긋습니다</small></span>';
+    line.onclick = function () { CF.closeSheet(); CF.addHline(p); };
+    rows.push(line);
+    if (CF.alertAt) {
+        var al = document.createElement('button'); al.className = 'row-opt'; al.innerHTML = '<span>🔔 이 가격 알람<small>' + CF.fmtPrice(p) + ' 돌파 · 이탈 시 알림</small></span>';
+        al.onclick = function () { CF.alertAt(p); };
+        rows.push(al);
+    }
+    CF.openSheet(CF.fmtPrice(p), rows);
 }
 function tapeDraw(force) {
     if (!force && dom.tver === dom.tapeDrawn) return;
@@ -817,5 +898,5 @@ CF.registerFeature('xex', {
     stop: function () { X.want = false; xStop(); }
 });
 
-window.__of = { E: E, X: X, cells: cells, fp: fp, dom: dom, save: save, coverOf: coverOf };
+window.__of = { E: E, X: X, cells: cells, fp: fp, dom: dom, fpInspect: fpInspect, save: save, coverOf: coverOf };
 })();

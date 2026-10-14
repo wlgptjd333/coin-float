@@ -102,6 +102,19 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 #flowpanel .tp .p { flex: 1; text-align: right; }
 #flowpanel .tp .v { min-width: 44px; text-align: right; }
 #flowpanel .tp.big .v { font-weight: 700; }
+.fpi-sum { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 4px 16px 10px; font-size: 12.5px; color: var(--muted); }
+.fpi-sum b { color: var(--text); font-weight: 600; }
+.fpi { padding: 0 12px 12px; font: 12px ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.fpi-h, .fpi-r { display: grid; grid-template-columns: 1.3fr 1fr 1fr 0.9fr; gap: 6px; align-items: center; }
+.fpi-h { color: var(--muted); font-size: 11px; padding: 4px 4px; border-bottom: 1px solid var(--line); }
+.fpi-r { padding: 3px 4px; border-bottom: 1px solid rgba(42,46,57,.45); }
+.fpi-r span { position: relative; text-align: right; }
+.fpi-r span:first-child { text-align: left; color: var(--text); }
+.fpi-r i { position: absolute; right: 0; top: 1px; bottom: 1px; border-radius: 2px; }
+.fpi-r em { position: relative; font-style: normal; }
+.fpi-r.va { background: rgba(255,255,255,.03); }
+.fpi-r.poc { outline: 1px solid rgba(240,185,11,.8); outline-offset: -1px; }
+.fpi-h span:not(:first-child) { text-align: right; }
 #flowpanel .tp-empty { padding: 12px 8px; color: var(--muted); font-family: inherit; }
 #chart { position: absolute; inset: 0; }
 
