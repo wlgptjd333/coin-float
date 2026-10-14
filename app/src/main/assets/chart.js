@@ -1291,7 +1291,7 @@ function fixFib(f) {                                             // stored setti
     return b;
 }
 var DR_TPL = LS.get('drTpl', {}); if (!DR_TPL || typeof DR_TPL !== 'object') DR_TPL = {};
-var STYLE_KEYS = ['col', 'w', 'ds', 'ext', 'lbl', 'lpos', 'stats', 'fill', 'fc', 'fa', 'fib'];
+var STYLE_KEYS = ['col', 'w', 'ds', 'ext', 'lbl', 'lpos', 'stats', 'fill', 'fc', 'fa', 'fib', 'mid', 'fs', 'tbg', 'acc', 'risk', 'qty'];
 var fibDefCache = null;
 // a drawing's fib settings (its own, or the default for new ones), validated once per object
 function fibOf(d) {
@@ -1478,6 +1478,35 @@ function paint(ctx, d, selected, w, h) {
             ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
         }
         if (selected) { handle(ctx, a); handle(ctx, b); }
+    } else if (d.type === 'hray') {
+        ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(w, a.y); ctx.stroke();
+        if (d.lbl !== false) { ctx.setLineDash([]); label(ctx, fmtPrice(d.a.price), w - 4, a.y - 11, col, '#1a1a1a', 'right'); }
+        if (selected) handle(ctx, a);
+    } else if (d.type === 'arrow' && b) {
+        ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        var ang = Math.atan2(b.y - a.y, b.x - a.x), hl = 10 + (d.w || 1.6) * 2;
+        ctx.setLineDash([]); ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(b.x, b.y);
+        ctx.lineTo(b.x - hl * Math.cos(ang - 0.42), b.y - hl * Math.sin(ang - 0.42));
+        ctx.lineTo(b.x - hl * Math.cos(ang + 0.42), b.y - hl * Math.sin(ang + 0.42)); ctx.closePath(); ctx.fill();
+        if (selected) { handle(ctx, a); handle(ctx, b); }
+    } else if (d.type === 'channel' && b) {
+        var ch = channelLines(d, w, h); if (!ch) return;
+        if (d.fill !== false) {
+            ctx.fillStyle = hexA(d.fc || col, (d.fa != null ? d.fa : 10) / 100);
+            ctx.beginPath(); ctx.moveTo(ch.base[0].x, ch.base[0].y); ctx.lineTo(ch.base[1].x, ch.base[1].y); ctx.lineTo(ch.par[1].x, ch.par[1].y); ctx.lineTo(ch.par[0].x, ch.par[0].y); ctx.closePath(); ctx.fill();
+        }
+        ctx.strokeStyle = col;
+        [ch.base, ch.par].forEach(function (l) { ctx.beginPath(); ctx.moveTo(l[0].x, l[0].y); ctx.lineTo(l[1].x, l[1].y); ctx.stroke(); });
+        if (d.mid !== false) { ctx.setLineDash([4, 4]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(ch.mid[0].x, ch.mid[0].y); ctx.lineTo(ch.mid[1].x, ch.mid[1].y); ctx.stroke(); }
+        if (selected) { handle(ctx, a); handle(ctx, b); handle(ctx, ch.c); }
+    } else if (d.type === 'text') {
+        var bb = textBox(ctx, d, a);
+        if (d.tbg) { ctx.fillStyle = hexA(col, 0.18); ctx.fillRect(bb.x - 4, bb.y - 3, bb.w + 8, bb.h + 6); }
+        ctx.setLineDash([]); ctx.fillStyle = col; ctx.textBaseline = 'top';
+        bb.lines.forEach(function (ln, i) { ctx.fillText(ln, bb.x, bb.y + i * bb.lh); });
+        if (selected) { ctx.strokeStyle = hexA(C.accent, 0.8); ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.strokeRect(bb.x - 4, bb.y - 3, bb.w + 8, bb.h + 6); ctx.setLineDash([]); handle(ctx, a); }
+    } else if ((d.type === 'long' || d.type === 'short') && b && d.c) {
+        paintPosition(ctx, d, selected, w, h);
     } else if (d.type === 'measure' && b) {
         var up = d.b.price >= d.a.price, col = up ? C.up : C.down;
         var mx = Math.min(a.x, b.x), my = Math.min(a.y, b.y), mw = Math.abs(a.x - b.x), mh = Math.abs(a.y - b.y);
@@ -1574,7 +1603,102 @@ function rayEnd(a, b, w, h) {
     var k = 4 * (w + h) / Math.max(1e-6, Math.hypot(dx, dy));
     return { x: a.x + dx * k, y: a.y + dy * k };
 }
-function drawingColor(d) { return d.col || (d.type === 'hline' ? C.gold : C.accent); }
+function drawingColor(d) { return d.col || (d.type === 'hline' || d.type === 'hray' ? C.gold : C.accent); }
+// ---- tools added in 1.22: parallel channel, horizontal ray, arrow, text, long / short position ----------------------
+var ONE_POINT = { hline: 1, vline: 1, hray: 1, text: 1, long: 1, short: 1 };
+// the channel: the base line a-b, a parallel line `off` (price) away, and the middle line; extended like a trend line
+function channelLines(d, w, h) {
+    var a = px(d.a), b = px(d.b), a2 = px({ time: d.a.time, price: d.a.price + d.off }), b2 = px({ time: d.b.time, price: d.b.price + d.off });
+    if (!a || !b || !a2 || !b2) return null;
+    var am = { x: (a.x + a2.x) / 2, y: (a.y + a2.y) / 2 }, bm = { x: (b.x + b2.x) / 2, y: (b.y + b2.y) / 2 };
+    return { base: trendEnds(d, a, b, w, h), par: trendEnds(d, a2, b2, w, h), mid: trendEnds(d, am, bm, w, h), c: { x: (a2.x + b2.x) / 2, y: (a2.y + b2.y) / 2 } };
+}
+var measureCtx = null;
+function textBox(ctx, d, a) {
+    var c = ctx || measureCtx || (measureCtx = document.createElement('canvas').getContext('2d'));
+    var fs = d.fs || 14, lines = String(d.text || '').split('\n'), lh = Math.round(fs * 1.3), mw = 0;
+    c.font = '600 ' + fs + 'px -apple-system, Roboto, sans-serif';
+    lines.forEach(function (l) { mw = Math.max(mw, c.measureText(l).width); });
+    return { x: a.x, y: a.y, w: mw, h: lines.length * lh, lh: lh, lines: lines };
+}
+// first touch of target or stop after the entry candle (a candle that touches both counts as the stop: the safe reading)
+function positionOutcome(d) {
+    var long = d.type === 'long', i0 = indexOfTime(d.a.time), n = candles.length;
+    if (i0 < 0) { for (var k = 0; k < n; k++) if (candles[k].time >= d.a.time) { i0 = k; break; } }
+    if (i0 < 0) return null;
+    for (var i = i0 + 1; i < n && candles[i].time <= d.b.time; i++) {
+        var c = candles[i], hitS = long ? c.low <= d.c.price : c.high >= d.c.price, hitT = long ? c.high >= d.b.price : c.low <= d.b.price;
+        if (hitS) return { kind: 'stop', i: i };
+        if (hitT) return { kind: 'target', i: i };
+    }
+    var last = candles[n - 1];
+    return { kind: last.time > d.b.time ? 'expired' : 'open', price: last.time > d.b.time ? candles[Math.min(n - 1, i - 1)].close : last.close };
+}
+function paintPosition(ctx, d, selected, w, h) {
+    var long = d.type === 'long', a = px(d.a), xe = xOf(d.b.time), yt = yOf(d.b.price), ys = yOf(d.c.price);
+    if (!a || xe == null || yt == null || ys == null) return;
+    var x1 = Math.min(a.x, xe), x2 = Math.max(a.x, xe), up = C.up, dn = C.down;
+    ctx.setLineDash([]);
+    ctx.fillStyle = hexA(up, 0.16); ctx.fillRect(x1, Math.min(a.y, yt), x2 - x1, Math.abs(yt - a.y));
+    ctx.fillStyle = hexA(dn, 0.16); ctx.fillRect(x1, Math.min(a.y, ys), x2 - x1, Math.abs(ys - a.y));
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = '#B2B5BE'; ctx.beginPath(); ctx.moveTo(x1, a.y); ctx.lineTo(x2, a.y); ctx.stroke();
+    ctx.strokeStyle = hexA(up, 0.9); ctx.beginPath(); ctx.moveTo(x1, yt); ctx.lineTo(x2, yt); ctx.stroke();
+    ctx.strokeStyle = hexA(dn, 0.9); ctx.beginPath(); ctx.moveTo(x1, ys); ctx.lineTo(x2, ys); ctx.stroke();
+    var e = d.a.price, tpPct = (d.b.price - e) / e * 100 * (long ? 1 : -1), slPct = (d.c.price - e) / e * 100 * (long ? -1 : 1);
+    var rr = Math.abs(d.b.price - e) / Math.max(1e-12, Math.abs(d.c.price - e));
+    var acc = d.acc || 1000, risk = d.risk != null ? d.risk : 1, qty = acc * risk / 100 / Math.max(1e-12, Math.abs(e - d.c.price));
+    // labels sit inside their boxes and never run off the right edge
+    function lab(t, y, bg, fg) { ctx.font = '600 10.5px -apple-system, Roboto, sans-serif'; var tw = ctx.measureText(t).width + 10; label(ctx, t, Math.max(2, Math.min(x1 + 2, w - tw - 2)), y, bg, fg); }
+    var inT = long ? -1 : 1;                                       // direction from the entry line into the target box
+    lab('목표 ' + fmtPrice(d.b.price) + '  ' + (tpPct >= 0 ? '+' : '') + tpPct.toFixed(2) + '%', yt - inT * 11, hexA(up, 0.9), '#0b0e11');
+    lab('손절 ' + fmtPrice(d.c.price) + '  −' + Math.abs(slPct).toFixed(2) + '%', ys + inT * 11, hexA(dn, 0.9), '#0b0e11');
+    var o = positionOutcome(d), st = '';
+    if (o) {
+        if (o.kind === 'target') st = '목표 도달 +' + Math.abs(tpPct).toFixed(2) + '%';
+        else if (o.kind === 'stop') st = '손절 −' + Math.abs(slPct).toFixed(2) + '%';
+        else { var pl = (o.price - e) / e * 100 * (long ? 1 : -1); st = (o.kind === 'open' ? '진행 ' : '종료 ') + (pl >= 0 ? '+' : '') + pl.toFixed(2) + '%'; }
+    }
+    var info = (long ? '롱' : '숏') + ' · 손익비 ' + rr.toFixed(2) + (st ? ' · ' + st : '');
+    lab(info, a.y + inT * 11, 'rgba(30,34,45,.92)', '#E7EAEE');
+    if (d.qty !== false) lab('수량 ' + (qty >= 100 ? qty.toFixed(0) : qty >= 1 ? qty.toFixed(2) : qty.toPrecision(3)) + ' · 위험 $' + (acc * risk / 100).toFixed(0), a.y + inT * 29, 'rgba(30,34,45,.85)', '#B2B5BE');
+    if (selected) { handle(ctx, a); handle(ctx, { x: a.x, y: yt }); handle(ctx, { x: a.x, y: ys }); handle(ctx, { x: xe, y: a.y }); }
+}
+// new drawings start with sensible geometry: a channel 6 % of the visible range wide, a position 1 : 2 with the stop
+// 5 % of the visible range away and 30 candles long
+function initDrawing(d) {
+    var hgt = chart.paneSize(0).height, top = mainSeries().coordinateToPrice(0), bot = mainSeries().coordinateToPrice(hgt);
+    var span = top != null && bot != null ? Math.abs(top - bot) : d.a.price * 0.05;
+    if (d.type === 'channel' && d.off == null) d.off = -span * 0.06;
+    if (d.type === 'long' || d.type === 'short') {
+        var r = span * 0.05, sgn = d.type === 'long' ? 1 : -1, l = logicalOfTime(d.a.time);
+        d.b = { time: timeOfLogical((l == null ? candles.length - 1 : l) + 30), price: d.a.price + sgn * 2 * r };
+        d.c = { time: d.a.time, price: d.a.price - sgn * r };
+    }
+    if (d.type === 'text' && !d.col) d.col = '#E7EAEE';
+}
+// writing / editing a text drawing
+function openTextSheet(d, isNew) {
+    var box = document.createElement('div'); box.className = 'fld';
+    box.innerHTML = '<textarea class="code" rows="4" maxlength="500" placeholder="메모를 입력하세요" style="width:100%;font-family:inherit"></textarea>';
+    var ta = box.querySelector('textarea'); ta.value = d.text || '';
+    var foot = document.createElement('div'); foot.className = 'dfoot';
+    foot.innerHTML = '<div class="drow"><button class="cancel">취소</button><span style="flex:1"></span><button class="ok">확인</button></div>';
+    var done = false;
+    function finish(save) {
+        if (done) return; done = true;
+        var t = ta.value.replace(/\s+$/, '');
+        if (save && t) { d.text = t; if (isNew) { DR.list.push(d); DR.sel = d.id; } DR.save(); }
+        else if (isNew) { /* nothing written: no drawing */ }
+        sheetOnClose = null; closeSheet(); DR.redraw(); refreshRail();
+    }
+    foot.querySelector('.cancel').onclick = function () { finish(false); };
+    foot.querySelector('.ok').onclick = function () { finish(true); };
+    openSheet(isNew ? '텍스트' : '텍스트 수정', [box], foot);
+    sheetOnClose = function () { finish(false); };
+    setTimeout(function () { try { ta.focus(); } catch (e) { /* ignore */ } }, 50);
+}
+
 function fmtLevel(v) { return String(Math.round(v * 1000) / 1000); }
 // a trend line extended to the pane edge on the chosen side(s)
 function trendEnds(d, a, b, w, h) {
@@ -1629,7 +1753,19 @@ function distTo(d, p) {
     if (!a) return Infinity;
     if (d.type === 'hline') return Math.abs(p.y - a.y);
     if (d.type === 'vline') return Math.abs(p.x - a.x);
+    if (d.type === 'hray') return p.x >= a.x - 10 ? Math.abs(p.y - a.y) : Infinity;
+    if (d.type === 'text') { var bb = textBox(null, d, a); return p.x >= bb.x - 6 && p.x <= bb.x + bb.w + 6 && p.y >= bb.y - 5 && p.y <= bb.y + bb.h + 5 ? 0 : Infinity; }
     if (!b) return Infinity;
+    if (d.type === 'arrow') return segDist(p, a, b);
+    if (d.type === 'channel') {
+        var pc = chart.paneSize(0), cl = channelLines(d, pc.width, pc.height); if (!cl) return Infinity;
+        return Math.min(segDist(p, cl.base[0], cl.base[1]), segDist(p, cl.par[0], cl.par[1]), segDist(p, cl.mid[0], cl.mid[1]));
+    }
+    if ((d.type === 'long' || d.type === 'short') && d.c) {
+        var xe = xOf(d.b.time), yt = yOf(d.b.price), ys = yOf(d.c.price); if (xe == null || yt == null || ys == null) return Infinity;
+        var lx = Math.min(a.x, xe), rx = Math.max(a.x, xe), ty = Math.min(yt, ys), by = Math.max(yt, ys);
+        return p.x >= lx && p.x <= rx && p.y >= ty && p.y <= by ? 0 : Infinity;
+    }
     if (d.type === 'trend') { var ps1 = chart.paneSize(0), te = trendEnds(d, a, b, ps1.width, ps1.height); return segDist(p, te[0], te[1]); }
     if (d.type === 'ray') { var ps0 = chart.paneSize(0); return segDist(p, a, rayEnd(a, b, ps0.width, ps0.height)); }
     if (d.type === 'rect') {
@@ -1648,6 +1784,12 @@ function handlesOf(d) {
     var a = px(d.a), b = d.b ? px(d.b) : null, ps = chart.paneSize(0);
     if (d.type === 'hline') return a ? [{ k: 'a', x: Math.min(40, ps.width / 3), y: a.y }] : [];
     if (d.type === 'vline') return a ? [{ k: 'a', x: a.x, y: Math.max(20, ps.height - 40) }] : [];
+    if (d.type === 'hray' || d.type === 'text') return a ? [{ k: 'a', x: a.x, y: a.y }] : [];
+    if (d.type === 'channel') { var cl = channelLines(d, ps.width, ps.height); return [a && { k: 'a', x: a.x, y: a.y }, b && { k: 'b', x: b.x, y: b.y }, cl && { k: 'c', x: cl.c.x, y: cl.c.y }].filter(Boolean); }
+    if ((d.type === 'long' || d.type === 'short') && d.c && a) {
+        var xe = xOf(d.b.time), yt = yOf(d.b.price), ys = yOf(d.c.price);
+        return [{ k: 'a', x: a.x, y: a.y }, yt != null && { k: 'tp', x: a.x, y: yt }, ys != null && { k: 'sl', x: a.x, y: ys }, xe != null && { k: 'e', x: xe, y: a.y }].filter(Boolean);
+    }
     return [a && { k: 'a', x: a.x, y: a.y }, b && { k: 'b', x: b.x, y: b.y }].filter(Boolean);
 }
 var HIT_PX = 18;
@@ -1695,7 +1837,9 @@ function cloneA(a) { return { time: a.time, price: a.price }; }
 function setTool(t) {
     if (t && DR.hidden) { DR.hidden = false; LS.set('drHidden', false); }
     DR.tool = t; DR.draft = null;
-    var hints = { trend: '시작점을 누르세요', ray: '시작점을 누르세요', vline: '시간 위치를 누르세요', hline: '가격 위치를 누르세요', fib: '시작점을 누르세요', rect: '한쪽 모서리를 누르세요', measure: '시작점을 누르세요' };
+    var hints = { trend: '시작점을 누르세요', ray: '시작점을 누르세요', vline: '시간 위치를 누르세요', hline: '가격 위치를 누르세요', fib: '시작점을 누르세요', rect: '한쪽 모서리를 누르세요', measure: '시작점을 누르세요',
+        hray: '가격 위치를 누르세요', arrow: '시작점을 누르세요', channel: '추세선 시작점을 누르세요 · 그린 뒤 가운데 손잡이로 폭 조절', text: '글을 쓸 위치를 누르세요',
+        long: '진입 가격을 누르세요 · 목표 · 손절은 손잡이로 조절', short: '진입 가격을 누르세요 · 목표 · 손절은 손잡이로 조절' };
     showHint(t ? hints[t] : '');
     refreshRail(); DR.redraw();
 }
@@ -1710,7 +1854,7 @@ function onDown(e) {
     if (DR.tool) {
         var a = anchorAt(p, true); if (!a) return;
         if (DR.draft && DR.draft.awaiting) { DR.draft.b = a; DR.draft.awaiting = false; gesture = { mode: 'create', startP: p, moved: true }; }
-        else if (DR.tool === 'hline' || DR.tool === 'vline') { DR.draft = { id: 0, type: DR.tool, a: a }; gesture = { mode: 'create', startP: p, moved: true }; }
+        else if (ONE_POINT[DR.tool]) { DR.draft = { id: 0, type: DR.tool, a: a }; gesture = { mode: 'create', startP: p, moved: true }; }
         else { DR.draft = { id: 0, type: DR.tool, a: a, b: cloneA(a) }; gesture = { mode: 'create', startP: p, moved: false }; }
     } else {
         if (DR.hidden) return;
@@ -1721,7 +1865,7 @@ function onDown(e) {
             var d = hitDrawing(p);
             if (!d) { return; }
             DR.sel = d.id; refreshRail();
-            gesture = { mode: 'move', d: d, startP: p, moved: false, orig: { a: px(d.a), b: d.b ? px(d.b) : null } };
+            gesture = { mode: 'move', d: d, startP: p, moved: false, orig: { a: px(d.a), b: d.b ? px(d.b) : null, c: d.c ? px(d.c) : null } };
         }
     }
     gesture.id = e.pointerId;
@@ -1740,20 +1884,31 @@ function onMove(e) {
     if (!gesture.moved && Math.hypot(p.x - gesture.startP.x, p.y - gesture.startP.y) > 8) gesture.moved = true;
     if (gesture.mode === 'create') {
         var a = anchorAt(p, true); if (!a) return;
-        if (DR.draft.type === 'hline' || DR.draft.type === 'vline') DR.draft.a = a; else if (gesture.moved) DR.draft.b = a;
+        if (ONE_POINT[DR.draft.type]) DR.draft.a = a; else if (gesture.moved) DR.draft.b = a;
     } else if (gesture.mode === 'handle' && gesture.moved) {
         var ah = anchorAt(p, true); if (!ah) return;
-        if (gesture.d.type === 'hline') gesture.d.a.price = ah.price;
-        else if (gesture.d.type === 'vline') gesture.d.a.time = ah.time;
-        else gesture.d[gesture.which] = ah;
+        var gd = gesture.d, wk = gesture.which;
+        if (gd.type === 'hline') gd.a.price = ah.price;
+        else if (gd.type === 'vline') gd.a.time = ah.time;
+        else if (gd.type === 'channel' && wk === 'c') {                     // the width: price under the finger minus the base line there
+            var mt = (gd.a.time + gd.b.time) / 2, base = (gd.a.price + gd.b.price) / 2; gd.off = ah.price - base; void mt;
+        } else if ((gd.type === 'long' || gd.type === 'short') && gd.c) {
+            if (wk === 'a') { var dp = ah.price - gd.a.price, dl = (logicalOfTime(ah.time) || 0) - (logicalOfTime(gd.a.time) || 0);
+                gd.b = { time: timeOfLogical((logicalOfTime(gd.b.time) || 0) + dl), price: gd.b.price + dp }; gd.c = { time: ah.time, price: gd.c.price + dp }; gd.a = ah; }
+            else if (wk === 'tp') gd.b = { time: gd.b.time, price: ah.price };
+            else if (wk === 'sl') gd.c = { time: gd.c.time, price: ah.price };
+            else if (wk === 'e' && ah.time > gd.a.time) gd.b = { time: ah.time, price: gd.b.price };
+        } else gd[wk] = ah;
     } else if (gesture.mode === 'move' && gesture.moved) {
         var dx = p.x - gesture.startP.x, dy = p.y - gesture.startP.y, d = gesture.d;
         var na = anchorAt({ x: gesture.orig.a.x + dx, y: gesture.orig.a.y + dy }, false);
         if (d.type === 'hline') { if (na) d.a.price = na.price; }
         else if (d.type === 'vline') { if (na) d.a.time = na.time; }
+        else if (!d.b) { if (na) d.a = na; }                                 // one-point tools (horizontal ray, text)
         else if (na && gesture.orig.b) {
             var nb = anchorAt({ x: gesture.orig.b.x + dx, y: gesture.orig.b.y + dy }, false);
-            if (nb) { d.a = na; d.b = nb; }
+            var nc = gesture.orig.c ? anchorAt({ x: gesture.orig.c.x + dx, y: gesture.orig.c.y + dy }, false) : null;
+            if (nb && (!gesture.orig.c || nc)) { d.a = na; d.b = nb; if (nc) d.c = nc; }
         }
     }
     DR.redraw();
@@ -1765,15 +1920,16 @@ function onUp(e) {
     var g = gesture; gesture = null; swallowUntil = Date.now() + 350;
     if (g.mode === 'create') {
         var dr = DR.draft;
-        if (dr.type !== 'hline' && dr.type !== 'vline' && !g.moved) { dr.awaiting = true; showHint('끝점을 누르세요'); DR.redraw(); return; }       // tap-tap flow
+        if (!ONE_POINT[dr.type] && !g.moved) { dr.awaiting = true; showHint('끝점을 누르세요'); DR.redraw(); return; }       // tap-tap flow
         DR.draft = null;
         if (dr.type === 'measure') { DR.measure = dr; setTool(null); return; }
-        dr.id = DR.nextId++; delete dr.awaiting; applyTemplate(dr);
+        dr.id = DR.nextId++; delete dr.awaiting; applyTemplate(dr); initDrawing(dr);
+        if (dr.type === 'text') { setTool(null); openTextSheet(dr, true); return; }
         DR.list.push(dr); DR.sel = dr.id; DR.save(); setTool(null);
     } else if (g.moved) { DR.save(); }
     else if (g.d) {                                                   // double tap on a drawing opens its settings, like TradingView
         var now = Date.now();
-        if (lastTap.id === g.d.id && now - lastTap.t < 420) { lastTap.id = null; DR.redraw(); openDrawingSettings(g.d); return; }
+        if (lastTap.id === g.d.id && now - lastTap.t < 420) { lastTap.id = null; DR.redraw(); if (g.d.type === 'text') openTextSheet(g.d, false); else openDrawingSettings(g.d); return; }
         lastTap.id = g.d.id; lastTap.t = now;
     }
     DR.redraw();
@@ -1858,17 +2014,55 @@ var ICON = {
     candle: '<svg viewBox="0 0 24 24"><path d="M7 4v3M7 17v3M17 7v3M17 20v-3"/><rect x="5" y="7" width="4" height="10" rx=".5"/><rect x="15" y="10" width="4" height="7" rx=".5"/></svg>',
     ha: '<svg viewBox="0 0 24 24"><path d="M7 3v3M7 18v3M17 6v3M17 21v-3"/><rect x="5" y="6" width="4" height="12" rx=".5"/><rect x="15" y="9" width="4" height="9" rx=".5"/></svg>',
     line: '<svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 8-10"/></svg>',
-    area: '<svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 8-10v12H3z"/></svg>'
+    area: '<svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 8-10v12H3z"/></svg>',
+    hray: '<svg viewBox="0 0 24 24"><path d="M7 12h14"/><circle cx="7" cy="12" r="2"/></svg>',
+    arrow: '<svg viewBox="0 0 24 24"><path d="M5 19L18 6"/><path d="M11 6h7v7"/></svg>',
+    channel: '<svg viewBox="0 0 24 24"><path d="M3 15L15 5M9 19L21 9"/><path d="M6 17L18 7" stroke-dasharray="2 2"/></svg>',
+    text: '<svg viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>',
+    long: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="8" rx="1"/><rect x="4" y="12" width="16" height="6" rx="1" stroke-dasharray="2 2"/><path d="M4 12h16"/></svg>',
+    short: '<svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="6" rx="1" stroke-dasharray="2 2"/><rect x="4" y="12" width="16" height="8" rx="1"/><path d="M4 12h16"/></svg>'
 };
-var TOOLS = [['cursor', '선택'], ['trend', '추세선'], ['ray', '연장선'], ['hline', '수평선'], ['vline', '수직선'], ['fib', '피보나치'], ['rect', '사각형'], ['measure', '측정']];
+var TOOLS = [['cursor', '선택'], ['trend', '추세선'], ['ray', '연장선'], ['hray', '수평 레이'], ['hline', '수평선'], ['vline', '수직선'], ['arrow', '화살표'], ['channel', '평행 채널'],
+    ['fib', '피보나치'], ['rect', '사각형'], ['text', '텍스트'], ['long', '롱 포지션'], ['short', '숏 포지션'], ['measure', '측정']];
+var TOOL_NAME = {}; TOOLS.forEach(function (t) { TOOL_NAME[t[0]] = t[1]; });
+var TOOL_GROUPS = [
+    { id: 'cursor', tools: ['cursor'] },
+    { id: 'lines', tools: ['trend', 'ray', 'hray', 'hline', 'vline', 'arrow', 'channel'] },
+    { id: 'fibs', tools: ['fib'] },
+    { id: 'shapes', tools: ['rect', 'text'] },
+    { id: 'pos', tools: ['long', 'short', 'measure'] }
+];
+var railCur = LS.get('railCur', {}) || {};
+function groupOf(tool) { for (var i = 0; i < TOOL_GROUPS.length; i++) if (TOOL_GROUPS[i].tools.indexOf(tool) >= 0) return TOOL_GROUPS[i]; return null; }
+function groupTool(g) { var t = railCur[g.id]; return g.tools.indexOf(t) >= 0 ? t : g.tools[0]; }
+function closeFly() { var f = $('rail_fly'); if (f) f.remove(); }
+function openFly(g, btn) {
+    closeFly();
+    var f = document.createElement('div'); f.id = 'rail_fly';
+    g.tools.forEach(function (t) {
+        var b = document.createElement('button'); b.className = 'fly-item' + (DR.tool === t ? ' on' : '');
+        b.innerHTML = ICON[t] + '<span>' + TOOL_NAME[t] + '</span>';
+        b.onclick = function (e) { e.stopPropagation(); railCur[g.id] = t; LS.set('railCur', railCur); closeFly(); setTool(t); };
+        f.appendChild(b);
+    });
+    $('main').appendChild(f);
+    var r = btn.getBoundingClientRect(), m = $('main').getBoundingClientRect();
+    f.style.top = Math.max(4, Math.min(m.height - f.offsetHeight - 4, r.top - m.top)) + 'px';
+}
+document.addEventListener('pointerdown', function (e) { var f = $('rail_fly'); if (f && !f.contains(e.target) && !(e.target.closest && e.target.closest('#rail'))) closeFly(); }, true);
 var trashArmed = null;
 
 function buildRail() {
     var r = $('rail'); r.innerHTML = '';
-    TOOLS.forEach(function (t) {
-        var b = document.createElement('button'); b.className = 'tool'; b.setAttribute('data-tool', t[0]);
-        b.innerHTML = ICON[t[0]] + '<span>' + t[1] + '</span>';
-        b.onclick = function () { setTool(t[0] === 'cursor' ? null : (DR.tool === t[0] ? null : t[0])); };
+    TOOL_GROUPS.forEach(function (g) {
+        var b = document.createElement('button'); b.className = 'tool'; b.setAttribute('data-group', g.id);
+        b.onclick = function () {
+            if (g.id === 'cursor') { closeFly(); setTool(null); return; }
+            if (g.tools.indexOf(DR.tool) >= 0) { closeFly(); setTool(null); return; }      // the group's tool is on: off again
+            if (g.tools.length === 1) { closeFly(); setTool(g.tools[0]); return; }
+            if ($('rail_fly')) { closeFly(); return; }
+            openFly(g, b);
+        };
         r.appendChild(b);
     });
     var sep = document.createElement('div'); sep.className = 'rail-sep'; r.appendChild(sep);
@@ -1880,10 +2074,13 @@ function buildRail() {
     refreshRail();
 }
 function refreshRail() {
-    var btns = document.querySelectorAll('#rail .tool[data-tool]');
+    var btns = document.querySelectorAll('#rail .tool[data-group]');
     for (var i = 0; i < btns.length; i++) {
-        var t = btns[i].getAttribute('data-tool');
-        btns[i].className = 'tool' + ((t === 'cursor' ? !DR.tool : DR.tool === t) ? ' active' : '');
+        var g = TOOL_GROUPS.filter(function (x) { return x.id === btns[i].getAttribute('data-group'); })[0];
+        var on = g.id === 'cursor' ? !DR.tool : g.tools.indexOf(DR.tool) >= 0, t = on && g.id !== 'cursor' ? DR.tool : groupTool(g);
+        btns[i].className = 'tool' + (on ? ' active' : '') + (g.tools.length > 1 ? ' grp' : '');
+        var html = ICON[t] + '<span>' + TOOL_NAME[t].replace(' 포지션', '') + '</span>';
+        if (btns[i].innerHTML !== html) btns[i].innerHTML = html;
     }
     var ey = $('eye'); if (ey) { ey.className = 'tool' + (DR.hidden ? ' active' : ''); ey.querySelector('span').textContent = DR.hidden ? '보이기' : '숨기기'; }
     var tr = $('trash'); if (tr) { tr.className = 'tool danger' + (trashArmed ? ' armed' : ''); tr.querySelector('span').textContent = trashArmed ? '전체삭제?' : (DR.sel != null ? '선택삭제' : '삭제'); }
@@ -1909,13 +2106,14 @@ function refreshDrBar() {
     var bar = $('dr_bar'), d = DR.list.filter(function (x) { return x.id === DR.sel; })[0];
     if (!d || DR.tool) { bar.className = ''; return; }
     var cur = drawingColor(d).toLowerCase(), html = '';
-    if (d.type !== 'fib') {
+    var plain = d.type !== 'fib' && d.type !== 'long' && d.type !== 'short';     // positions and fibs have their own colors
+    if (plain) {
         DR_COLORS.forEach(function (c) { html += '<button class="sw' + (cur === c.toLowerCase() ? ' on' : '') + '" data-c="' + c + '" style="background:' + c + '"></button>'; });
         html += '<span class="vsep"></span>';
     }
-    if (d.type !== 'fib') html += '<button class="tag" data-a="w">' + Math.round(d.w || 1.6) + 'px</button>' +
+    if (plain && d.type !== 'text') html += '<button class="tag" data-a="w">' + Math.round(d.w || 1.6) + 'px</button>' +
         '<button class="tag" data-a="s">' + (d.ds === 1 ? '- - -' : d.ds === 2 ? '· · ·' : '───') + '</button><span class="vsep"></span>';
-    if (drAlertHook && (d.type === 'hline' || d.type === 'trend' || d.type === 'ray')) html += '<button class="tag" data-a="alert" aria-label="알람">🔔 알람</button><span class="vsep"></span>';
+    if (drAlertHook && (d.type === 'hline' || d.type === 'hray' || d.type === 'trend' || d.type === 'ray')) html += '<button class="tag" data-a="alert" aria-label="알람">🔔 알람</button><span class="vsep"></span>';
     html += '<button class="tag" data-a="cfg" aria-label="설정">⚙ 설정</button>' +
         '<span class="vsep"></span><button class="tag" data-a="x" style="color:' + C.down + '">삭제</button>';
     bar.innerHTML = html; bar.className = 'show';
@@ -1934,7 +2132,7 @@ $('dr_bar').addEventListener('click', function (e) {
 
 // ---- drawing settings sheet: 모습 (style) / 좌표 (points) / 보임 (intervals), like TradingView ---------------------
 // Edits apply live on the chart behind the sheet; 취소 restores the drawing as it was, 확인 / closing keeps the edits.
-var DR_NAMES = { trend: '추세선', ray: '연장선', hline: '수평선', vline: '수직선', fib: '피보나치 되돌림', rect: '사각형' };
+var DR_NAMES = { trend: '추세선', ray: '연장선', hline: '수평선', vline: '수직선', fib: '피보나치 되돌림', rect: '사각형', hray: '수평 레이', arrow: '화살표', channel: '평행 채널', text: '텍스트', long: '롱 포지션', short: '숏 포지션' };
 var drEdit = null;               // { d, snap, tab, colorFor, tpl }
 function openDrawingSettings(d, tab) {
     if (!d) return;
@@ -2005,9 +2203,32 @@ function rangeRow(label, min, max, step, unit, cur, set) {
 var WIDTHS = [[1, '1px'], [2, '2px'], [3, '3px'], [4, '4px']], DASHES = [[0, '실선 ───'], [1, '파선 - - -'], [2, '점선 · · ·']];
 function drStyle(d) {
     var out = [], col = drawingColor(d), t = d.type;
+    if (t === 'long' || t === 'short') {
+        out.push(numRow('계좌 금액 ($)', d.acc || 1000, 1, 1e9, function (v) { d.acc = v; }));
+        out.push(numRow('한 번에 감수할 위험 (%)', d.risk != null ? d.risk : 1, 0.1, 100, function (v) { d.risk = v; }));
+        out.push(swRow('수량 · 위험 금액 표시', d.qty !== false, function (v) { d.qty = v; }));
+        out.push(noteRow('수량 = 계좌 × 위험% ÷ (진입가 − 손절가). 진입 뒤 봉에서 목표와 손절 중 먼저 닿은 쪽을 표시하고, 한 봉에서 둘 다 닿으면 손절로 봅니다.'));
+        return out;
+    }
+    if (t === 'text') {
+        out.push(colorRow('글자 색', 'line', col, function (c) { d.col = c; }));
+        out.push(segRow('글자 크기', [[11, '작게'], [14, '보통'], [18, '크게'], [24, '아주 크게']], d.fs || 14, function (v) { d.fs = v; }));
+        out.push(swRow('배경', !!d.tbg, function (v) { d.tbg = v; }));
+        var ed = document.createElement('button'); ed.className = 'reset'; ed.textContent = '내용 고치기';
+        ed.onclick = function () { closeSheet(); openTextSheet(d, false); };
+        out.push(ed);
+        return out;
+    }
     out.push(colorRow(t === 'rect' ? '테두리 색' : '선 색', 'line', col, function (c) { d.col = c; }));
     out.push(segRow('두께', WIDTHS, Math.max(1, Math.round(d.w || 1.6)), function (v) { d.w = v; }));
     out.push(segRow('선 모양', DASHES, d.ds || 0, function (v) { d.ds = v; }));
+    if (t === 'channel') {
+        out.push(segRow('연장', [['none', '안 함'], ['left', '왼쪽'], ['right', '오른쪽'], ['both', '양쪽']], d.ext || 'none', function (v) { d.ext = v; }));
+        out.push(swRow('가운데 선', d.mid !== false, function (v) { d.mid = v; }));
+        out.push(swRow('채널 안 채우기', d.fill !== false, function (v) { d.fill = v; }));
+        if (d.fill !== false) out.push(rangeRow('채우기 진하기', 0, 40, 1, '%', d.fa != null ? d.fa : 10, function (v) { d.fa = v; }));
+    }
+    if (t === 'hray') out.push(swRow('가격 라벨', d.lbl !== false, function (v) { d.lbl = v; }));
     if (t === 'trend') {
         out.push(segRow('연장', [['none', '안 함'], ['left', '왼쪽'], ['right', '오른쪽'], ['both', '양쪽']], d.ext || 'none', function (v) { d.ext = v; }));
         out.push(swRow('통계 표시 (가격 차 · % · 봉 수)', !!d.stats, function (v) { d.stats = v; }));
@@ -2087,7 +2308,16 @@ function anchorRows(d, key, label, withPrice, withTime) {
     });
     return el;
 }
+function numRow(label, v, min, max, set) {
+    var el = document.createElement('div'); el.className = 'fld';
+    el.innerHTML = '<div class="top"><span>' + label + '</span><input type="number" inputmode="decimal" step="any" value="' + v + '"></div>';
+    var inp = el.querySelector('input');
+    inp.onchange = function () { var n = parseFloat(inp.value); if (!isFinite(n)) n = v; n = clampN(n, min, max); inp.value = n; set(n); drChanged(); };
+    return el;
+}
 function drCoords(d) {
+    if (d.type === 'long' || d.type === 'short') return [anchorRows(d, 'a', '진입', true, true), anchorRows(d, 'b', '목표가', true, false), anchorRows(d, 'c', '손절가', true, false)];
+    if (d.type === 'hray' || d.type === 'text') return [anchorRows(d, 'a', '위치', true, true)];
     if (d.type === 'hline') return [anchorRows(d, 'a', '가격', true, false)];
     if (d.type === 'vline') return [anchorRows(d, 'a', '시간', false, true)];
     return [anchorRows(d, 'a', d.type === 'fib' ? '1번 점 (레벨 1)' : '1번 점', true, true), anchorRows(d, 'b', d.type === 'fib' ? '2번 점 (레벨 0)' : '2번 점', true, true)];

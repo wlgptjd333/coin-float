@@ -174,9 +174,9 @@ function renderForm() {
 // ---- lines drawn on the chart --------------------------------------------------------------------------------------------
 function lineOf(d) {
     var a = d.a, b = d.b || d.a;
-    var horiz = d.type === 'hline';
+    var horiz = d.type === 'hline' || d.type === 'hray';
     return { t1: horiz ? 0 : Math.round(a.time * 1000), p1: a.price, t2: horiz ? 0 : Math.round(b.time * 1000), p2: horiz ? a.price : b.price,
-        label: horiz ? '수평선 ' + CF.fmtPrice(a.price) : (d.type === 'ray' ? '연장선' : '추세선') };
+        label: horiz ? (d.type === 'hray' ? '수평 레이 ' : '수평선 ') + CF.fmtPrice(a.price) : (d.type === 'ray' ? '연장선' : '추세선') };
 }
 CF.onDrawingAlert(function (d) {
     var existing = data.rules.filter(function (r) { return r.symbol === CF.symbol() && r.drawing === String(d.id); })[0];

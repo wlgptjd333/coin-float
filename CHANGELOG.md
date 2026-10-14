@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.22.0] - 2026-10-15
+
+### Added
+- **Drawing tools**: parallel channel (width handle, middle line, fill, extension), horizontal ray, arrow, text notes
+  (multi-line, size, background; double-tap to edit), long and short position (entry, target, stop and end
+  handles, risk / reward, % to target and stop, position size from account and risk %, and the outcome: target hit,
+  stopped (a candle touching both counts as stopped), running or expired with its P/L).
+- **Tool groups in the rail**, like TradingView: lines, Fibonacci, shapes, positions; a group opens its list and
+  remembers the last tool used. Horizontal rays can carry price alerts.
+
 ## [1.21.0] - 2026-10-15
 
 ### Added
