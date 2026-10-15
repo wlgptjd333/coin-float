@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.26.0] - 2026-10-15
+
+### Added
+- **Indicator condition alerts** (🔔 → 지표 조건), checked on closed candles like ta.crossover / ta.crossunder:
+  RSI across a level, price across an EMA / SMA, moving average golden / dead cross, MACD across its signal or zero,
+  close beyond the Bollinger band. Unit tests cover each; replayed on BTC 15m a MACD signal cross fires about 7
+  times a day, so the sheet suggests 1h or higher for it.
+
 ## [1.25.0] - 2026-10-15
 
 ### Added

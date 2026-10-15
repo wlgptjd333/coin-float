@@ -102,6 +102,51 @@ class AlertEngineTest {
     }
 
     @Test
+    fun rsiLevelCrossFiresOnceOnTheCrossingCandle() {
+        val c = ArrayList<Double>(); var p = 100.0
+        repeat(30) { p -= 0.5; c += p }                       // a long fall: RSI deep below 30
+        repeat(6) { p += 1.5; c += p }                        // a strong bounce lifts it through 30
+        val b = bars(c)
+        var hits = 0
+        for (n in 20..b.size) if (AlertEngine.indicatorCross(b.subList(0, n), "rsi", up = true, down = false, len = 14, lvl = 30.0) != null) hits++
+        assertEquals(1, hits)
+    }
+
+    @Test
+    fun goldenAndDeadCross() {
+        val c = ArrayList<Double>(); var p = 100.0
+        repeat(40) { p -= 0.3; c += p }
+        repeat(40) { p += 0.6; c += p }
+        val b = bars(c)
+        var golden = 0; var dead = 0
+        for (n in 30..b.size) {
+            val s = AlertEngine.indicatorCross(b.subList(0, n), "mama", up = true, down = true, len = 5, len2 = 20, useEma = false) ?: continue
+            if (s.marker == "골든") golden++ else dead++
+        }
+        assertEquals(1, golden); assertEquals(0, dead)
+    }
+
+    @Test
+    fun priceAcrossMaAndBollinger() {
+        val flat = List(30) { 100.0 + if (it % 2 == 0) 0.2 else -0.2 }
+        val up = bars(flat + 103.0)
+        assertNotNull(AlertEngine.indicatorCross(up, "pma", up = true, down = false, len = 20, useEma = false))
+        assertNotNull(AlertEngine.indicatorCross(up, "bb", up = true, down = false, len = 20, bbm = 2.0))
+        assertNull(AlertEngine.indicatorCross(bars(flat + 100.1), "bb", up = true, down = true, len = 20, bbm = 2.0))
+    }
+
+    @Test
+    fun macdCrossesItsSignal() {
+        val c = ArrayList<Double>(); var p = 100.0
+        repeat(60) { p -= 0.4; c += p }
+        repeat(30) { p += 1.0; c += p }
+        val b = bars(c)
+        var hits = 0
+        for (n in 40..b.size) if (AlertEngine.indicatorCross(b.subList(0, n), "macd", up = true, down = false) != null) hits++
+        assertEquals(1, hits)
+    }
+
+    @Test
     fun weeklyCandlesOpenOnMonday() {
         val wed = 1_791_936_000_000L                         // 2026-10-14 (Wednesday) 00:00 UTC
         val open = AlertTime.currentOpen("1w", wed)

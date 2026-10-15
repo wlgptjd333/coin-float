@@ -234,6 +234,74 @@ object AlertEngine {
         return null
     }
 
+    /** Bollinger bands like ta.bb: SMA and the population standard deviation of the closes. */
+    fun bollinger(close: DoubleArray, len: Int, mult: Double): Pair<DoubleArray, DoubleArray> {
+        val mid = sma(close, len)
+        val up = DoubleArray(close.size) { Double.NaN }
+        val lo = DoubleArray(close.size) { Double.NaN }
+        for (i in close.indices) {
+            if (mid[i].isNaN()) continue
+            var sq = 0.0
+            for (j in i - len + 1..i) { val d = close[j] - mid[i]; sq += d * d }
+            val sd = Math.sqrt(sq / len)
+            up[i] = mid[i] + mult * sd; lo[i] = mid[i] - mult * sd
+        }
+        return up to lo
+    }
+
+    private fun crossUp(a0: Double, a1: Double, b0: Double, b1: Double) = !a0.isNaN() && !a1.isNaN() && !b0.isNaN() && !b1.isNaN() && a0 <= b0 && a1 > b1
+    private fun crossDn(a0: Double, a1: Double, b0: Double, b1: Double) = !a0.isNaN() && !a1.isNaN() && !b0.isNaN() && !b1.isNaN() && a0 >= b0 && a1 < b1
+
+    /**
+     * Indicator conditions on the newest closed candle (like TradingView's ta.crossover / ta.crossunder):
+     * rsi: RSI(len) across `lvl`; pma: close across an MA(len); mama: MA(len) across MA(len2) (golden / dead cross);
+     * macd: MACD line across its signal; macd0: MACD line across zero; bb: close beyond the Bollinger band (len, bbm).
+     */
+    fun indicatorCross(
+        bars: List<Bar>, cond: String, up: Boolean, down: Boolean,
+        len: Int = 14, lvl: Double = 70.0, len2: Int = 50, useEma: Boolean = true, bbm: Double = 2.0
+    ): Signal? {
+        val n = bars.size
+        if (n < 3) return null
+        val close = DoubleArray(n) { bars[it].close }
+        val a = n - 2
+        val z = n - 1
+        val t = bars[z].openTime
+        fun avg(len: Int) = if (useEma) ema(close, len) else sma(close, len)
+        val maName = if (useEma) "EMA" else "SMA"
+        when (cond) {
+            "rsi" -> {
+                val r = rsi(close, len)
+                if (up && crossUp(r[a], r[z], lvl, lvl)) return Signal(t, "rsi-up-$t", "RSI($len) $lvl 상향 돌파", "RSI ${fmt1(r[a])} → ${fmt1(r[z])}", "RSI↑")
+                if (down && crossDn(r[a], r[z], lvl, lvl)) return Signal(t, "rsi-dn-$t", "RSI($len) $lvl 하향 이탈", "RSI ${fmt1(r[a])} → ${fmt1(r[z])}", "RSI↓")
+            }
+            "pma" -> {
+                val m = avg(len)
+                if (up && crossUp(close[a], close[z], m[a], m[z])) return Signal(t, "pma-up-$t", "가격이 $maName$len 위로 돌파", "$maName$len ${fmtP(m[z])} 위에서 마감", "$maName↑")
+                if (down && crossDn(close[a], close[z], m[a], m[z])) return Signal(t, "pma-dn-$t", "가격이 $maName$len 아래로 이탈", "$maName$len ${fmtP(m[z])} 아래에서 마감", "$maName↓")
+            }
+            "mama" -> {
+                val f = avg(len)
+                val s = avg(len2)
+                if (up && crossUp(f[a], f[z], s[a], s[z])) return Signal(t, "mama-up-$t", "골든 크로스 $maName$len × $len2", "$maName$len ${fmtP(f[z])}이 $maName$len2 ${fmtP(s[z])} 위로", "골든")
+                if (down && crossDn(f[a], f[z], s[a], s[z])) return Signal(t, "mama-dn-$t", "데드 크로스 $maName$len × $len2", "$maName$len ${fmtP(f[z])}이 $maName$len2 ${fmtP(s[z])} 아래로", "데드")
+            }
+            "macd", "macd0" -> {
+                val (m, sg) = macd(close)
+                val ref = if (cond == "macd") sg else DoubleArray(n) { 0.0 }
+                val what = if (cond == "macd") "시그널" else "0선"
+                if (up && crossUp(m[a], m[z], ref[a], ref[z])) return Signal(t, "$cond-up-$t", "MACD $what 상향 교차", "MACD ${fmtP(m[z])}", "MACD↑")
+                if (down && crossDn(m[a], m[z], ref[a], ref[z])) return Signal(t, "$cond-dn-$t", "MACD $what 하향 교차", "MACD ${fmtP(m[z])}", "MACD↓")
+            }
+            "bb" -> {
+                val (u, l) = bollinger(close, len, bbm)
+                if (up && crossUp(close[a], close[z], u[a], u[z])) return Signal(t, "bb-up-$t", "볼린저 상단 돌파 ($len, $bbm)", "상단 ${fmtP(u[z])} 위에서 마감", "BB↑")
+                if (down && crossDn(close[a], close[z], l[a], l[z])) return Signal(t, "bb-dn-$t", "볼린저 하단 이탈 ($len, $bbm)", "하단 ${fmtP(l[z])} 아래에서 마감", "BB↓")
+            }
+        }
+        return null
+    }
+
     private fun fmt1(v: Double) = String.format(java.util.Locale.US, "%.1f", v)
     fun fmtP(v: Double): String {
         val a = abs(v)

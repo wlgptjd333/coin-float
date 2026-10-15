@@ -37,6 +37,15 @@ function describe(r) {
     if (r.kind === 'div') return SRC_LABEL[r.src] + ' 다이버전스 · ' + [r.reg ? '일반' : '', r.hid ? '히든' : ''].filter(Boolean).join('·') + ' · ' + dirText(r, '상승', '하락');
     if (r.kind === 'brk') return r.len + '봉 ' + dirText(r, '고점 돌파', '저점 이탈') + (r.volMult ? ' · 거래량 확인' : '');
     if (r.kind === 'line') return (r.label || CF.fmtPrice(r.p1)) + ' ' + dirText(r, '상향 돌파', '하향 이탈');
+    if (r.kind === 'ind') {
+        var ma = r.ma === 'sma' ? 'SMA' : 'EMA';
+        if (r.cond === 'rsi') return 'RSI(' + r.len + ') ' + r.lvl + ' ' + dirText(r, '상향 돌파', '하향 이탈');
+        if (r.cond === 'pma') return '가격 × ' + ma + r.len + ' ' + dirText(r, '돌파', '이탈');
+        if (r.cond === 'mama') return ma + r.len + ' × ' + ma + r.len2 + ' ' + dirText(r, '골든', '데드') + ' 크로스';
+        if (r.cond === 'macd') return 'MACD × 시그널 ' + dirText(r, '상향', '하향');
+        if (r.cond === 'macd0') return 'MACD × 0선 ' + dirText(r, '상향', '하향');
+        if (r.cond === 'bb') return '볼린저(' + r.len + ', ' + r.bbm + ') ' + dirText(r, '상단 돌파', '하단 이탈');
+    }
     return r.kind;
 }
 
@@ -118,6 +127,14 @@ function numField(label, v, set) {
     return f;
 }
 var draft = null;
+// sensible starting values per condition
+function indDefaults(r, c) {
+    r.cond = c; r.up = true; r.down = true;
+    if (c === 'rsi') { r.len = 14; r.lvl = 70; r.down = false; }
+    if (c === 'pma') { r.len = 50; r.ma = 'ema'; }
+    if (c === 'mama') { r.len = 50; r.len2 = 200; r.ma = 'sma'; }
+    if (c === 'bb') { r.len = 20; r.bbm = 2; }
+}
 function lastClose() { var cs = CF.candles(); return cs.length ? cs[cs.length - 1].close : 0; }
 function openForm(rule, preset) {
     if (rule) draft = { orig: rule, r: JSON.parse(JSON.stringify(rule)) };
@@ -131,8 +148,9 @@ function openForm(rule, preset) {
 function renderForm() {
     var r = draft.r, rows = [], rr = function () { renderForm(); };
     var fromLine = !!r.drawing;
-    if (!fromLine) rows.push(seg('종류', [['vol', '거래량 급증'], ['div', '다이버전스'], ['brk', '고점·저점 돌파'], ['line', '가격 돌파']], r.kind, function (k) {
-        r.kind = k; if (k === 'line') { r.once = true; if (!(r.p1 > 0)) r.p1 = lastClose(); r.p2 = r.p1; r.t1 = r.t2 = 0; } rr();
+    if (!fromLine) rows.push(seg('종류', [['vol', '거래량 급증'], ['div', '다이버전스'], ['ind', '지표 조건'], ['brk', '고점·저점 돌파'], ['line', '가격 돌파']], r.kind, function (k) {
+        r.kind = k; if (k === 'line') { r.once = true; if (!(r.p1 > 0)) r.p1 = lastClose(); r.p2 = r.p1; r.t1 = r.t2 = 0; }
+        if (k === 'ind') { indDefaults(r, r.cond || 'rsi'); } rr();
     }));
     rows.push(seg('확인할 봉', IVS.map(function (i) { return [i, IV_LABEL[i]]; }), r.interval, function (i) { r.interval = i; rr(); }));
     if (r.kind === 'vol') {
@@ -146,6 +164,30 @@ function renderForm() {
         rows.push(toggle('하락(약세) 다이버전스', r.down, function (v) { r.down = v; if (!v && !r.up) r.up = true; rr(); }));
         rows.push(seg('고점·저점 확인에 필요한 봉 수', [[2, '2'], [3, '3'], [5, '5']], r.right, function (n) { r.right = n; rr(); }));
         rows.push(CF.noteRow('다이버전스는 고점·저점이 확정된 뒤에 알 수 있어서, 그 봉 수만큼 늦게 울립니다. 작을수록 빠르지만 잘못된 신호가 늘어요. 기준은 트레이딩뷰 다이버전스 지표와 같습니다(왼쪽 5봉, 두 고점·저점 사이 5~60봉).'));
+    } else if (r.kind === 'ind') {
+        rows.push(seg('조건', [['rsi', 'RSI 레벨'], ['pma', '가격 × 이평'], ['mama', '이평 교차'], ['macd', 'MACD 교차'], ['macd0', 'MACD 0선'], ['bb', '볼린저 이탈']], r.cond, function (c) { indDefaults(r, c); rr(); }));
+        if (r.cond === 'rsi') {
+            rows.push(numField('RSI 기간', r.len, function (n) { r.len = Math.round(Math.max(2, Math.min(100, n))); }));
+            rows.push(seg('기준선', [[70, '70'], [50, '50'], [30, '30'], [80, '80'], [20, '20']], r.lvl, function (v) { r.lvl = v; rr(); }));
+            rows.push(toggle('위로 넘을 때', r.up, function (v) { r.up = v; if (!v && !r.down) r.down = true; rr(); }));
+            rows.push(toggle('아래로 넘을 때', r.down, function (v) { r.down = v; if (!v && !r.up) r.up = true; rr(); }));
+        } else if (r.cond === 'pma' || r.cond === 'mama') {
+            rows.push(seg('이동평균', [['ema', 'EMA'], ['sma', 'SMA']], r.ma, function (v) { r.ma = v; rr(); }));
+            rows.push(seg(r.cond === 'mama' ? '빠른 이평' : '기간', [[9, '9'], [20, '20'], [50, '50'], [100, '100'], [200, '200']], r.len, function (v) { r.len = v; rr(); }));
+            if (r.cond === 'mama') rows.push(seg('느린 이평', [[21, '21'], [50, '50'], [100, '100'], [200, '200']], r.len2, function (v) { r.len2 = v; rr(); }));
+            rows.push(toggle(r.cond === 'mama' ? '골든 크로스 (빠른 이평이 위로)' : '가격이 위로 돌파', r.up, function (v) { r.up = v; if (!v && !r.down) r.down = true; rr(); }));
+            rows.push(toggle(r.cond === 'mama' ? '데드 크로스 (빠른 이평이 아래로)' : '가격이 아래로 이탈', r.down, function (v) { r.down = v; if (!v && !r.up) r.up = true; rr(); }));
+        } else if (r.cond === 'bb') {
+            rows.push(numField('기간', r.len, function (n) { r.len = Math.round(Math.max(2, Math.min(200, n))); }));
+            rows.push(seg('표준편차 배수', [[1.5, '1.5'], [2, '2'], [2.5, '2.5'], [3, '3']], r.bbm, function (v) { r.bbm = v; rr(); }));
+            rows.push(toggle('상단 위로 마감', r.up, function (v) { r.up = v; if (!v && !r.down) r.down = true; rr(); }));
+            rows.push(toggle('하단 아래로 마감', r.down, function (v) { r.down = v; if (!v && !r.up) r.up = true; rr(); }));
+        } else {
+            rows.push(toggle('상향 교차 (매수 신호)', r.up, function (v) { r.up = v; if (!v && !r.down) r.down = true; rr(); }));
+            rows.push(toggle('하향 교차 (매도 신호)', r.down, function (v) { r.down = v; if (!v && !r.up) r.up = true; rr(); }));
+            rows.push(CF.noteRow('MACD는 12 · 26 · 9 기본값으로 계산합니다(트레이딩뷰와 같음). 짧은 봉에서는 자주 울려요: BTC 15분봉 시그널 교차는 하루 7번 안팎이라, 1시간봉 이상을 권합니다.'));
+        }
+        rows.push(CF.noteRow('봉이 마감된 값으로 판단하고, 조건이 새로 만들어진 봉에서 한 번만 울립니다(트레이딩뷰의 교차와 같은 방식).'));
     } else if (r.kind === 'brk') {
         rows.push(seg('기준 기간', [[20, '20봉'], [50, '50봉'], [100, '100봉'], [200, '200봉']], r.len, function (n) { r.len = n; rr(); }));
         rows.push(toggle('고점 돌파 (직전 최고가 위로 마감)', r.up, function (v) { r.up = v; if (!v && !r.down) r.down = true; rr(); }));

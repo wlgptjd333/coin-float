@@ -28,17 +28,25 @@ data class AlertRule(
     val volMult: Double = 0.0,
     val t1: Long = 0, val p1: Double = 0.0, val t2: Long = 0, val p2: Double = 0.0,
     val label: String = "",
-    val drawing: String = ""
+    val drawing: String = "",
+    // "ind": an indicator condition (cond: rsi | pma | mama | macd | macd0 | bb)
+    val cond: String = "rsi",
+    val lvl: Double = 70.0,
+    val len2: Int = 50,
+    val ma: String = "ema",
+    val bbm: Double = 2.0
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("symbol", symbol); put("interval", interval); put("kind", kind); put("on", on); put("once", once)
         put("mult", mult); put("src", src); put("reg", reg); put("hid", hid); put("up", up); put("down", down)
         put("len", len); put("right", right); put("volMult", volMult)
         put("t1", t1); put("p1", p1); put("t2", t2); put("p2", p2); put("label", label); put("drawing", drawing)
+        put("cond", cond); put("lvl", lvl); put("len2", len2); put("ma", ma); put("bbm", bbm)
     }
 
     companion object {
-        val KINDS = setOf("vol", "div", "brk", "line")
+        val KINDS = setOf("vol", "div", "brk", "line", "ind")
+        val CONDS = setOf("rsi", "pma", "mama", "macd", "macd0", "bb")
         val SOURCES = setOf("rsi", "macd", "cvd", "vol")
         private val SYMBOL = Regex("^[A-Z0-9]{2,30}$")
 
@@ -59,10 +67,14 @@ data class AlertRule(
                 src = o.optString("src", "rsi").takeIf { it in SOURCES } ?: "rsi",
                 reg = o.optBoolean("reg", true), hid = o.optBoolean("hid", false),
                 up = o.optBoolean("up", true), down = o.optBoolean("down", true),
-                len = o.optInt("len", 20).coerceIn(5, 200), right = o.optInt("right", 3).coerceIn(1, 10),
+                len = o.optInt("len", 20).coerceIn(2, 400), right = o.optInt("right", 3).coerceIn(1, 10),
                 volMult = o.optDouble("volMult", 0.0).coerceIn(0.0, 20.0),
                 t1 = o.optLong("t1", 0), p1 = p1, t2 = o.optLong("t2", 0), p2 = p2,
-                label = o.optString("label").take(40), drawing = o.optString("drawing").take(40)
+                label = o.optString("label").take(40), drawing = o.optString("drawing").take(40),
+                cond = o.optString("cond", "rsi").takeIf { it in CONDS } ?: "rsi",
+                lvl = o.optDouble("lvl", 70.0).let { if (it.isFinite()) it.coerceIn(0.0, 100.0) else 70.0 },
+                len2 = o.optInt("len2", 50).coerceIn(2, 400), ma = if (o.optString("ma") == "sma") "sma" else "ema",
+                bbm = o.optDouble("bbm", 2.0).let { if (it.isFinite()) it.coerceIn(0.5, 5.0) else 2.0 }
             )
         }
 
