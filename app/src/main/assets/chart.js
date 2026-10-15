@@ -1291,23 +1291,69 @@ function fixFib(f) {                                             // stored setti
     return b;
 }
 var DR_TPL = LS.get('drTpl', {}); if (!DR_TPL || typeof DR_TPL !== 'object') DR_TPL = {};
-var STYLE_KEYS = ['col', 'w', 'ds', 'ext', 'lbl', 'lpos', 'stats', 'fill', 'fc', 'fa', 'fib', 'mid', 'fs', 'tbg', 'acc', 'risk', 'qty'];
+var STYLE_KEYS = ['col', 'w', 'ds', 'ext', 'lbl', 'lpos', 'stats', 'fill', 'fc', 'fa', 'fib', 'mid', 'fs', 'tbg', 'acc', 'risk', 'qty', 'bands', 'rows', 'pw'];
 var fibDefCache = null;
 // a drawing's fib settings (its own, or the default for new ones), validated once per object
+var fibExtDefCache = null;
 function fibOf(d) {
     if (d.fib) { if (!d.fib.__ok) { d.fib = fixFib(d.fib); Object.defineProperty(d.fib, '__ok', { value: true }); } return d.fib; }
+    if (d.type === 'fibext') {
+        if (fibExtDefCache) return fibExtDefCache;
+        var t = DR_TPL.fibext && DR_TPL.fibext.fib;
+        fibExtDefCache = t ? fixFib(t) : fibPreset('ext', fixFib(null));
+        fibExtDefCache.trend = true; fibExtDefCache.bg = false;
+        return fibExtDefCache;
+    }
     return fibDefCache || (fibDefCache = fixFib(DR_TPL.fib && DR_TPL.fib.fib));
 }
 function applyTemplate(d) {
     var t = DR_TPL[d.type];
     if (t) STYLE_KEYS.forEach(function (k) { if (t[k] !== undefined) d[k] = JSON.parse(JSON.stringify(t[k])); });
-    if (d.type === 'fib' && !d.fib) d.fib = JSON.parse(JSON.stringify(fibOf(d)));
+    if (isFib(d) && !d.fib) d.fib = JSON.parse(JSON.stringify(fibOf(d)));
 }
 // which group of intervals the chart is on, for the per-drawing "show on" switches (minutes / hours / days / weeks+months)
 function ivGroup() { var u = interval.slice(-1); return u === 'm' ? 'm' : u === 'h' ? 'h' : u === 'd' ? 'd' : 'w'; }
-function drawingVisible(d) { return !d.vis || d.vis[ivGroup()] !== false; }
+function drawingVisible(d) { return !d.hide && (!d.vis || d.vis[ivGroup()] !== false); }
+function undoDrawing(redo) {
+    var h = DR.hist, from = redo ? h.future : h.past, to = redo ? h.past : h.future;
+    if (!from.length) { toast(redo ? '다시 할 것이 없어요' : '되돌릴 것이 없어요'); return; }
+    to.push(h.snap); h.snap = from.pop();
+    DR.list = JSON.parse(h.snap); DR.sel = null; DR.draft = null;
+    DR.save(true); DR.redraw(); refreshRail();
+}
+function refreshUndo() {
+    var u = $('undo'), r = $('redo');
+    if (u) u.classList.toggle('dim', !DR.hist.past.length);
+    if (r) r.classList.toggle('dim', !DR.hist.future.length);
+}
+var MAGNET = LS.get('magnet', 'weak');                               // off | weak (near OHLC) | strong (always the nearest OHLC)
+function openDrawingList() {
+    var rows = [];
+    if (!DR.list.length) rows.push(noteRow('그린 것이 없어요. 왼쪽 도구로 그려 보세요.'));
+    DR.list.slice().reverse().forEach(function (d) {
+        var r = document.createElement('div'); r.className = 'row-opt';
+        var info = d.type === 'hline' || d.type === 'hray' ? fmtPrice(d.a.price) : d.type === 'text' ? String(d.text || '').split('\n')[0].slice(0, 18) : crosshairTimeFmt(d.a.time);
+        r.innerHTML = '<span style="flex:1;min-width:0"><span style="color:' + drawingColor(d) + '">●</span> ' + (DR_NAMES[d.type] || TOOL_NAME[d.type] || d.type) + '<small>' + escHtml(info) + '</small></span>' +
+            '<button class="tag lk" aria-label="잠금">' + (d.lock ? '🔒' : '🔓') + '</button><button class="tag ey" aria-label="보이기">' + (d.hide ? '숨김' : '보임') + '</button><button class="tag rm" aria-label="삭제" style="color:' + C.down + '">✕</button>';
+        r.querySelector('.lk').onclick = function (e) { e.stopPropagation(); d.lock = !d.lock || undefined; DR.save(); openDrawingList(); };
+        r.querySelector('.ey').onclick = function (e) { e.stopPropagation(); d.hide = !d.hide || undefined; DR.save(); DR.redraw(); openDrawingList(); };
+        r.querySelector('.rm').onclick = function (e) { e.stopPropagation(); DR.list = DR.list.filter(function (x) { return x !== d; }); if (DR.sel === d.id) DR.sel = null; DR.save(); DR.redraw(); refreshRail(); openDrawingList(); };
+        r.onclick = function () { if (d.hide) return; DR.sel = d.id; closeSheet(); refreshRail(); DR.redraw(); };
+        rows.push(r);
+    });
+    if (DR.list.length) {
+        var all = document.createElement('button'); all.className = 'reset'; all.style.color = C.down; all.textContent = '모두 지우기 (↶로 되돌릴 수 있어요)';
+        all.onclick = function () { DR.list = []; DR.sel = null; DR.save(); DR.redraw(); refreshRail(); openDrawingList(); };
+        rows.push(all);
+    }
+    openSheet('그린 것 · ' + symbol, rows);
+}
 function dashOf(ds) { return ds === 1 ? [7, 5] : ds === 2 ? [2, 4] : []; }
 function fibPrice(f, d, lv) {
+    if (d.type === 'fibext' && d.c) {                                   // trend-based extension: C + (B - A) x level
+        if (f.log && d.a.price > 0 && d.b.price > 0 && d.c.price > 0) return d.c.price * Math.pow(d.b.price / d.a.price, lv);
+        return d.c.price + (d.b.price - d.a.price) * lv;
+    }
     var A = f.rev ? d.b.price : d.a.price, B = f.rev ? d.a.price : d.b.price;
     if (f.log && A > 0 && B > 0) return Math.exp(Math.log(B) - (Math.log(B) - Math.log(A)) * lv);
     return B - (B - A) * lv;
@@ -1315,6 +1361,7 @@ function fibPrice(f, d, lv) {
 // the enabled levels with their y, top to bottom, and the x range the lines span
 function fibRows(d, a, b, w) {
     var f = fibOf(d), x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x);
+    if (d.type === 'fibext' && d.c) { var cx = xOf(d.c.time); if (cx != null) { var span = Math.abs(b.x - a.x); x1 = cx; x2 = cx + Math.max(60, span); } }
     if (x2 - x1 < 60) x2 = x1 + 60;
     if (f.ext === 'left' || f.ext === 'both') x1 = 0;
     if (f.ext === 'right' || f.ext === 'both') x2 = w;
@@ -1331,12 +1378,17 @@ var DR = {
     list: [], sel: null, tool: null, draft: null, measure: null, nextId: 1, hidden: LS.get('drHidden', false),
     attachTo: function (s) { attachLayers(s); },
     redraw: function () { redrawLayers(); },
+    hist: { past: [], future: [], snap: '[]' },
     load: function () {
         this.list = LS.get('dr.' + symbol, []).filter(function (d) { return d && d.a && isFinite(d.a.time) && isFinite(d.a.price); });
+        this.hist = { past: [], future: [], snap: JSON.stringify(this.list) };
         this.nextId = this.list.reduce(function (m, d) { return Math.max(m, d.id || 0); }, 0) + 1;
         this.sel = null; this.draft = null; this.measure = null; this.redraw();
     },
-    save: function () {
+    save: function (noHist) {
+        // every change becomes a step that ↶ can take back (50 per coin)
+        var now = JSON.stringify(this.list);
+        if (!noHist && now !== this.hist.snap) { this.hist.past.push(this.hist.snap); if (this.hist.past.length > 50) this.hist.past.shift(); this.hist.future = []; this.hist.snap = now; refreshUndo(); }
         LS.set('dr.' + symbol, this.list.slice(-100));
         var sym = symbol, list = this.list;
         drSaveHooks.forEach(function (fn) { try { fn(sym, list); } catch (e) { console.error(e); } });   // alerts follow their line
@@ -1458,7 +1510,11 @@ function paint(ctx, d, selected, w, h) {
         if (d.fill !== false) { ctx.fillStyle = hexA(d.fc || col, (d.fa != null ? d.fa : 14) / 100); ctx.fillRect(x, y, rw, rh); }
         ctx.strokeStyle = col; ctx.strokeRect(x, y, rw, rh);
         if (selected) { handle(ctx, a); handle(ctx, b); }
-    } else if (d.type === 'fib' && b) {
+    } else if (d.type === 'avwap') {
+        paintAvwap(ctx, d, selected, w);
+    } else if (d.type === 'frvp' && b) {
+        paintFrvp(ctx, d, selected);
+    } else if (isFib(d) && b) {
         var fr = fibRows(d, a, b, w), f = fr.f, rows = fr.rows, i;
         if (f.bg && f.bga > 0) for (i = 1; i < rows.length; i++) {
             ctx.fillStyle = hexA(rows[i].c, f.bga / 100); ctx.fillRect(fr.x1, rows[i - 1].y, fr.x2 - fr.x1, rows[i].y - rows[i - 1].y);
@@ -1473,11 +1529,12 @@ function paint(ctx, d, selected, w, h) {
             // labels stay on screen when the drawing starts left of it / ends right of it
             if (f.lpos === 'right') label(ctx, t, Math.min(fr.x2, w) - 2, r.y - 10, 'rgba(19,23,34,.85)', fg, 'right'); else label(ctx, t, Math.max(fr.x1, 0) + 2, r.y - 10, 'rgba(19,23,34,.85)', fg);
         });
+        var cpt = d.type === 'fibext' && d.c ? px(d.c) : null;
         if (f.trend) {
             ctx.strokeStyle = hexA(f.tc, 0.85); ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
+            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); if (cpt) ctx.lineTo(cpt.x, cpt.y); ctx.stroke(); ctx.setLineDash([]);
         }
-        if (selected) { handle(ctx, a); handle(ctx, b); }
+        if (selected) { handle(ctx, a); handle(ctx, b); if (cpt) handle(ctx, cpt); }
     } else if (d.type === 'hray') {
         ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(w, a.y); ctx.stroke();
         if (d.lbl !== false) { ctx.setLineDash([]); label(ctx, fmtPrice(d.a.price), w - 4, a.y - 11, col, '#1a1a1a', 'right'); }
@@ -1603,9 +1660,102 @@ function rayEnd(a, b, w, h) {
     var k = 4 * (w + h) / Math.max(1e-6, Math.hypot(dx, dy));
     return { x: a.x + dx * k, y: a.y + dy * k };
 }
-function drawingColor(d) { return d.col || (d.type === 'hline' || d.type === 'hray' ? C.gold : C.accent); }
+function drawingColor(d) { return d.col || (d.type === 'hline' || d.type === 'hray' ? C.gold : d.type === 'avwap' ? '#E040FB' : C.accent); }
+// ---- tools added in 1.23: trend-based Fibonacci extension, anchored VWAP, fixed range volume profile -----------------
+function isFib(d) { return d.type === 'fib' || d.type === 'fibext'; }
+// anchored VWAP from the anchor candle on: (high + low + close) / 3 weighted by volume, with a one-sigma band
+var avwapCache = new WeakMap();
+function avwapOf(d) {
+    var n = candles.length; if (!n) return null;
+    var i0 = indexOfTime(d.a.time); if (i0 < 0) { for (var k = 0; k < n; k++) if (candles[k].time >= d.a.time) { i0 = k; break; } }
+    if (i0 < 0) return null;
+    var last = candles[n - 1], key = i0 + '|' + n + '|' + last.close + '|' + last.volume + '|' + candles[0].time, hit = avwapCache.get(d);
+    if (hit && hit.key === key) return hit;
+    var pv = 0, v = 0, pv2 = 0, vw = new Float64Array(n), sd = new Float64Array(n);
+    for (var i = i0; i < n; i++) {
+        var c = candles[i], tp = (c.high + c.low + c.close) / 3;
+        pv += tp * c.volume; v += c.volume; pv2 += tp * tp * c.volume;
+        vw[i] = v > 0 ? pv / v : tp; sd[i] = v > 0 ? Math.sqrt(Math.max(0, pv2 / v - vw[i] * vw[i])) : 0;
+    }
+    var res = { key: key, i0: i0, vw: vw, sd: sd };
+    avwapCache.set(d, res);
+    return res;
+}
+function paintAvwap(ctx, d, selected, w) {
+    var r = avwapOf(d); if (!r) return;
+    var ts = chart.timeScale(), vr = ts.getVisibleLogicalRange(); if (!vr) return;
+    var a = Math.max(r.i0, Math.floor(vr.from) - 1), z = Math.min(candles.length - 1, Math.ceil(vr.to) + 1), st = Math.max(1, Math.ceil((z - a) / 500));
+    var col = drawingColor(d);
+    function line(k, alpha, dash) {
+        ctx.strokeStyle = hexA(col, alpha); ctx.setLineDash(dash); ctx.beginPath(); var on = false;
+        for (var i = a; i <= z; i += st) {
+            var x = ts.logicalToCoordinate(i), y = yOf(r.vw[i] + k * r.sd[i]); if (x == null || y == null) continue;
+            if (!on) { ctx.moveTo(x, y); on = true; } else ctx.lineTo(x, y);
+        }
+        ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.lineWidth = d.w || 1.6; line(0, 1, dashOf(d.ds));
+    if (d.bands) { ctx.lineWidth = 1; line(1, 0.55, [4, 3]); line(-1, 0.55, [4, 3]); }
+    var lx = ts.logicalToCoordinate(candles.length - 1), ly = yOf(r.vw[candles.length - 1]);
+    if (lx != null && ly != null && d.lbl !== false) label(ctx, 'AVWAP ' + fmtPrice(r.vw[candles.length - 1]), Math.min(w - 4, lx + 6) , ly, col, '#0b0e11', lx + 120 > w ? 'right' : undefined);
+    if (selected) { var ax = ts.logicalToCoordinate(r.i0), ay = yOf(r.vw[r.i0]); if (ax != null && ay != null) handle(ctx, { x: ax, y: ay }); }
+}
+// volume per price over candles a..z, with the real trade prices where every trade of a candle is held
+function profileOver(a, z, rows) {
+    var lo = Infinity, hi = -Infinity, i, j;
+    for (i = a; i <= z; i++) { if (candles[i].low < lo) lo = candles[i].low; if (candles[i].high > hi) hi = candles[i].high; }
+    if (!(hi > lo)) return null;
+    var step = (hi - lo) / rows, buy = new Float64Array(rows), sell = new Float64Array(rows);
+    for (i = a; i <= z; i++) {
+        var k = candles[i], tr = vpTradeHook ? vpTradeHook(i) : null;
+        if (tr) { tr.rows.forEach(function (q, tk) { var jj = clampN(Math.floor((tk * tr.tick - lo) / step), 0, rows - 1); buy[jj] += q[0]; sell[jj] += q[1]; }); continue; }
+        var span = k.high - k.low, b0 = Math.min(rows - 1, Math.floor((k.low - lo) / step)), b1 = Math.min(rows - 1, Math.floor((k.high - lo) / step));
+        var bv = k.buy, sv = Math.max(0, k.volume - k.buy);
+        if (!(span > 0) || b0 === b1) { buy[b0] += bv; sell[b0] += sv; continue; }
+        for (j = b0; j <= b1; j++) { var top = Math.min(k.high, lo + (j + 1) * step), bot = Math.max(k.low, lo + j * step), f = Math.max(0, top - bot) / span; buy[j] += bv * f; sell[j] += sv * f; }
+    }
+    var tot = 0, poc = 0, max = 0;
+    for (j = 0; j < rows; j++) { var v = buy[j] + sell[j]; tot += v; if (v > max) { max = v; poc = j; } }
+    var vaLo = poc, vaHi = poc, acc = buy[poc] + sell[poc];
+    while (acc < tot * 0.7 && (vaLo > 0 || vaHi < rows - 1)) {
+        var up = vaHi < rows - 1 ? buy[vaHi + 1] + sell[vaHi + 1] : -1, dn = vaLo > 0 ? buy[vaLo - 1] + sell[vaLo - 1] : -1;
+        if (up >= dn) { vaHi++; acc += up; } else { vaLo--; acc += dn; }
+    }
+    return { lo: lo, step: step, rows: rows, buy: buy, sell: sell, max: max, poc: poc, vaLo: vaLo, vaHi: vaHi };
+}
+var frvpCache = new WeakMap();
+function frvpOf(d) {
+    var ia = Math.round(logicalOfTime(Math.min(d.a.time, d.b.time))), iz = Math.round(logicalOfTime(Math.max(d.a.time, d.b.time)));
+    ia = clampN(ia, 0, candles.length - 1); iz = clampN(iz, 0, candles.length - 1); if (iz <= ia) return null;
+    var rows = d.rows || 40, last = candles[iz], key = ia + '|' + iz + '|' + rows + '|' + last.volume + '|' + last.close + '|' + (vpTradeHook ? vpTradeVer() : 0), hit = frvpCache.get(d);
+    if (hit && hit.key === key) return hit.res;
+    var res = profileOver(ia, iz, rows); frvpCache.set(d, { key: key, res: res });
+    return res;
+}
+function paintFrvp(ctx, d, selected) {
+    var a = px(d.a), b = px(d.b), vp = frvpOf(d); if (!a || !b || !vp) return;
+    var x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x), maxW = (x2 - x1) * (d.pw || 40) / 100, up = C.up, dn = C.down;
+    var yTop = yOf(vp.lo + vp.rows * vp.step), yBot = yOf(vp.lo);
+    if (yTop != null && yBot != null) { ctx.fillStyle = 'rgba(41,98,255,.05)'; ctx.fillRect(x1, yTop, x2 - x1, yBot - yTop); ctx.strokeStyle = 'rgba(41,98,255,.35)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.strokeRect(x1, yTop, x2 - x1, yBot - yTop); ctx.setLineDash([]); }
+    for (var j = 0; j < vp.rows; j++) {
+        var v = vp.buy[j] + vp.sell[j]; if (!v) continue;
+        var y1 = yOf(vp.lo + (j + 1) * vp.step), y2 = yOf(vp.lo + j * vp.step); if (y1 == null || y2 == null) continue;
+        var hh = Math.max(1, y2 - y1 - 1), len = v / vp.max * maxW, inVa = j >= vp.vaLo && j <= vp.vaHi, al = inVa ? 0.55 : 0.25, lb = vp.buy[j] / v * len;
+        ctx.fillStyle = hexA(up, al); ctx.fillRect(x1, y1, lb, hh);
+        ctx.fillStyle = hexA(dn, al); ctx.fillRect(x1 + lb, y1, len - lb, hh);
+    }
+    var py = yOf(vp.lo + (vp.poc + 0.5) * vp.step);
+    if (py != null) {
+        ctx.strokeStyle = 'rgba(240,185,11,.9)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x1, py); ctx.lineTo(x2, py); ctx.stroke();
+        var pt = 'POC ' + fmtPrice(vp.lo + (vp.poc + 0.5) * vp.step), pw = chart.paneSize(0).width; ctx.font = '600 10.5px -apple-system, Roboto, sans-serif';
+        var tw = ctx.measureText(pt).width + 10;                     // right of the range, or inside it when the edge is near
+        label(ctx, pt, x2 + 4 + tw < pw ? x2 + 4 : Math.max(2, x2 - tw - 2), py - (x2 + 4 + tw < pw ? 0 : 12), 'rgba(240,185,11,.9)', '#0b0e11');
+    }
+    if (selected) { handle(ctx, a); handle(ctx, b); }
+}
+
 // ---- tools added in 1.22: parallel channel, horizontal ray, arrow, text, long / short position ----------------------
-var ONE_POINT = { hline: 1, vline: 1, hray: 1, text: 1, long: 1, short: 1 };
+var ONE_POINT = { hline: 1, vline: 1, hray: 1, text: 1, long: 1, short: 1, avwap: 1 };
 // the channel: the base line a-b, a parallel line `off` (price) away, and the middle line; extended like a trend line
 function channelLines(d, w, h) {
     var a = px(d.a), b = px(d.b), a2 = px({ time: d.a.time, price: d.a.price + d.off }), b2 = px({ time: d.b.time, price: d.b.price + d.off });
@@ -1676,6 +1826,11 @@ function initDrawing(d) {
         d.c = { time: d.a.time, price: d.a.price - sgn * r };
     }
     if (d.type === 'text' && !d.col) d.col = '#E7EAEE';
+    if (d.type === 'fibext' && !d.c && d.b) {                          // the retracement point starts halfway back, half the leg later
+        var la = logicalOfTime(d.a.time), lb = logicalOfTime(d.b.time);
+        d.c = { time: timeOfLogical(lb + Math.max(3, Math.abs(lb - la) / 2)), price: d.b.price - (d.b.price - d.a.price) * 0.5 };
+    }
+    if (d.type === 'avwap') { var ia = Math.round(logicalOfTime(d.a.time)); if (ia >= 0 && ia < candles.length) d.a.time = candles[ia].time; }
 }
 // writing / editing a text drawing
 function openTextSheet(d, isNew) {
@@ -1754,6 +1909,10 @@ function distTo(d, p) {
     if (d.type === 'hline') return Math.abs(p.y - a.y);
     if (d.type === 'vline') return Math.abs(p.x - a.x);
     if (d.type === 'hray') return p.x >= a.x - 10 ? Math.abs(p.y - a.y) : Infinity;
+    if (d.type === 'avwap') {
+        var av = avwapOf(d), li = Math.round(xToLogical(p.x)); if (!av || li < av.i0 || li >= candles.length) return Infinity;
+        var vy = yOf(av.vw[li]); return vy == null ? Infinity : Math.abs(vy - p.y);
+    }
     if (d.type === 'text') { var bb = textBox(null, d, a); return p.x >= bb.x - 6 && p.x <= bb.x + bb.w + 6 && p.y >= bb.y - 5 && p.y <= bb.y + bb.h + 5 ? 0 : Infinity; }
     if (!b) return Infinity;
     if (d.type === 'arrow') return segDist(p, a, b);
@@ -1773,8 +1932,11 @@ function distTo(d, p) {
         return Math.min(segDist(p, { x: x1, y: y1 }, { x: x2, y: y1 }), segDist(p, { x: x2, y: y1 }, { x: x2, y: y2 }),
                         segDist(p, { x: x2, y: y2 }, { x: x1, y: y2 }), segDist(p, { x: x1, y: y2 }, { x: x1, y: y1 }));
     }
-    if (d.type === 'fib') {
+    if (d.type === 'frvp') { var fx1 = Math.min(a.x, b.x), fx2 = Math.max(a.x, b.x), fv = frvpOf(d); if (!fv) return Infinity;
+        var ft = yOf(fv.lo + fv.rows * fv.step), fb = yOf(fv.lo); return p.x >= fx1 && p.x <= fx2 && ft != null && fb != null && p.y >= ft && p.y <= fb ? 0 : Infinity; }
+    if (isFib(d)) {
         var fr = fibRows(d, a, b, chart.paneSize(0).width), best = segDist(p, a, b);
+        if (d.type === 'fibext' && d.c) { var cp = px(d.c); if (cp) best = Math.min(best, segDist(p, b, cp)); }
         fr.rows.forEach(function (r) { best = Math.min(best, segDist(p, { x: fr.x1, y: r.y }, { x: fr.x2, y: r.y })); });
         return best;
     }
@@ -1785,6 +1947,8 @@ function handlesOf(d) {
     if (d.type === 'hline') return a ? [{ k: 'a', x: Math.min(40, ps.width / 3), y: a.y }] : [];
     if (d.type === 'vline') return a ? [{ k: 'a', x: a.x, y: Math.max(20, ps.height - 40) }] : [];
     if (d.type === 'hray' || d.type === 'text') return a ? [{ k: 'a', x: a.x, y: a.y }] : [];
+    if (d.type === 'avwap') { var av = avwapOf(d); if (!av) return []; var hx = chart.timeScale().logicalToCoordinate(av.i0), hy = yOf(av.vw[av.i0]); return hx != null && hy != null ? [{ k: 'a', x: hx, y: hy }] : []; }
+    if (d.type === 'fibext' && d.c) { var cpt = px(d.c); return [a && { k: 'a', x: a.x, y: a.y }, b && { k: 'b', x: b.x, y: b.y }, cpt && { k: 'c', x: cpt.x, y: cpt.y }].filter(Boolean); }
     if (d.type === 'channel') { var cl = channelLines(d, ps.width, ps.height); return [a && { k: 'a', x: a.x, y: a.y }, b && { k: 'b', x: b.x, y: b.y }, cl && { k: 'c', x: cl.c.x, y: cl.c.y }].filter(Boolean); }
     if ((d.type === 'long' || d.type === 'short') && d.c && a) {
         var xe = xOf(d.b.time), yt = yOf(d.b.price), ys = yOf(d.c.price);
@@ -1809,14 +1973,14 @@ function hitDrawing(p) {
 function anchorAt(p, snap) {
     var l = xToLogical(p.x), price = mainSeries().coordinateToPrice(p.y);
     if (l == null || price == null) return null;
-    var time = timeOfLogical(l);
-    if (snap) {
+    var time = timeOfLogical(l), strong = MAGNET === 'strong';
+    if (snap && MAGNET !== 'off') {
         var i = Math.round(l);
         if (i >= 0 && i < candles.length) {
             var bx = xOf(candles[i].time);
-            if (bx != null && Math.abs(bx - p.x) < 12) {
+            if (bx != null && (strong || Math.abs(bx - p.x) < 12)) {
                 time = candles[i].time;
-                var c = candles[i], bestP = null, bestD = 11;
+                var c = candles[i], bestP = null, bestD = strong ? Infinity : 11;
                 [c.open, c.high, c.low, c.close].forEach(function (v) { var vy = yOf(v); if (vy != null && Math.abs(vy - p.y) < bestD) { bestD = Math.abs(vy - p.y); bestP = v; } });
                 if (bestP != null) price = bestP;
             }
@@ -1839,6 +2003,7 @@ function setTool(t) {
     DR.tool = t; DR.draft = null;
     var hints = { trend: '시작점을 누르세요', ray: '시작점을 누르세요', vline: '시간 위치를 누르세요', hline: '가격 위치를 누르세요', fib: '시작점을 누르세요', rect: '한쪽 모서리를 누르세요', measure: '시작점을 누르세요',
         hray: '가격 위치를 누르세요', arrow: '시작점을 누르세요', channel: '추세선 시작점을 누르세요 · 그린 뒤 가운데 손잡이로 폭 조절', text: '글을 쓸 위치를 누르세요',
+        fibext: '추세 시작점을 누르세요 · 되돌림점은 손잡이로 조절', avwap: '기준이 될 봉을 누르세요', frvp: '범위 시작 봉을 누르세요',
         long: '진입 가격을 누르세요 · 목표 · 손절은 손잡이로 조절', short: '진입 가격을 누르세요 · 목표 · 손절은 손잡이로 조절' };
     showHint(t ? hints[t] : '');
     refreshRail(); DR.redraw();
@@ -1859,13 +2024,13 @@ function onDown(e) {
     } else {
         if (DR.hidden) return;
         var sel = DR.list.filter(function (d) { return d.id === DR.sel; })[0];
-        var hk = hitHandle(sel, p);
+        var hk = sel && !sel.lock ? hitHandle(sel, p) : null;
         if (hk) gesture = { mode: 'handle', d: sel, which: hk, startP: p, moved: false };
         else {
             var d = hitDrawing(p);
             if (!d) { return; }
             DR.sel = d.id; refreshRail();
-            gesture = { mode: 'move', d: d, startP: p, moved: false, orig: { a: px(d.a), b: d.b ? px(d.b) : null, c: d.c ? px(d.c) : null } };
+            gesture = { mode: d.lock ? 'select' : 'move', d: d, startP: p, moved: false, orig: { a: px(d.a), b: d.b ? px(d.b) : null, c: d.c ? px(d.c) : null } };
         }
     }
     gesture.id = e.pointerId;
@@ -2020,17 +2185,26 @@ var ICON = {
     channel: '<svg viewBox="0 0 24 24"><path d="M3 15L15 5M9 19L21 9"/><path d="M6 17L18 7" stroke-dasharray="2 2"/></svg>',
     text: '<svg viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>',
     long: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="8" rx="1"/><rect x="4" y="12" width="16" height="6" rx="1" stroke-dasharray="2 2"/><path d="M4 12h16"/></svg>',
-    short: '<svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="6" rx="1" stroke-dasharray="2 2"/><rect x="4" y="12" width="16" height="8" rx="1"/><path d="M4 12h16"/></svg>'
+    short: '<svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="6" rx="1" stroke-dasharray="2 2"/><rect x="4" y="12" width="16" height="8" rx="1"/><path d="M4 12h16"/></svg>',
+    fibext: '<svg viewBox="0 0 24 24"><path d="M3 19l6-10 4 5"/><path d="M13 4h8M13 8h8M13 12h8" stroke-dasharray="2 2"/></svg>',
+    avwap: '<svg viewBox="0 0 24 24"><path d="M5 18c4-1 5-6 9-8s5-3 6-5"/><path d="M5 22v-8"/><circle cx="5" cy="18" r="2"/></svg>',
+    frvp: '<svg viewBox="0 0 24 24"><path d="M4 4v16M20 4v16"/><path d="M4 7h7M4 10h12M4 13h9M4 16h5"/></svg>',
+    undo: '<svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12h-3" transform="translate(0 -6)"/></svg>',
+    redo: '<svg viewBox="0 0 24 24"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 0 0 0 12h3" transform="translate(0 -6)"/></svg>',
+    magnet: '<svg viewBox="0 0 24 24"><path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z"/></svg>',
+    list: '<svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>'
 };
 var TOOLS = [['cursor', '선택'], ['trend', '추세선'], ['ray', '연장선'], ['hray', '수평 레이'], ['hline', '수평선'], ['vline', '수직선'], ['arrow', '화살표'], ['channel', '평행 채널'],
-    ['fib', '피보나치'], ['rect', '사각형'], ['text', '텍스트'], ['long', '롱 포지션'], ['short', '숏 포지션'], ['measure', '측정']];
+    ['fib', '피보나치'], ['fibext', '피보 확장'], ['rect', '사각형'], ['avwap', '앵커 VWAP'], ['frvp', '범위 매물대'], ['text', '텍스트'], ['long', '롱 포지션'], ['short', '숏 포지션'], ['measure', '측정']];
 var TOOL_NAME = {}; TOOLS.forEach(function (t) { TOOL_NAME[t[0]] = t[1]; });
+var RAIL_NAME = { long: '롱', short: '숏', hray: '수평레이', channel: '채널', fibext: '피보확장', avwap: 'AVWAP', frvp: '매물대' };   // what fits the narrow rail
 var TOOL_GROUPS = [
     { id: 'cursor', tools: ['cursor'] },
     { id: 'lines', tools: ['trend', 'ray', 'hray', 'hline', 'vline', 'arrow', 'channel'] },
-    { id: 'fibs', tools: ['fib'] },
+    { id: 'fibs', tools: ['fib', 'fibext'] },
     { id: 'shapes', tools: ['rect', 'text'] },
-    { id: 'pos', tools: ['long', 'short', 'measure'] }
+    { id: 'pos', tools: ['long', 'short', 'measure'] },
+    { id: 'vol', tools: ['avwap', 'frvp'] }
 ];
 var railCur = LS.get('railCur', {}) || {};
 function groupOf(tool) { for (var i = 0; i < TOOL_GROUPS.length; i++) if (TOOL_GROUPS[i].tools.indexOf(tool) >= 0) return TOOL_GROUPS[i]; return null; }
@@ -2066,6 +2240,15 @@ function buildRail() {
         r.appendChild(b);
     });
     var sep = document.createElement('div'); sep.className = 'rail-sep'; r.appendChild(sep);
+    function railBtn(id, icon, text, fn) { var b = document.createElement('button'); b.className = 'tool'; b.id = id; b.innerHTML = ICON[icon] + '<span>' + text + '</span>'; b.onclick = fn; r.appendChild(b); return b; }
+    railBtn('undo', 'undo', '되돌리기', function () { undoDrawing(false); });
+    railBtn('redo', 'redo', '다시', function () { undoDrawing(true); });
+    railBtn('magnet', 'magnet', '자석', function () {
+        MAGNET = MAGNET === 'weak' ? 'strong' : MAGNET === 'strong' ? 'off' : 'weak'; LS.set('magnet', MAGNET); refreshRail();
+        toast({ weak: '자석 약하게: 봉 가까이에서만 시가·고가·저가·종가에 붙어요', strong: '자석 강하게: 항상 가장 가까운 시가·고가·저가·종가에 붙어요', off: '자석 꺼짐: 누른 곳 그대로 그려요' }[MAGNET]);
+    });
+    railBtn('drlist', 'list', '목록', openDrawingList);
+    var sep2 = document.createElement('div'); sep2.className = 'rail-sep'; r.appendChild(sep2);
     var ey = document.createElement('button'); ey.className = 'tool'; ey.id = 'eye'; ey.innerHTML = ICON.eye + '<span>숨기기</span>';
     ey.onclick = function () { setDrawingsHidden(!DR.hidden); };
     r.appendChild(ey);
@@ -2079,9 +2262,11 @@ function refreshRail() {
         var g = TOOL_GROUPS.filter(function (x) { return x.id === btns[i].getAttribute('data-group'); })[0];
         var on = g.id === 'cursor' ? !DR.tool : g.tools.indexOf(DR.tool) >= 0, t = on && g.id !== 'cursor' ? DR.tool : groupTool(g);
         btns[i].className = 'tool' + (on ? ' active' : '') + (g.tools.length > 1 ? ' grp' : '');
-        var html = ICON[t] + '<span>' + TOOL_NAME[t].replace(' 포지션', '') + '</span>';
+        var html = ICON[t] + '<span>' + (RAIL_NAME[t] || TOOL_NAME[t]) + '</span>';
         if (btns[i].innerHTML !== html) btns[i].innerHTML = html;
     }
+    var mg = $('magnet'); if (mg) { mg.className = 'tool' + (MAGNET === 'off' ? ' dim' : MAGNET === 'strong' ? ' active' : ''); mg.querySelector('span').textContent = MAGNET === 'strong' ? '자석 강' : MAGNET === 'off' ? '자석 끔' : '자석 약'; }
+    refreshUndo();
     var ey = $('eye'); if (ey) { ey.className = 'tool' + (DR.hidden ? ' active' : ''); ey.querySelector('span').textContent = DR.hidden ? '보이기' : '숨기기'; }
     var tr = $('trash'); if (tr) { tr.className = 'tool danger' + (trashArmed ? ' armed' : ''); tr.querySelector('span').textContent = trashArmed ? '전체삭제?' : (DR.sel != null ? '선택삭제' : '삭제'); }
     refreshDrBar();
@@ -2106,7 +2291,7 @@ function refreshDrBar() {
     var bar = $('dr_bar'), d = DR.list.filter(function (x) { return x.id === DR.sel; })[0];
     if (!d || DR.tool) { bar.className = ''; return; }
     var cur = drawingColor(d).toLowerCase(), html = '';
-    var plain = d.type !== 'fib' && d.type !== 'long' && d.type !== 'short';     // positions and fibs have their own colors
+    var plain = !isFib(d) && d.type !== 'long' && d.type !== 'short' && d.type !== 'frvp';     // positions and fibs have their own colors
     if (plain) {
         DR_COLORS.forEach(function (c) { html += '<button class="sw' + (cur === c.toLowerCase() ? ' on' : '') + '" data-c="' + c + '" style="background:' + c + '"></button>'; });
         html += '<span class="vsep"></span>';
@@ -2114,6 +2299,7 @@ function refreshDrBar() {
     if (plain && d.type !== 'text') html += '<button class="tag" data-a="w">' + Math.round(d.w || 1.6) + 'px</button>' +
         '<button class="tag" data-a="s">' + (d.ds === 1 ? '- - -' : d.ds === 2 ? '· · ·' : '───') + '</button><span class="vsep"></span>';
     if (drAlertHook && (d.type === 'hline' || d.type === 'hray' || d.type === 'trend' || d.type === 'ray')) html += '<button class="tag" data-a="alert" aria-label="알람">🔔 알람</button><span class="vsep"></span>';
+    html += '<button class="tag" data-a="lock" aria-label="잠금">' + (d.lock ? '🔒' : '🔓') + '</button><button class="tag" data-a="dup" aria-label="복제">복제</button><span class="vsep"></span>';
     html += '<button class="tag" data-a="cfg" aria-label="설정">⚙ 설정</button>' +
         '<span class="vsep"></span><button class="tag" data-a="x" style="color:' + C.down + '">삭제</button>';
     bar.innerHTML = html; bar.className = 'show';
@@ -2127,17 +2313,23 @@ $('dr_bar').addEventListener('click', function (e) {
     else if (b.getAttribute('data-a') === 'x') { onTrash(); return; }
     else if (b.getAttribute('data-a') === 'cfg') { openDrawingSettings(d); return; }
     else if (b.getAttribute('data-a') === 'alert') { if (drAlertHook) drAlertHook(d); return; }
+    else if (b.getAttribute('data-a') === 'lock') { d.lock = !d.lock || undefined; toast(d.lock ? '잠갔어요 · 움직이지 않아요' : '잠금을 풀었어요'); }
+    else if (b.getAttribute('data-a') === 'dup') {                    // a copy a few candles to the right, selected
+        var cp = JSON.parse(JSON.stringify(d)), sh = 5 * curSec(); cp.id = DR.nextId++; delete cp.lock;
+        ['a', 'b', 'c'].forEach(function (k) { if (cp[k]) cp[k].time += sh; });
+        DR.list.push(cp); DR.sel = cp.id;
+    }
     DR.save(); DR.redraw(); refreshDrBar();
 });
 
 // ---- drawing settings sheet: 모습 (style) / 좌표 (points) / 보임 (intervals), like TradingView ---------------------
 // Edits apply live on the chart behind the sheet; 취소 restores the drawing as it was, 확인 / closing keeps the edits.
-var DR_NAMES = { trend: '추세선', ray: '연장선', hline: '수평선', vline: '수직선', fib: '피보나치 되돌림', rect: '사각형', hray: '수평 레이', arrow: '화살표', channel: '평행 채널', text: '텍스트', long: '롱 포지션', short: '숏 포지션' };
+var DR_NAMES = { fibext: '피보나치 확장', avwap: '앵커드 VWAP', frvp: '고정 범위 매물대', trend: '추세선', ray: '연장선', hline: '수평선', vline: '수직선', fib: '피보나치 되돌림', rect: '사각형', hray: '수평 레이', arrow: '화살표', channel: '평행 채널', text: '텍스트', long: '롱 포지션', short: '숏 포지션' };
 var drEdit = null;               // { d, snap, tab, colorFor, tpl }
 function openDrawingSettings(d, tab) {
     if (!d) return;
     if (!drEdit || drEdit.d !== d) {
-        if (d.type === 'fib') { if (!d.fib) d.fib = JSON.parse(JSON.stringify(fibOf(d))); fibOf(d); }
+        if (isFib(d)) { if (!d.fib) d.fib = JSON.parse(JSON.stringify(fibOf(d))); fibOf(d); }
         drEdit = { d: d, snap: JSON.stringify(d), tab: 'style', colorFor: null, tpl: false };
     }
     if (tab) drEdit.tab = tab;
@@ -2153,7 +2345,7 @@ function openDrawingSettings(d, tab) {
         tabs.appendChild(b);
     });
     sheet.appendChild(tabs);
-    var body = drEdit.tab === 'coords' ? drCoords(d) : drEdit.tab === 'vis' ? drVis(d) : d.type === 'fib' ? fibStyle(d) : drStyle(d);
+    var body = drEdit.tab === 'coords' ? drCoords(d) : drEdit.tab === 'vis' ? drVis(d) : isFib(d) ? fibStyle(d) : drStyle(d);
     body.forEach(function (el) { if (el) sheet.appendChild(el); });
     sheet.appendChild(drFooter(d));
     sheetOnClose = function () { DR.save(); drEdit = null; refreshDrBar(); DR.redraw(); };
@@ -2229,6 +2421,16 @@ function drStyle(d) {
         if (d.fill !== false) out.push(rangeRow('채우기 진하기', 0, 40, 1, '%', d.fa != null ? d.fa : 10, function (v) { d.fa = v; }));
     }
     if (t === 'hray') out.push(swRow('가격 라벨', d.lbl !== false, function (v) { d.lbl = v; }));
+    if (t === 'avwap') {
+        out.push(swRow('표준편차 밴드 (±1σ)', !!d.bands, function (v) { d.bands = v; }));
+        out.push(swRow('현재 값 라벨', d.lbl !== false, function (v) { d.lbl = v; }));
+        out.push(noteRow('누른 봉부터 누적한 거래량 가중 평균가입니다. 큰 고점·저점이나 이벤트 시점에 걸어 두면 그 뒤 들어온 물량의 평균 단가가 됩니다. 기준 봉은 손잡이로 옮길 수 있어요.'));
+    }
+    if (t === 'frvp') {
+        return [segRow('가격 구간 수', [[24, '24'], [40, '40'], [60, '60'], [100, '100']], d.rows || 40, function (v) { d.rows = v; }),
+            rangeRow('막대 길이 (범위 폭 대비)', 15, 100, 5, '%', d.pw || 40, function (v) { d.pw = v; }),
+            noteRow('두 시점 사이 봉들의 가격대별 거래량입니다. 초록은 시장가 매수, 빨강은 시장가 매도, 진한 구간은 가치 영역(70%), 노란 선은 POC입니다. 풋프린트로 체결을 모은 봉은 실제 체결 가격으로 계산합니다.')];
+    }
     if (t === 'trend') {
         out.push(segRow('연장', [['none', '안 함'], ['left', '왼쪽'], ['right', '오른쪽'], ['both', '양쪽']], d.ext || 'none', function (v) { d.ext = v; }));
         out.push(swRow('통계 표시 (가격 차 · % · 봉 수)', !!d.stats, function (v) { d.stats = v; }));
@@ -2318,6 +2520,9 @@ function numRow(label, v, min, max, set) {
 function drCoords(d) {
     if (d.type === 'long' || d.type === 'short') return [anchorRows(d, 'a', '진입', true, true), anchorRows(d, 'b', '목표가', true, false), anchorRows(d, 'c', '손절가', true, false)];
     if (d.type === 'hray' || d.type === 'text') return [anchorRows(d, 'a', '위치', true, true)];
+    if (d.type === 'avwap') return [anchorRows(d, 'a', '기준 봉', false, true)];
+    if (d.type === 'fibext') return [anchorRows(d, 'a', '1번 점 (추세 시작)', true, true), anchorRows(d, 'b', '2번 점 (추세 끝)', true, true), anchorRows(d, 'c', '3번 점 (되돌림)', true, true)];
+    if (d.type === 'frvp') return [anchorRows(d, 'a', '시작', false, true), anchorRows(d, 'b', '끝', false, true)];
     if (d.type === 'hline') return [anchorRows(d, 'a', '가격', true, false)];
     if (d.type === 'vline') return [anchorRows(d, 'a', '시간', false, true)];
     return [anchorRows(d, 'a', d.type === 'fib' ? '1번 점 (레벨 1)' : '1번 점', true, true), anchorRows(d, 'b', d.type === 'fib' ? '2번 점 (레벨 0)' : '2번 점', true, true)];
@@ -2338,14 +2543,15 @@ function drFooter(d) {
     if (drEdit.tpl) {
         var menu = document.createElement('div'); menu.className = 'tplmenu';
         var items = [];
-        if (d.type === 'fib') FIB_PRESETS.forEach(function (pr) { items.push([pr[1], pr[2], function () { fibPreset(pr[0], d.fib); }]); });
+        if (isFib(d)) FIB_PRESETS.forEach(function (pr) { items.push([pr[1], pr[2], function () { fibPreset(pr[0], d.fib); }]); });
         items.push(['기본값으로 저장', '새로 그리는 ' + (DR_NAMES[d.type] || '그림') + '에 이 모습을 씁니다', function () {
             var t = {}; STYLE_KEYS.forEach(function (k) { if (d[k] !== undefined) t[k] = JSON.parse(JSON.stringify(d[k])); });
-            DR_TPL[d.type] = t; LS.set('drTpl', DR_TPL); fibDefCache = null; toast('기본값으로 저장했어요');
+            DR_TPL[d.type] = t; LS.set('drTpl', DR_TPL); fibDefCache = null; fibExtDefCache = null; toast('기본값으로 저장했어요');
         }]);
         items.push(['처음 설정으로', '앱 기본 모습으로 되돌립니다', function () {
             STYLE_KEYS.forEach(function (k) { delete d[k]; });
             if (d.type === 'fib') d.fib = fixFib(null);
+            if (d.type === 'fibext') d.fib = fibPreset('ext', fixFib(null));
         }]);
         items.forEach(function (it) {
             var b = document.createElement('button'); b.innerHTML = it[0] + '<small>' + it[1] + '</small>';
@@ -3206,5 +3412,6 @@ function boot() {
     setTimeout(function () { if (!started) window.loadSymbol(symbol); }, 700);
 }
 window.addEventListener('DOMContentLoaded', boot);
+window.__fibPrice = function (d, lv) { return fibPrice(fibOf(d), d, lv); }; window.__avwapOf = avwapOf; window.__frvpOf = frvpOf; window.__undo = undoDrawing;
 window.__cf = { chart: chart, DR: DR, get candles() { return candles; }, get interval() { return interval; }, setTool: setTool, ind: ind, get D() { return D; }, features: features, subs: SUBS, get live() { return subLive; }, S: S, P: P, paneAct: paneAct, get paneLay() { return paneLay; }, openPaneMenu: openPaneMenu, openSettings: openSettings };
 })();

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.23.0] - 2026-10-15
+
+### Added
+- **Drawing tools**: trend-based Fibonacci extension (C + (B - A) x level, three handles, the retracement's level
+  editor and presets), anchored VWAP (from the tapped candle, optional one-sigma band; from a day's first candle it
+  equals that day's VWAP exactly), fixed range volume profile (buy / sell split, value area, POC; real trade prices
+  where the footprint holds them).
+- **Undo / redo** for drawings (50 steps per coin), **magnet** off / weak / strong, **lock** and **clone** in the
+  drawing bar, and a **drawing list** to show, hide, lock or delete each drawing.
+
 ## [1.22.0] - 2026-10-15
 
 ### Added
