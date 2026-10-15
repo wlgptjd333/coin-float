@@ -1019,7 +1019,7 @@ var features = { cvdspot: CVDSPOT }; CVDSPOT.running = false;
 var FEATURE_IND = { cvdspot: function () { return ind.cvd && spotOn(); } };
 function syncFeatures() {
     Object.keys(features).forEach(function (key) {
-        var f = features[key], want = !!(FEATURE_IND[key] ? FEATURE_IND[key]() : ind[key]) && active && candles.length > 0;
+        var f = features[key], want = !!(FEATURE_IND[key] ? FEATURE_IND[key]() : ind[key]) && active && candles.length > 0 && !(RP && !RP.picking);
         if (want && !f.running) { f.running = true; try { f.start(); } catch (e) { console.error(e); } }
         else if (!want && f.running) { f.running = false; try { f.stop(); } catch (e) { console.error(e); } }
     });
@@ -2021,6 +2021,147 @@ function openCompare() {
     openSheet('코인 비교', rows);
 }
 
+
+// =====================================================================================================
+// Bar replay with paper trading: pick a candle, everything after it is hidden, and the chart plays forward one candle
+// at a time with every indicator computed only from what was known then. Long / short / close at the candle's close;
+// the trades and their result are listed when the replay ends.
+// =====================================================================================================
+var RP = null;          // { full, k, timer, speed, pos: { side, entry, t }, trades: [], markers }
+var RP_SPEEDS = [[1000, '1x'], [330, '3x'], [100, '10x']];
+function replayPick() {
+    if (!candles.length) return;
+    closeSheet(); setTool(null);
+    RP = { picking: true };
+    showHint('리플레이를 시작할 봉을 누르세요');
+    $('replay_bar').className = 'show picking';
+    $('replay_bar').innerHTML = '<span class="rp-msg">시작할 봉을 누르세요</span><button class="rp-x">취소</button>';
+    $('replay_bar').querySelector('.rp-x').onclick = function () { RP = null; showHint(''); $('replay_bar').className = ''; };
+}
+chart.subscribeClick(function (param) {
+    if (!RP || !RP.picking || !param || param.time == null) return;
+    var i = indexOfTime(param.time); if (i < 30) { toast('조금 더 오른쪽 봉을 골라 주세요 (지표 계산에 앞쪽 봉이 필요해요)'); return; }
+    replayStart(i);
+});
+function replayStart(i) {
+    showHint('');
+    unsubKline(); stopFeatures(true);
+    RP = { full: candles.slice(), k: i + 1, timer: 0, speed: 0, pos: null, trades: [], marks: [] };
+    candles = RP.full.slice(0, RP.k);
+    D = newD(); computeAllInd(); if (chartType === 'ha') toHA();
+    setAllData();
+    chart.timeScale().scrollToRealTime();
+    replayBar();
+}
+function replayStep() {
+    if (!RP || RP.picking) return;
+    if (RP.k >= RP.full.length) { replayPause(); toast('마지막 봉까지 재생했어요'); return; }
+    candles.push(RP.full[RP.k++]);
+    if (chartType === 'ha') haBars.push(haAt(candles.length - 1));
+    pushLast();
+    replayInfo();
+}
+function replayPlay() {
+    if (!RP) return;
+    if (RP.timer) { replayPause(); return; }
+    RP.timer = setInterval(replayStep, RP_SPEEDS[RP.speed][0]);
+    replayBar();
+}
+function replayPause() { if (RP && RP.timer) { clearInterval(RP.timer); RP.timer = 0; replayBar(); } }
+function rpPrice() { return candles[candles.length - 1].close; }
+function rpPnl(pos, price) { return (price / pos.entry - 1) * 100 * (pos.side === 'long' ? 1 : -1); }
+function replayTrade(side) {
+    if (!RP) return;
+    var p = rpPrice(), t = candles[candles.length - 1].time;
+    if (RP.pos) {                                                    // close (or flip) the open position
+        var pnl = rpPnl(RP.pos, p);
+        RP.trades.push({ side: RP.pos.side, entry: RP.pos.entry, exit: p, t0: RP.pos.t, t1: t, pnl: pnl });
+        RP.marks.push({ time: t, position: RP.pos.side === 'long' ? 'aboveBar' : 'belowBar', shape: 'circle', color: pnl >= 0 ? C.up : C.down, text: (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%' });
+        RP.pos = null;
+        if (side === 'close') { replayMarks(); replayBar(); return; }
+    }
+    if (side === 'close') return;
+    RP.pos = { side: side, entry: p, t: t };
+    RP.marks.push({ time: t, position: side === 'long' ? 'belowBar' : 'aboveBar', shape: side === 'long' ? 'arrowUp' : 'arrowDown', color: side === 'long' ? C.up : C.down, text: side === 'long' ? '롱' : '숏' });
+    replayMarks(); replayBar();
+}
+function replayMarks() {
+    if (!RP) return;
+    var ms = mainSeries();
+    if (RP.mk && RP.mkOn !== ms) { try { RP.mk.detach(); } catch (e) { /* gone */ } RP.mk = null; }
+    if (!RP.mk) { RP.mk = LW.createSeriesMarkers(ms, []); RP.mkOn = ms; }
+    RP.mk.setMarkers(RP.marks.slice().sort(function (a, b) { return a.time - b.time; }));
+}
+function replayInfo() {
+    var el = $('rp_info'); if (!el || !RP) return;
+    var c = candles[candles.length - 1], done = RP.trades.reduce(function (s, x) { return s + x.pnl; }, 0);
+    var txt = crosshairTimeFmt(c.time) + ' · ' + (RP.full.length - RP.k) + '봉 남음';
+    if (RP.pos) { var u = rpPnl(RP.pos, c.close); txt += ' · <b style="color:' + (u >= 0 ? C.up : C.down) + '">' + (RP.pos.side === 'long' ? '롱 ' : '숏 ') + (u >= 0 ? '+' : '') + u.toFixed(2) + '%</b>'; }
+    if (RP.trades.length) txt += ' · 누적 <b style="color:' + (done >= 0 ? C.up : C.down) + '">' + (done >= 0 ? '+' : '') + done.toFixed(2) + '%</b>';
+    el.innerHTML = txt;
+}
+function replayBar() {
+    var bar = $('replay_bar'); if (!RP) { bar.className = ''; return; }
+    bar.className = 'show';
+    bar.innerHTML = '<div id="rp_info" class="rp-msg"></div><div class="rp-row">' +
+        '<button class="rp-x" aria-label="리플레이 끝내기">✕</button>' +
+        '<button class="rp-play">' + (RP.timer ? '❚❚' : '▶') + '</button><button class="rp-step" aria-label="한 봉">▶|</button>' +
+        '<button class="rp-speed">' + RP_SPEEDS[RP.speed][1] + '</button><span class="rp-sep"></span>' +
+        (RP.pos ? '<button class="rp-close">청산</button>' : '<button class="rp-long">롱</button><button class="rp-short">숏</button>') + '</div>';
+    bar.querySelector('.rp-x').onclick = function () { replayEnd(false); };
+    bar.querySelector('.rp-play').onclick = replayPlay;
+    bar.querySelector('.rp-step').onclick = function () { replayPause(); replayStep(); };
+    bar.querySelector('.rp-speed').onclick = function () { RP.speed = (RP.speed + 1) % RP_SPEEDS.length; if (RP.timer) { clearInterval(RP.timer); RP.timer = setInterval(replayStep, RP_SPEEDS[RP.speed][0]); } replayBar(); };
+    var b;
+    if ((b = bar.querySelector('.rp-long'))) b.onclick = function () { replayTrade('long'); };
+    if ((b = bar.querySelector('.rp-short'))) b.onclick = function () { replayTrade('short'); };
+    if ((b = bar.querySelector('.rp-close'))) b.onclick = function () { replayTrade('close'); };
+    replayInfo();
+}
+function replayEnd(silent) {
+    if (!RP) return;
+    var r = RP; RP = null;
+    if (r.timer) clearInterval(r.timer);
+    if (r.mk) { try { r.mk.detach(); } catch (e) { /* gone */ } }
+    $('replay_bar').className = ''; showHint('');
+    if (r.picking) return;
+    if (r.pos) { var p = candles[candles.length - 1].close; r.trades.push({ side: r.pos.side, entry: r.pos.entry, exit: p, t0: r.pos.t, t1: candles[candles.length - 1].time, pnl: rpPnl(r.pos, p) }); }
+    candles = r.full;
+    reload(false);                                                   // back to live data, streams and features
+    if (silent || !r.trades.length) return;
+    var win = r.trades.filter(function (x) { return x.pnl > 0; }).length, sum = r.trades.reduce(function (s, x) { return s + x.pnl; }, 0);
+    var rows = [noteRow('수수료와 슬리피지는 빼지 않은 단순 계산입니다. 진입 · 청산은 그 봉의 종가입니다.')];
+    var head = document.createElement('div'); head.className = 'fpi-sum';
+    head.innerHTML = '<span>거래 <b>' + r.trades.length + '번</b></span><span>승률 <b>' + Math.round(win / r.trades.length * 100) + '%</b></span><span>누적 <b style="color:' + (sum >= 0 ? C.up : C.down) + '">' + (sum >= 0 ? '+' : '') + sum.toFixed(2) + '%</b></span>';
+    rows.unshift(head);
+    r.trades.forEach(function (x) {
+        rows.push(el2('div', 'row-opt', '<span style="flex:1">' + (x.side === 'long' ? '롱' : '숏') + ' ' + fmtPrice(x.entry) + ' → ' + fmtPrice(x.exit) + '<small>' + crosshairTimeFmt(x.t0) + ' → ' + crosshairTimeFmt(x.t1) + '</small></span><b style="color:' + (x.pnl >= 0 ? C.up : C.down) + '">' + (x.pnl >= 0 ? '+' : '') + x.pnl.toFixed(2) + '%</b>'));
+    });
+    openSheet('리플레이 결과', rows);
+}
+function el2(tag, cls, html) { var e = document.createElement(tag); e.className = cls; e.innerHTML = html; return e; }
+
+// ---- chart image to share: the chart with a title line (coin, interval, time) ----------------------------------------
+function shareChart() {
+    closeSheet();
+    var shot; try { shot = chart.takeScreenshot(); } catch (e) { toast('이미지를 만들지 못했어요'); return; }
+    var dpr = shot.width / Math.max(1, chartEl.clientWidth), head = Math.round(34 * dpr), cv = document.createElement('canvas');
+    cv.width = shot.width; cv.height = shot.height + head;
+    var g = cv.getContext('2d');
+    g.fillStyle = C.bg; g.fillRect(0, 0, cv.width, cv.height);
+    g.drawImage(shot, 0, head);
+    var c = candles[candles.length - 1], d = tz(c.time), now = new Date();
+    g.font = '700 ' + Math.round(14 * dpr) + 'px -apple-system, Roboto, sans-serif'; g.textBaseline = 'middle'; g.fillStyle = '#E7EAEE';
+    var title = symbol + ' · ' + interval + ' · ' + fmtPrice(c.close);
+    g.fillText(title, 10 * dpr, head / 2);
+    g.font = '500 ' + Math.round(11 * dpr) + 'px -apple-system, Roboto, sans-serif'; g.fillStyle = '#848E9C'; g.textAlign = 'right';
+    g.fillText(now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate()) + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + ' · CoinFloat', cv.width - 10 * dpr, head / 2);
+    void d;
+    var data = cv.toDataURL('image/png');
+    if (window.AndroidBridge && typeof window.AndroidBridge.shareImage === 'function') bridge('shareImage', data.slice(data.indexOf(',') + 1));
+    else toast('공유는 앱에서만 할 수 있어요');
+}
+
 // ---- day / week separators and the visible high and low --------------------------------------------------------
 function periodKey(t) { var d = tz(t); return curSec() >= 86400 ? Math.floor((Date.UTC(d.Y, d.M, d.D) / 86400000 + 3) / 7) : d.Y * 400 + d.M * 32 + d.D; }
 addLayer('bottom', function (ctx, w, h) {
@@ -2805,6 +2946,7 @@ function markInterval() {
 }
 function changeInterval(i) {
     if (i === interval) return;
+    if (RP) replayEnd(true);
     interval = i; LS.set('interval', i); markInterval(); reload(false);
 }
 
@@ -3005,6 +3147,10 @@ function openSettings(key, back) {
     if (back) h.querySelector('.back').onclick = back;
     sheet.appendChild(h);
     var rerender = function () { openSettings(key, back); };
+    if (key === 'chart') [['▶  바 리플레이', '고른 봉부터 한 봉씩 재생하며 매매 연습', replayPick], ['⤴  차트 이미지 공유', '코인 · 시간봉 · 시각이 들어간 이미지', shareChart]].forEach(function (a) {
+        var b = document.createElement('button'); b.className = 'row-opt'; b.innerHTML = '<span>' + a[0] + '<small>' + a[1] + '</small></span><span style="color:var(--muted)">›</span>';
+        b.onclick = a[2]; sheet.appendChild(b);
+    });
     def.fields.forEach(function (f) { var r = buildField(key, f, rerender); if (r) sheet.appendChild(r); });
     sheet.appendChild(templateBox(key, rerender));
     if (def.credit) { var cr = document.createElement('div'); cr.className = 'credit'; cr.textContent = def.credit; sheet.appendChild(cr); }
@@ -3319,6 +3465,7 @@ function reload(symbolChanged) {
 // takes (consecutive time windows of PAGE candles, up to 4) are requested together and merged in one rebuild, and when
 // the view still is not filled the next batch follows at once instead of waiting for the next touch.
 function loadOlder() {
+    if (RP && !RP.picking) return;                                   // replay: the history is fixed
     if (loadingOlder || noMoreOlder || !candles.length || candles.length >= MAX_BARS) return;
     var r = chart.timeScale().getVisibleLogicalRange(); if (!r) return;
     var want = Math.max(1, Math.max(25, (r.to - r.from) * 0.25) - r.from + PAGE / 2);
@@ -3437,6 +3584,7 @@ function subscribeKline() {
 // (after a pause/reconnect): fetch every candle missed since the last one we have, so there is never a hole in the
 // series. Away longer than a full page of history: start over from the latest candles.
 function resync() {
+    if (RP && !RP.picking) return;                                   // replay: no live candles
     if (!candles.length) return;
     var seq = loadSeq, missed = Math.ceil((Date.now() / 1000 - candles[candles.length - 1].time) / curSec());
     if (missed > 990) { reload(false); return; }
@@ -3458,6 +3606,7 @@ function resync() {
 }
 var KLINE_MIN_MS = 400, klinePending = null, klineTimer = 0, klineLast = 0;
 function onKline(k) {
+    if (RP && !RP.picking) return;
     var n = candles.length; if (!n) return;
     var t = Math.floor(k.t / 1000), last = candles[n - 1];
     if (t < last.time) return;
@@ -3506,6 +3655,7 @@ window.loadSymbol = function (sym, defaultInterval, force) {
     if (defaultInterval && !started && !LS.get('interval', null)) { interval = normInterval(defaultInterval); markInterval(); }
     if (started && next === symbol && candles.length) return;
     started = true;
+    if (RP) replayEnd(true);
     symbol = next; $('sym_name').textContent = next; syncDayTicker();
     DR.load(); reload(true);
 };
@@ -3603,6 +3753,7 @@ function boot() {
     setTimeout(function () { if (!started) window.loadSymbol(symbol); }, 700);
 }
 window.addEventListener('DOMContentLoaded', boot);
+window.__rp = { start: replayStart, step: replayStep, trade: replayTrade, end: function () { replayEnd(false); }, state: function () { return RP; } };
 window.__fibPrice = function (d, lv) { return fibPrice(fibOf(d), d, lv); }; window.__avwapOf = avwapOf; window.__frvpOf = frvpOf; window.__undo = undoDrawing;
 window.__cf = { chart: chart, DR: DR, get candles() { return candles; }, get interval() { return interval; }, setTool: setTool, ind: ind, get D() { return D; }, features: features, subs: SUBS, get live() { return subLive; }, S: S, P: P, paneAct: paneAct, get paneLay() { return paneLay; }, openPaneMenu: openPaneMenu, openSettings: openSettings };
 })();

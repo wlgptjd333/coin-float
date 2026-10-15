@@ -982,6 +982,20 @@ private class ChartBridge(
         }
     }
 
+    // a chart image from the page (PNG, base64) to Android's share sheet
+    @JavascriptInterface
+    fun shareImage(b64: String?) {
+        val ctx = webView.context
+        val bytes = runCatching { android.util.Base64.decode(b64.orEmpty(), android.util.Base64.DEFAULT) }.getOrNull() ?: return
+        if (bytes.isEmpty() || bytes.size > 20_000_000) return
+        val dir = java.io.File(ctx.cacheDir, "shared").apply { mkdirs() }
+        val file = java.io.File(dir, "coinfloat-chart.png")
+        runCatching { file.writeBytes(bytes) }.getOrElse { return }
+        val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", file)
+        val send = Intent(Intent.ACTION_SEND).setType("image/png").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        webView.post { runCatching { ctx.startActivity(Intent.createChooser(send, "차트 공유").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+    }
+
     @JavascriptInterface
     fun openSymbolSearch(arg: String?) {
         webView.post { onOpenSearch() }

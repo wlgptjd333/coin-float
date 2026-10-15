@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.27.0] - 2026-10-15
+
+### Added
+- **Bar replay with paper trading** (⚙ → 바 리플레이): pick a candle, everything after it is hidden and the chart
+  plays forward one candle at a time (1x / 3x / 10x or step by step) with every indicator computed only from what was
+  known then; live data, history loading and order-flow feeds pause meanwhile. Long, short and close at the candle's
+  close, open P/L on the bar, entries and results marked on the chart, and a summary (trades, win rate, total %) when
+  the replay ends. P/L checked against a hand calculation.
+- **Share the chart as an image** (⚙ → 차트 이미지 공유): the chart with a title line (coin, interval, price, time)
+  through Android's share sheet.
+
 ## [1.26.0] - 2026-10-15
 
 ### Added
