@@ -7,7 +7,7 @@
 var C = { up: '#0ECB81', down: '#F6465D', bg: '#131722', grid: '#1E222D', text: '#848E9C', border: '#2A2E39', accent: '#2962FF', gold: '#F0B90B' };
 var INTERVALS = [
     ['1m', '1m', 60], ['3m', '3m', 180], ['5m', '5m', 300], ['15m', '15m', 900], ['30m', '30m', 1800],
-    ['1h', '1h', 3600], ['2h', '2h', 7200], ['4h', '4h', 14400], ['6h', '6h', 21600], ['12h', '12h', 43200],
+    ['1h', '1h', 3600], ['2h', '2h', 7200], ['4h', '4h', 14400], ['6h', '6h', 21600], ['8h', '8h', 28800], ['12h', '12h', 43200],
     ['1d', '1D', 86400], ['3d', '3D', 259200], ['1w', '1W', 604800], ['1M', '1M', 2592000]
 ];
 var SEC = {}; INTERVALS.forEach(function (i) { SEC[i[0]] = i[2]; });
@@ -86,7 +86,7 @@ function lineDef(arr, type, width) { return arr.map(function (d) { return { p: d
 var calcChanged = function () { scheduleRefresh(true); }, styleChanged = function () { scheduleRefresh(false); };
 
 defineSettings('chart', {
-    title: '차트 설정', onChange: function () { scheduleChartCfg(); },
+    title: '차트 설정', onChange: function (c, k) { scheduleChartCfg(); if (k === 'tz') chart.applyOptions({ timeScale: { tickMarkFormatter: tickFmt } }); },
     fields: [
         { t: 'sec', label: '캔들' },
         { k: 'palette', t: 'sel', label: '상승 / 하락 색', def: 'gr', opts: [['gr', '초록 / 빨강'], ['kr', '빨강 / 파랑'], ['custom', '직접 지정']] },
@@ -103,6 +103,9 @@ defineSettings('chart', {
         { k: 'theme', t: 'sel', label: '배경', def: 'dark', opts: [['dark', '다크'], ['black', '블랙']] },
         { k: 'grid', t: 'sel', label: '격자', def: 'both', opts: [['both', '가로·세로'], ['horz', '가로만'], ['none', '없음']] },
         { k: 'cross', t: 'sel', label: '십자선', def: 'free', opts: [['free', '자유'], ['magnet', '캔들에 붙이기']] },
+        { k: 'tz', t: 'sel', label: '시간대', def: 'local', opts: [['local', '휴대폰 시간'], ['utc', 'UTC']] },
+        { k: 'sep', t: 'bool', label: '날짜 구분선', sub: '분 · 시간봉은 하루, 일봉은 한 주가 바뀌는 곳에 세로선', def: false },
+        { k: 'hilo', t: 'bool', label: '화면 최고가 · 최저가 표시', def: true },
         { k: 'legend', t: 'sel', label: '상단 수치 표시', def: 'full', opts: [['full', '시세 + 지표 (탭하면 펼침)'], ['ohlc', '시세만'], ['off', '숨김']] },
         { t: 'sec', label: '하단 지표 창' },
         { k: 'merge', t: 'bool', label: '하단 지표를 한 창에 합치기', sub: 'RSI · MACD · CVD · OI · 청산을 한 창에 겹쳐 보여줍니다', def: false }
@@ -286,19 +289,24 @@ function fmtVol(v) {
     if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
     return v.toFixed(2);
 }
+// date parts in the chosen time zone: the phone's, or UTC (Binance's daily candles open at 00:00 UTC)
+function tz(time) {
+    var d = new Date(time * 1000), u = S('chart').tz === 'utc';
+    return u ? { Y: d.getUTCFullYear(), M: d.getUTCMonth(), D: d.getUTCDate(), h: d.getUTCHours(), m: d.getUTCMinutes(), wd: d.getUTCDay() }
+             : { Y: d.getFullYear(), M: d.getMonth(), D: d.getDate(), h: d.getHours(), m: d.getMinutes(), wd: d.getDay() };
+}
 function tickFmt(time, type) {
-    var d = new Date(time * 1000);
+    var d = tz(time);
     switch (type) {
-        case 0: return String(d.getFullYear());
-        case 1: return (d.getMonth() + 1) + '월';
-        case 2: return d.getDate() + '일';
-        default: return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+        case 0: return String(d.Y);
+        case 1: return (d.M + 1) + '월';
+        case 2: return d.D + '일' + (d.h || d.m ? ' ' + pad2(d.h) + ':' + pad2(d.m) : '');   // the engine marks days at 00:00 UTC: say when that is locally
+        default: return pad2(d.h) + ':' + pad2(d.m);
     }
 }
 function crosshairTimeFmt(time) {
-    var d = new Date(time * 1000);
-    var date = (d.getMonth() + 1) + '/' + d.getDate();
-    return curSec() >= 86400 ? d.getFullYear() + '/' + date : date + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    var d = tz(time), date = (d.M + 1) + '/' + d.D;
+    return curSec() >= 86400 ? d.Y + '/' + date : date + ' ' + pad2(d.h) + ':' + pad2(d.m);
 }
 
 // =====================================================================================================
@@ -331,6 +339,9 @@ var PRICE_FMT = { type: 'custom', minMove: 0.01, formatter: fmtPrice };
 var candleSeries = chart.addSeries(LW.CandlestickSeries, { upColor: C.up, downColor: C.down, borderVisible: false, wickUpColor: C.up, wickDownColor: C.down, priceFormat: PRICE_FMT });
 var lineSeries = chart.addSeries(LW.LineSeries, { color: C.accent, lineWidth: 2, visible: false, priceFormat: PRICE_FMT });
 var areaSeries = chart.addSeries(LW.AreaSeries, { lineColor: C.accent, topColor: 'rgba(41,98,255,.35)', bottomColor: 'rgba(41,98,255,0)', lineWidth: 2, visible: false, priceFormat: PRICE_FMT });
+var barSeries = chart.addSeries(LW.BarSeries, { upColor: C.up, downColor: C.down, visible: false, priceFormat: PRICE_FMT });
+var baseSeries = chart.addSeries(LW.BaselineSeries, { baseValue: { type: 'price', price: 0 }, lineWidth: 2, visible: false, priceFormat: PRICE_FMT });
+function isValueType() { return chartType === 'line' || chartType === 'area' || chartType === 'baseline'; }
 var volSeries = chart.addSeries(LW.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '', lastValueVisible: false, priceLineVisible: false });
 volSeries.priceScale().applyOptions({ scaleMargins: { top: 1 - S('vol').height / 100, bottom: 0 } });
 
@@ -349,7 +360,7 @@ var stS = overlayLine('#0ECB81', 2, true);
 var stDrawn = { i: -1, dir: 0 }, vwDrawn = -1;
 var volMaS = chart.addSeries(LW.LineSeries, { color: '#2962FF', lineWidth: 1, priceScaleId: '', lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, visible: false, priceFormat: { type: 'volume' } });
 
-function mainSeries() { return chartType === 'line' ? lineSeries : chartType === 'area' ? areaSeries : candleSeries; }
+function mainSeries() { return chartType === 'line' ? lineSeries : chartType === 'area' ? areaSeries : chartType === 'bar' ? barSeries : chartType === 'baseline' ? baseSeries : candleSeries; }
 function barOf(c) { return { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }; }
 function volOf(c) {
     var v = S('vol'), up = c.close >= c.open;
@@ -498,7 +509,7 @@ function haAt(i) {
 }
 function mainBar(i) { return tinted(chartType === 'ha' ? haBars[i] : barOf(candles[i])); }
 function mainData() {
-    if (chartType === 'line' || chartType === 'area') return candles.map(function (c) { return { time: c.time, value: c.close }; });
+    if (isValueType()) return candles.map(function (c) { return { time: c.time, value: c.close }; });
     if (chartType === 'ha') return haBars.map(tinted);
     return candles.map(function (c) { return tinted(barOf(c)); });
 }
@@ -515,11 +526,11 @@ function setBarTint(owner, map, key) {
     var prev = barTint && barTint.map || {}, merged = {}, owners = Object.keys(barTints);
     owners.forEach(function (o) { if (barTints[o].key === key) Object.assign(merged, barTints[o].map); });
     barTint = owners.length ? { map: merged, key: key } : null;
-    if (chartType !== 'candle' && chartType !== 'ha') return;
+    if (chartType !== 'candle' && chartType !== 'ha' && chartType !== 'bar') return;
     // a live run usually changes only the forming candle: update it instead of resending every candle
     var last = candles.length ? candles[candles.length - 1].time : null, other = false;
     Object.keys(prev).concat(Object.keys(merged)).some(function (t) { if (JSON.stringify(prev[t]) !== JSON.stringify(merged[t]) && +t !== last) other = true; return other; });
-    if (other) candleSeries.setData(mainData()); else if (last != null) candleSeries.update(mainBar(candles.length - 1));
+    if (other) mainSeries().setData(mainData()); else if (last != null) mainSeries().update(mainBar(candles.length - 1));
 }
 
 // push the complete data set into every series (initial load, type/indicator change, older history)
@@ -527,6 +538,9 @@ function setAllData() {
     candleSeries.setData(chartType === 'candle' || chartType === 'ha' ? mainData() : []);
     lineSeries.setData(chartType === 'line' ? mainData() : []);
     areaSeries.setData(chartType === 'area' ? mainData() : []);
+    barSeries.setData(chartType === 'bar' ? mainData() : []);
+    baseSeries.setData(chartType === 'baseline' ? mainData() : []);
+    if (chartType === 'baseline') baselineFit(true);
     volSeries.setData(ind.vol ? candles.map(volOf) : []);
     maS.forEach(function (s, k) { s.setData(ind.ma && P.ma[k].on ? pts(D.ma[k]) : []); });
     emaS.forEach(function (s, k) { s.setData(ind.ema && P.ema[k].on ? pts(D.ema[k]) : []); });
@@ -585,8 +599,8 @@ function pushLast() {
     var i = candles.length - 1, c = candles[i];
     stepInd(i);
     if (chartType === 'ha') haBars[i] = haAt(i);
-    if (chartType === 'line' || chartType === 'area') mainSeries().update({ time: c.time, value: c.close });
-    else candleSeries.update(mainBar(i));
+    if (isValueType()) mainSeries().update({ time: c.time, value: c.close });
+    else mainSeries().update(mainBar(i));
     if (ind.vol) volSeries.update(volOf(c));
     if (ind.ma) maS.forEach(function (s, k) { var p = P.ma[k].on ? ptAt(D.ma[k], i) : null; if (p) s.update(p); });
     if (ind.ema) emaS.forEach(function (s, k) { var p = P.ema[k].on ? ptAt(D.ema[k], i) : null; if (p) s.update(p); });
@@ -1021,6 +1035,8 @@ function applyType() {
     candleSeries.applyOptions({ visible: chartType === 'candle' || chartType === 'ha' });
     lineSeries.applyOptions({ visible: chartType === 'line' });
     areaSeries.applyOptions({ visible: chartType === 'area' });
+    barSeries.applyOptions({ visible: chartType === 'bar' });
+    baseSeries.applyOptions({ visible: chartType === 'baseline' });
     if (chartType === 'ha') toHA();
     DR.attachTo(mainSeries());
     setAllData();
@@ -1167,7 +1183,9 @@ function applyChartCfg() {
         wickUpColor: C.up, wickDownColor: C.down, priceLineVisible: c.lastLine, lastValueVisible: c.lastLine, wickVisible: true
     });
     if (candleOv) candleSeries.applyOptions(candleOv);
-    [lineSeries, areaSeries].forEach(function (x) { x.applyOptions({ priceLineVisible: c.lastLine, lastValueVisible: c.lastLine }); });
+    [lineSeries, areaSeries, barSeries, baseSeries].forEach(function (x) { x.applyOptions({ priceLineVisible: c.lastLine, lastValueVisible: c.lastLine }); });
+    barSeries.applyOptions({ upColor: C.up, downColor: C.down });
+    baseSeries.applyOptions({ topLineColor: C.up, bottomLineColor: C.down, topFillColor1: hexA(C.up, 0.28), topFillColor2: hexA(C.up, 0.04), bottomFillColor1: hexA(C.down, 0.04), bottomFillColor2: hexA(C.down, 0.28) });
     syncScaleBtns();
     scheduleRefresh(false);                       // volume colors, indicator styles
     scheduleLegend();
@@ -1897,6 +1915,50 @@ addLayer('top', function (ctx, w, h) {
     if (DR.measure) paint(ctx, DR.measure, false, w, h);
 });
 
+// ---- day / week separators and the visible high and low --------------------------------------------------------
+function periodKey(t) { var d = tz(t); return curSec() >= 86400 ? Math.floor((Date.UTC(d.Y, d.M, d.D) / 86400000 + 3) / 7) : d.Y * 400 + d.M * 32 + d.D; }
+addLayer('bottom', function (ctx, w, h) {
+    if (!S('chart').sep || curSec() >= 604800 || !candles.length) return;
+    var ts = chart.timeScale(), r = ts.getVisibleLogicalRange(); if (!r) return;
+    var a = Math.max(1, Math.floor(r.from)), z = Math.min(candles.length - 1, Math.ceil(r.to)), bw = barSpacingPx() || 6;
+    if ((z - a) * (curSec() >= 86400 ? 1 / 7 : curSec() / 86400) > 400) return;          // too many to read: skip
+    ctx.strokeStyle = 'rgba(132,142,156,.28)'; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+    for (var i = a; i <= z; i++) {
+        if (periodKey(candles[i].time) === periodKey(candles[i - 1].time)) continue;
+        var x = ts.logicalToCoordinate(i); if (x == null) continue;
+        x = Math.round(x - bw / 2) + 0.5; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+});
+addLayer('top', function (ctx, w, h) {
+    if (!S('chart').hilo || !candles.length || isValueType()) return;
+    var ts = chart.timeScale(), r = ts.getVisibleLogicalRange(); if (!r) return;
+    var a = Math.max(0, Math.ceil(r.from)), z = Math.min(candles.length - 1, Math.floor(r.to)); if (z - a < 2) return;
+    var hi = a, lo = a, src = chartType === 'ha' && haBars.length ? haBars : candles;
+    for (var i = a; i <= z; i++) { if (src[i].high > src[hi].high) hi = i; if (src[i].low < src[lo].low) lo = i; }
+    function mark(i, price, above) {
+        var x = ts.logicalToCoordinate(i), y = yOf(price); if (x == null || y == null) return;
+        var left = x > w * 0.6, txt = fmtPrice(price), tx = left ? x - 22 : x + 22, ty = y + (above ? -1 : 1) * 2;
+        ctx.strokeStyle = 'rgba(209,212,220,.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + (left ? -3 : 3), ty); ctx.lineTo(tx, ty); ctx.stroke();
+        ctx.font = '600 10.5px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = left ? 'right' : 'left';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.85)'; ctx.strokeText(txt, tx + (left ? -3 : 3), ty);
+        ctx.fillStyle = '#D1D4DC'; ctx.fillText(txt, tx + (left ? -3 : 3), ty); ctx.textAlign = 'start';
+    }
+    mark(hi, src[hi].high, true); mark(lo, src[lo].low, false);
+});
+// the baseline chart splits at the middle of what is on screen, like TradingView's 50 % level
+var baseLevel = null;
+function baselineFit(force) {
+    if (chartType !== 'baseline' || !candles.length) return;
+    var r = chart.timeScale().getVisibleLogicalRange(); if (!r) return;
+    var a = Math.max(0, Math.ceil(r.from)), z = Math.min(candles.length - 1, Math.floor(r.to)), hi = -Infinity, lo = Infinity;
+    for (var i = a; i <= z; i++) { hi = Math.max(hi, candles[i].close); lo = Math.min(lo, candles[i].close); }
+    if (!isFinite(hi)) return;
+    var mid = (hi + lo) / 2;
+    if (force || baseLevel == null || Math.abs(mid - baseLevel) > (hi - lo) * 0.02) { baseLevel = mid; baseSeries.applyOptions({ baseValue: { type: 'price', price: mid } }); }
+}
+chart.timeScale().subscribeVisibleLogicalRangeChange(function () { if (chartType === 'baseline') baselineFit(false); });
+
 // ---- hit testing ----------------------------------------------------------------------------------
 function segDist(p, a, b) {
     var dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
@@ -2180,6 +2242,8 @@ var ICON = {
     ha: '<svg viewBox="0 0 24 24"><path d="M7 3v3M7 18v3M17 6v3M17 21v-3"/><rect x="5" y="6" width="4" height="12" rx=".5"/><rect x="15" y="9" width="4" height="9" rx=".5"/></svg>',
     line: '<svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 8-10"/></svg>',
     area: '<svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 8-10v12H3z"/></svg>',
+    bar: '<svg viewBox="0 0 24 24"><path d="M7 4v14M4 8h3M7 15h3M17 7v14M14 18h3M17 10h3"/></svg>',
+    baseline: '<svg viewBox="0 0 24 24"><path d="M3 12h18" stroke-dasharray="2 2"/><path d="M3 15l4-6 4 3 4-7 6 9"/></svg>',
     hray: '<svg viewBox="0 0 24 24"><path d="M7 12h14"/><circle cx="7" cy="12" r="2"/></svg>',
     arrow: '<svg viewBox="0 0 24 24"><path d="M5 19L18 6"/><path d="M11 6h7v7"/></svg>',
     channel: '<svg viewBox="0 0 24 24"><path d="M3 15L15 5M9 19L21 9"/><path d="M6 17L18 7" stroke-dasharray="2 2"/></svg>',
@@ -2602,20 +2666,34 @@ function setRail(open) {
 }
 $('rail_toggle').onclick = function () { setRail(!railOpen); };
 
+var IV_FAV = LS.get('ivFav', null);                                  // intervals shown in the bar (null = all)
+function openIntervalPicker() {
+    var rows = [noteRow('위쪽 줄에 보일 시간봉을 고르세요. 지금 보고 있는 시간봉은 항상 보입니다.')];
+    INTERVALS.forEach(function (it) {
+        rows.push(swRow(it[1], !IV_FAV || IV_FAV.indexOf(it[0]) >= 0, function (on) {
+            var cur = IV_FAV ? IV_FAV.slice() : INTERVALS.map(function (x) { return x[0]; });
+            if (on && cur.indexOf(it[0]) < 0) cur.push(it[0]); if (!on) cur = cur.filter(function (x) { return x !== it[0]; });
+            IV_FAV = cur.length === INTERVALS.length ? null : cur; LS.set('ivFav', IV_FAV); buildIntervals();
+        }));
+    });
+    openSheet('시간봉 고르기', rows);
+}
 function buildIntervals() {
     var box = $('intervals'); box.innerHTML = '';
-    INTERVALS.forEach(function (it) {
+    INTERVALS.filter(function (it) { return !IV_FAV || IV_FAV.indexOf(it[0]) >= 0 || it[0] === interval; }).forEach(function (it) {
         var b = document.createElement('button'); b.className = 'chip'; b.setAttribute('data-i', it[0]); b.textContent = it[1];
         b.onclick = function () { changeInterval(it[0]); };
         box.appendChild(b);
     });
+    var more = document.createElement('button'); more.className = 'chip more'; more.textContent = '⋯'; more.setAttribute('aria-label', '시간봉 고르기');
+    more.onclick = openIntervalPicker; box.appendChild(more);
     markInterval();
 }
 function markInterval() {
     var chips = document.querySelectorAll('#intervals .chip');
     for (var i = 0; i < chips.length; i++) {
         var on = chips[i].getAttribute('data-i') === interval;
-        chips[i].className = 'chip' + (on ? ' active' : '');
+        chips[i].className = 'chip' + (on ? ' active' : '') + (chips[i].classList.contains('more') ? ' more' : '');
         if (on && chips[i].scrollIntoView) chips[i].scrollIntoView({ inline: 'center', block: 'nearest' });
     }
 }
@@ -2916,7 +2994,7 @@ function openIndicators() {
 }
 var indicatorRowHooks = [], legendHooks = [];
 $('ind_btn').onclick = openIndicators;
-var TYPE_NAMES = [['candle', '캔들'], ['ha', '하이킨 아시'], ['line', '라인'], ['area', '에어리어']];
+var TYPE_NAMES = [['candle', '캔들'], ['bar', '바 (OHLC)'], ['ha', '하이킨 아시'], ['line', '라인'], ['area', '에어리어'], ['baseline', '베이스라인']];
 function refreshTypeBtn() { $('type_btn').innerHTML = ICON[chartType]; }
 $('type_btn').onclick = function () {
     var rows = TYPE_NAMES.map(function (t) {
@@ -3084,7 +3162,7 @@ function setPrecision(dec) {
     if (dec === precision && started) return;
     precision = dec;
     var pf = { type: 'custom', minMove: Math.pow(10, -dec), formatter: fmtPrice };       // thousands separators, fixed decimals
-    [candleSeries, lineSeries, areaSeries].forEach(function (s) { s.applyOptions({ priceFormat: pf }); });
+    [candleSeries, lineSeries, areaSeries, barSeries, baseSeries].forEach(function (s) { s.applyOptions({ priceFormat: pf }); });
     Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); });
 }
 function showLoading(on) { $('loading').className = on ? '' : 'hide'; }

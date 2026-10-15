@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.24.0] - 2026-10-15
+
+### Added
+- **Chart types**: OHLC bars and baseline (split at the middle of the visible range, like TradingView's 50 % level).
+- **8h candles** (also for alerts), and the interval bar's **⋯** picks which intervals it shows.
+- **Time zone**: the phone's or UTC for the axis, the crosshair and drawing labels. In local time the axis says when
+  the engine's day marks (00:00 UTC) fall locally ("15일 09:00") instead of implying local midnight.
+- **Day separators** (week separators on daily candles) and **visible high / low price labels**.
+
 ## [1.23.0] - 2026-10-15
 
 ### Added

@@ -6,8 +6,8 @@
 'use strict';
 var CF = window.CF; if (!CF) return;
 var LS = CF.LS;
-var IVS = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w'];
-var IV_LABEL = { '1m': '1분', '3m': '3분', '5m': '5분', '15m': '15분', '30m': '30분', '1h': '1시간', '2h': '2시간', '4h': '4시간', '6h': '6시간', '12h': '12시간', '1d': '일봉', '1w': '주봉' };
+var IVS = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '1w'];
+var IV_LABEL = { '1m': '1분', '3m': '3분', '5m': '5분', '15m': '15분', '30m': '30분', '1h': '1시간', '2h': '2시간', '4h': '4시간', '6h': '6시간', '8h': '8시간', '12h': '12시간', '1d': '일봉', '1w': '주봉' };
 var SRC_LABEL = { rsi: 'RSI', macd: 'MACD', cvd: 'CVD', vol: '거래량' };
 
 // ---- storage: the app (bridge); in a desktop browser a local copy so the page can be tried out -------------------------
