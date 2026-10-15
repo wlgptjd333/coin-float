@@ -20,6 +20,30 @@ p1 = plot(spanA, "선행스팬 A", offset=disp - 1, color=#A5D6A7)
 p2 = plot(spanB, "선행스팬 B", offset=disp - 1, color=#EF9A9A)
 fill(p1, p2, color = spanA > spanB ? color.rgb(67, 160, 71, 85) : color.rgb(244, 67, 54, 85), title="구름")
 ` },
+{ id: 'pivots_std', cat: '추세', name: '피벗 포인트', desc: '일 · 주 · 월 기준 P, R1~R3, S1~S3 (표준 · 피보나치 · 카마릴라)', src: `//@version=5
+indicator("피벗 포인트", shorttitle="Pivots", overlay=true)
+tf = input.string("D", "기간", options=["D", "W", "M"])
+kind = input.string("표준", "종류", options=["표준", "피보나치", "카마릴라"])
+ph = request.security(syminfo.tickerid, tf, high[1], lookahead=barmerge.lookahead_on)
+pl = request.security(syminfo.tickerid, tf, low[1], lookahead=barmerge.lookahead_on)
+pc = request.security(syminfo.tickerid, tf, close[1], lookahead=barmerge.lookahead_on)
+rng = ph - pl
+p = (ph + pl + pc) / 3
+r1 = kind == "피보나치" ? p + 0.382 * rng : kind == "카마릴라" ? pc + rng * 1.1 / 12 : 2 * p - pl
+s1 = kind == "피보나치" ? p - 0.382 * rng : kind == "카마릴라" ? pc - rng * 1.1 / 12 : 2 * p - ph
+r2 = kind == "피보나치" ? p + 0.618 * rng : kind == "카마릴라" ? pc + rng * 1.1 / 6 : p + rng
+s2 = kind == "피보나치" ? p - 0.618 * rng : kind == "카마릴라" ? pc - rng * 1.1 / 6 : p - rng
+r3 = kind == "피보나치" ? p + rng : kind == "카마릴라" ? pc + rng * 1.1 / 4 : ph + 2 * (p - pl)
+s3 = kind == "피보나치" ? p - rng : kind == "카마릴라" ? pc - rng * 1.1 / 4 : pl - 2 * (ph - p)
+fresh = ph != ph[1] or pl != pl[1]
+plot(fresh ? na : p, "P", color=#F0B90B, linewidth=2, style=plot.style_linebr)
+plot(fresh ? na : r1, "R1", color=#F6465D, style=plot.style_linebr)
+plot(fresh ? na : r2, "R2", color=#F6465D, style=plot.style_linebr)
+plot(fresh ? na : r3, "R3", color=#F6465D, style=plot.style_linebr)
+plot(fresh ? na : s1, "S1", color=#0ECB81, style=plot.style_linebr)
+plot(fresh ? na : s2, "S2", color=#0ECB81, style=plot.style_linebr)
+plot(fresh ? na : s3, "S3", color=#0ECB81, style=plot.style_linebr)
+` },
 { id: 'emacross', cat: '추세', name: 'EMA 크로스 신호', desc: '빠른 · 느린 EMA와 골든 · 데드 크로스 표시', src: `//@version=5
 indicator("EMA 크로스 신호", shorttitle="EMA Cross", overlay=true)
 fastLen = input.int(9, "빠른 EMA", minval=1)

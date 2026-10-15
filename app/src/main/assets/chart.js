@@ -253,7 +253,7 @@ var chartType = LS.get('type', 'candle');                       // candle | ha |
 var ind = Object.assign({
     vol: true, ma: true, ema: false, boll: false, rsi: false, macd: false,
     cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: false,
-    vwap: false, st: false, fp: false, dom: false, xex: false
+    vwap: false, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false
 }, LS.get('ind', {}));
 var railOpen = LS.get('rail', false);
 var active = true, immersive = false, started = false;
@@ -553,6 +553,7 @@ function setAllData() {
     subsSetData();
     reportClose();
     if (features.cvdspot && features.cvdspot.running) spotFill();
+    if (cmp.list.length) cmpSync();
     emitData('all');
 }
 // Add-on modules (Pine scripts) follow the data: 'all' (new data set), 'new' (a candle opened), 'last' (forming candle moved)
@@ -646,8 +647,8 @@ var paneLay = (function () {
 function savePaneLay() { LS.set('paneLay', paneLay); }
 function subMember(key) {
     return subMembers[key] || (subMembers[key] = {
-        name: function () { return PANE_NAME[key] || key; },
-        color: function () { return paneTagColor(key); },
+        name: function () { return SUBS[key].name || PANE_NAME[key] || key; },
+        color: function () { return SUBS[key].color ? SUBS[key].color() : paneTagColor(key); },
         legend: function (i) { return SUBS[key].legend ? SUBS[key].legend(i, candles[i]) : ''; },
         settings: function () { if (SCHEMA[key]) openSettings(key); },
         close: function () { ind[key] = false; LS.set('ind', ind); applyIndicators(); },
@@ -1915,6 +1916,111 @@ addLayer('top', function (ctx, w, h) {
     if (DR.measure) paint(ctx, DR.measure, false, w, h);
 });
 
+
+// ---- compare: up to three other coins, rebased to this chart's first visible candle (their % moves on one axis) -------
+var CMP_COLORS = ['#FF6D00', '#18FFFF', '#FF4081'];               // dashed, in colors no indicator uses
+var cmp = { list: (LS.get('compare', []) || []).filter(function (x) { return /^[A-Z0-9]{2,30}$/.test(x); }).slice(0, 3), data: {}, series: {}, subs: {}, i0: -1, raf: 0 };
+function cmpSyms() { return cmp.list.filter(function (s) { return s !== symbol; }); }
+function cmpSeries(sym, k) {
+    if (!cmp.series[sym]) cmp.series[sym] = chart.addSeries(LW.LineSeries, { color: CMP_COLORS[k % 3], lineWidth: 1.5, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: PRICE_FMT });
+    return cmp.series[sym];
+}
+// fetch the other coin's closes for the loaded candles (older pages too), then draw
+function cmpFill(sym) {
+    var d = cmp.data[sym];
+    if (!d || d.iv !== interval) d = cmp.data[sym] = { iv: interval, map: new Map(), from: 0, busy: false, bad: false, seq: (d ? d.seq : 0) + 1 };
+    if (d.busy || d.bad || !candles.length || (d.from && d.from <= candles[0].time)) return;
+    var end = d.from ? d.from * 1000 - 1 : Date.now(), seq = d.seq;
+    d.busy = true;
+    fetch(REST + '?symbol=' + sym + '&interval=' + interval + '&endTime=' + end + '&limit=1500').then(function (r) {
+        if (r.status === 400) { d.bad = true; toast(sym + ' 차트를 찾지 못했어요'); return null; }
+        if (!r.ok) throw new Error('HTTP ' + r.status); return r.json();
+    }).then(function (rows) {
+        if (!rows || cmp.data[sym] !== d || seq !== d.seq) return;
+        rows.forEach(function (k) { d.map.set(Math.floor(k[0] / 1000), +k[4]); });
+        d.from = rows.length ? Math.floor(rows[0][0] / 1000) : candles[0].time;
+        if (rows.length < 1500) d.from = Math.min(d.from, candles[0].time);
+    }).catch(function () { /* try again with the next data change */ }).then(function () {
+        d.busy = false; cmp.i0 = -1; cmpDraw();
+        if (cmp.data[sym] === d && !d.bad && d.from > candles[0].time) cmpFill(sym);
+    });
+}
+function cmpBase() { var r = chart.timeScale().getVisibleLogicalRange(); return r ? clampN(Math.ceil(r.from), 0, candles.length - 1) : 0; }
+function cmpDraw() {
+    var syms = cmpSyms();
+    Object.keys(cmp.series).forEach(function (s) { if (syms.indexOf(s) < 0) { try { chart.removeSeries(cmp.series[s]); } catch (e) { /* gone */ } delete cmp.series[s]; } });
+    if (!candles.length) return;
+    var i0 = cmpBase(); cmp.i0 = i0;
+    syms.forEach(function (sym, k) {
+        var d = cmp.data[sym], se = cmpSeries(sym, k); if (!d || d.iv !== interval) { se.setData([]); return; }
+        var j = i0; while (j < candles.length && !d.map.has(candles[j].time)) j++;
+        if (j >= candles.length) { se.setData([]); return; }
+        var f = candles[j].close / d.map.get(candles[j].time), out = [];
+        candles.forEach(function (c) { var v = d.map.get(c.time); if (v != null) out.push({ time: c.time, value: v * f }); });
+        se.setData(out); d.f = f; d.j = j;
+    });
+    scheduleLegend();
+}
+function cmpSync() {
+    var syms = cmpSyms();
+    syms.forEach(function (sym) {
+        cmpFill(sym);
+        var name = sym.toLowerCase() + '@kline_' + interval;
+        if (!cmp.subs[sym] || cmp.subs[sym].name !== name) {
+            if (cmp.subs[sym]) streams.market.unsub(cmp.subs[sym].name, cmp.subs[sym].fn);
+            var fn = function (m) {
+                var k = m && m.k, d = cmp.data[sym]; if (!k || !d || d.iv !== interval) return;
+                var t = Math.floor(k.t / 1000); d.map.set(t, +k.c);
+                var se = cmp.series[sym]; if (se && d.f && candles.length && candles[candles.length - 1].time === t) se.update({ time: t, value: +k.c * d.f });
+            };
+            cmp.subs[sym] = { name: name, fn: fn }; streams.market.sub(name, fn);
+        }
+    });
+    Object.keys(cmp.subs).forEach(function (s) { if (syms.indexOf(s) < 0) { streams.market.unsub(cmp.subs[s].name, cmp.subs[s].fn); delete cmp.subs[s]; } });
+    cmpDraw();
+}
+chart.timeScale().subscribeVisibleLogicalRangeChange(function () {
+    if (!cmpSyms().length || cmp.raf) return;
+    cmp.raf = setTimeout(function () { cmp.raf = 0; if (cmpBase() !== cmp.i0) cmpDraw(); }, 250);
+});
+function cmpLegend(i) {
+    var syms = cmpSyms(); if (!syms.length || !candles.length) return '';
+    var i0 = cmpBase(), parts = [], c0 = candles[i0], c = candles[i];
+    if (c0 && c) { var pm = (c.close / c0.close - 1) * 100; parts.push('<span style="color:#D1D4DC">' + symbol.replace(/USDT$/, '') + ' ' + (pm >= 0 ? '+' : '') + pm.toFixed(2) + '%</span>'); }
+    syms.forEach(function (sym, k) {
+        var d = cmp.data[sym]; if (!d || !d.map.size || d.j == null || !c) return;
+        var a = d.map.get(candles[d.j].time), b = d.map.get(c.time); if (a == null || b == null) return;
+        var p = (b / a - 1) * 100; parts.push('<span style="color:' + CMP_COLORS[k % 3] + '">' + sym.replace(/USDT$/, '') + ' ' + (p >= 0 ? '+' : '') + p.toFixed(2) + '%</span>');
+    });
+    return parts.join(' ');
+}
+function openCompare() {
+    var rows = [noteRow('다른 코인을 겹쳐서, 화면 첫 봉부터 얼마나 오르고 내렸는지 비교합니다(최대 3개). 위쪽 수치에 각 코인의 % 변화가 나옵니다.')];
+    cmp.list.forEach(function (sym, k) {
+        var r = document.createElement('div'); r.className = 'row-opt';
+        r.innerHTML = '<span style="flex:1"><span style="color:' + CMP_COLORS[k % 3] + '">●</span> ' + sym + '</span><button class="tag" aria-label="빼기" style="color:' + C.down + '">✕</button>';
+        r.querySelector('button').onclick = function () { cmp.list.splice(k, 1); LS.set('compare', cmp.list); cmpSync(); openCompare(); };
+        rows.push(r);
+    });
+    if (cmp.list.length < 3) {
+        var add = document.createElement('div'); add.className = 'tplbox';
+        add.innerHTML = '<div class="tplmenu"><div class="tplrow"><input type="text" maxlength="20" placeholder="코인 이름 (예: ETH, SOL)" autocapitalize="characters"><button class="sv">추가</button></div></div><div class="seg" style="padding:8px 0 0"></div>';
+        var inp = add.querySelector('input'), seg = add.querySelector('.seg');
+        function addSym(v) {
+            v = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if (!v) return;
+            if (!/USDT$/.test(v)) v += 'USDT';
+            if (v === symbol || cmp.list.indexOf(v) >= 0) { toast('이미 보고 있는 코인이에요'); return; }
+            cmp.list.push(v); LS.set('compare', cmp.list); cmpSync(); openCompare();
+        }
+        add.querySelector('.sv').onclick = function () { addSym(inp.value); };
+        ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'].filter(function (s) { return s !== symbol && cmp.list.indexOf(s) < 0; }).forEach(function (s) {
+            var b = document.createElement('button'); b.textContent = s.replace(/USDT$/, ''); b.onclick = function () { addSym(s); }; seg.appendChild(b);
+        });
+        rows.push(add);
+    }
+    openSheet('코인 비교', rows);
+}
+
 // ---- day / week separators and the visible high and low --------------------------------------------------------
 function periodKey(t) { var d = tz(t); return curSec() >= 86400 ? Math.floor((Date.UTC(d.Y, d.M, d.D) / 86400000 + 3) / 7) : d.Y * 400 + d.M * 32 + d.D; }
 addLayer('bottom', function (ctx, w, h) {
@@ -2961,8 +3067,12 @@ function openIndicators() {
     settingsKey = null;
     var maLines = S('ma').lines.filter(function (l) { return l.on; }).map(function (l) { return l.p; }).join(' · ');
     var b = S('boll'), r = S('rsi'), m = S('macd');
+    var cmpRow = document.createElement('div'); cmpRow.className = 'row-opt'; cmpRow.setAttribute('role', 'button');
+    cmpRow.innerHTML = '<span style="flex:1">코인 비교<small>' + (cmpSyms().length ? cmpSyms().map(function (s) { return s.replace(/USDT$/, ''); }).join(' · ') : '다른 코인의 % 움직임을 겹쳐 보기') + '</small></span><span style="color:var(--muted)">›</span>';
+    cmpRow.onclick = openCompare;
     openSheet('지표', [
         setsBox(),
+        cmpRow,
         sectionTitle('기본'),
         switchRow('거래량', '', 'vol', true),
         switchRow('이동평균선', maLines, 'ma', true),
@@ -2976,6 +3086,8 @@ function openIndicators() {
         sectionTitle('오더플로우'),
         switchRow('CVD · 델타', '누적 체결 델타 (매수-매도 체결량)', 'cvd', true),
         switchRow('미결제약정 (OI)', 'Binance 선물 · 별도 창', 'oi', true),
+        switchRow('펀딩비', '지난 펀딩 · 예상 펀딩 · 연환산', 'fund', true),
+        switchRow('롱 · 숏 비율', '전체 계정 · 상위 트레이더 · 시장가 체결 (최근 30일)', 'lsr', true),
         switchRow('실시간 청산', '청산 주문 버블 + 봉별 청산량', 'liq', true),
         switchRow('대량 체결', '큰 체결만 버블로 표시', 'trades', true),
         switchRow('풋프린트', '확대하면 가격별 매수·매도 체결량 · 불균형 · POC', 'fp', true),
@@ -3051,6 +3163,7 @@ function renderLegend() {
             var bc = S('boll');
             parts.push('<span style="color:' + bc.cMid + '">BOLL ' + fmtPrice(D.bMid[i]) + '</span> <span style="color:' + bc.cBand + '">' + fmtPrice(D.bUp[i]) + ' / ' + fmtPrice(D.bLo[i]) + '</span>');
         }
+        var cl = cmpLegend(i); if (cl) parts.push(cl);
         if (ind.vp && vpCache.res) {
             var vr = vpCache.res;
             parts.push('<span style="color:#F0B90B">POC ' + fmtPrice(vr.lo + (vr.poc + 0.5) * vr.step) + '</span> <span style="color:#B2B5BE">VA ' +

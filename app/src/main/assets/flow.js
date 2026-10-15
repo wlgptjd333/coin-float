@@ -949,5 +949,132 @@ CF.registerFeature('bidask', {
     }
 });
 
+
+// =====================================================================================================
+// Funding rate: past fundings per candle and the predicted next one (Binance USD-M)
+// =====================================================================================================
+CF.defineSettings('fund', {
+    title: '펀딩비 설정', onChange: function () { CF.styleSubs(); CF.refreshSub('fund'); },
+    fields: [
+        { k: 'pred', t: 'bool', label: '예상 펀딩비 선', sub: '다음 정산에 적용될 예상 펀딩비를 점선으로', def: true },
+        { k: 'annual', t: 'bool', label: '수치에 연환산 함께 표시', def: true },
+        { t: 'note', label: '양수면 롱이 숏에게, 음수면 숏이 롱에게 지급합니다. 크게 양수일수록 롱 쏠림(과열)입니다. 일봉 이상에서는 그 봉 안의 펀딩을 더해 보여줍니다.' }
+    ]
+});
+var fund = { list: [], pred: null, next: 0, hours: 8, timer: 0, seq: 0 };
+function fundPoints() {
+    var m = {}, keys = [];
+    fund.list.forEach(function (f) {
+        var t = candleStartOf(f.t); if (t == null) return;
+        if (m[t] == null) { m[t] = 0; keys.push(t); }
+        m[t] += f.r;
+    });
+    return keys.sort(function (a, b) { return a - b; }).map(function (t) { var v = m[t] * 100; return { time: t, value: v, color: CF.hexA(v >= 0 ? UP() : DOWN(), 0.75) }; });
+}
+function fundLoad() {
+    var sym = CF.symbol(), seq = ++fund.seq;
+    getJson(FAPI + '/fapi/v1/fundingRate?symbol=' + sym + '&limit=1000').then(function (rows) {
+        if (seq !== fund.seq || !Array.isArray(rows)) return;
+        fund.list = rows.map(function (r) { return { t: Math.floor(r.fundingTime / 1000), r: +r.fundingRate }; });
+        var n = fund.list.length; if (n > 1) fund.hours = Math.max(1, Math.round((fund.list[n - 1].t - fund.list[n - 2].t) / 3600));
+        CF.refreshSub('fund');
+    }).catch(function () { CF.toast('펀딩비 기록을 불러오지 못했어요'); });
+    fundPred();
+}
+function fundPred() {
+    var sym = CF.symbol(), seq = fund.seq;
+    getJson(FAPI + '/fapi/v1/premiumIndex?symbol=' + sym).then(function (r) {
+        if (seq !== fund.seq) return;
+        var was = fund.next;
+        fund.pred = +r.lastFundingRate; fund.next = +r.nextFundingTime;
+        if (was && fund.next !== was) fundLoad();                       // a funding was settled: take it into the history
+        var o = CF.subSeries('fund'); if (o) CF.styleSubs();
+        CF.scheduleLegend();
+    }).catch(function () { /* next poll */ });
+}
+function fmtRate(v) { return (v >= 0 ? '+' : '') + v.toFixed(4) + '%'; }
+CF.registerSub('fund', {
+    name: '펀딩비', color: function () { return '#F0B90B'; },
+    create: function (pane, sid) {
+        var pf = { type: 'custom', minMove: 0.0001, formatter: function (v) { return v.toFixed(4) + '%'; } };
+        return { bars: chart.addSeries(LW.HistogramSeries, Object.assign({ priceLineVisible: false, lastValueVisible: false, priceFormat: pf }, sid ? { priceScaleId: sid } : {}), pane), pl: [] };
+    },
+    style: function (o) {
+        o.pl.forEach(function (l) { try { o.bars.removePriceLine(l); } catch (e) { /* gone */ } }); o.pl = [];
+        o.pl.push(o.bars.createPriceLine({ price: 0, color: 'rgba(132,142,156,.4)', lineWidth: 1, lineStyle: 1, axisLabelVisible: false }));
+        if (CF.S('fund').pred && fund.pred != null) o.pl.push(o.bars.createPriceLine({ price: fund.pred * 100, color: '#F0B90B', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '예상' }));
+    },
+    setData: function (o) { o.bars.setData(fundPoints()); },
+    legend: function (i) {
+        var c = CF.candles()[i]; if (!c) return '';
+        var p = fundPoints().filter(function (x) { return x.time === c.time; })[0], ann = CF.S('fund').annual, per = 24 / fund.hours * 365;
+        var h = '<span style="color:#F0B90B">펀딩</span> ' + (p ? '<span class="' + (p.value >= 0 ? 'up' : 'down') + '">' + fmtRate(p.value) + '</span>' : '<span style="color:#848E9C">정산 없음</span>');
+        if (fund.pred != null && i === CF.candles().length - 1) {
+            var left = Math.max(0, fund.next - Date.now()), hh = Math.floor(left / 3600000), mm = Math.floor(left % 3600000 / 60000);
+            h += ' <span style="color:#B2B5BE">예상 ' + fmtRate(fund.pred * 100) + (ann ? ' (연 ' + (fund.pred * 100 * per).toFixed(1) + '%)' : '') + ' · ' + hh + '시간 ' + mm + '분 후</span>';
+        }
+        return h;
+    }
+});
+CF.registerFeature('fund', {
+    start: function () { fundLoad(); fund.timer = setInterval(fundPred, 30000); },
+    stop: function () { fund.seq++; clearInterval(fund.timer); fund.timer = 0; fund.list = []; fund.pred = null; fund.next = 0; }
+});
+
+// =====================================================================================================
+// Long / short ratios: all accounts, top traders' positions, takers' buy / sell volume (Binance, last 30 days)
+// =====================================================================================================
+CF.defineSettings('lsr', {
+    title: '롱 · 숏 비율 설정', onChange: function () { CF.styleSubs(); CF.refreshSub('lsr'); },
+    fields: [
+        { k: 'acc', t: 'bool', label: '전체 계정 롱숏 비율', def: true },
+        { k: 'top', t: 'bool', label: '상위 트레이더 포지션 롱숏 비율', def: true },
+        { k: 'taker', t: 'bool', label: '시장가 매수 / 매도 체결 비율', def: false },
+        { t: 'note', label: '1보다 크면 롱이 많습니다. 전체 계정은 개인 쏠림, 상위 트레이더는 큰 계정의 포지션 방향을 봅니다. 바이낸스가 최근 30일만 제공하며 5분 단위가 가장 짧습니다.' }
+    ]
+});
+var lsr = { acc: [], top: [], taker: [], period: '1h', timer: 0, seq: 0 };
+function lsrPoints(list) {
+    var out = [], lastT = null;
+    list.forEach(function (p) { var t = candleStartOf(p.t); if (t == null) return; if (t === lastT) out[out.length - 1].value = p.v; else { out.push({ time: t, value: p.v }); lastT = t; } });
+    return out;
+}
+function lsrLoad() {
+    var sym = CF.symbol(), seq = ++lsr.seq, per = lsr.period = OI_PERIOD[CF.interval()] || '1h';
+    function get(path, key, field) {
+        return getJson(FAPI + '/futures/data/' + path + '?symbol=' + sym + '&period=' + per + '&limit=500').then(function (rows) {
+            if (seq !== lsr.seq || !Array.isArray(rows)) return;
+            lsr[key] = rows.map(function (r) { return { t: Math.floor(r.timestamp / 1000), v: +r[field], long: +r.longAccount || +r.longPosition || 0 }; }).sort(function (a, b) { return a.t - b.t; });
+        }).catch(function () { /* that line stays empty */ });
+    }
+    Promise.all([get('globalLongShortAccountRatio', 'acc', 'longShortRatio'), get('topLongShortPositionRatio', 'top', 'longShortRatio'), get('takerlongshortRatio', 'taker', 'buySellRatio')])
+        .then(function () { if (seq === lsr.seq) CF.refreshSub('lsr'); });
+}
+function lsrAt(list, t) { for (var i = list.length - 1; i >= 0; i--) if (list[i].t <= t + CF.secs() - 1) return list[i]; return null; }
+CF.registerSub('lsr', {
+    name: '롱숏 비율', color: function () { return '#F0B90B'; },
+    create: function (pane, sid) {
+        var opt = function (c) { return Object.assign({ color: c, lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: { type: 'price', precision: 2, minMove: 0.01 } }, sid ? { priceScaleId: sid } : {}); };
+        var o = { acc: chart.addSeries(LW.LineSeries, opt('#F0B90B'), pane), top: chart.addSeries(LW.LineSeries, opt('#E040FB'), pane), taker: chart.addSeries(LW.LineSeries, opt('#00BCD4'), pane), pl: [] };
+        o.pl.push(o.acc.createPriceLine({ price: 1, color: 'rgba(132,142,156,.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false }));
+        return o;
+    },
+    style: function (o) { var c = CF.S('lsr'); o.acc.applyOptions({ visible: c.acc }); o.top.applyOptions({ visible: c.top }); o.taker.applyOptions({ visible: c.taker, lineWidth: 1 }); },
+    setData: function (o) { o.acc.setData(lsrPoints(lsr.acc)); o.top.setData(lsrPoints(lsr.top)); o.taker.setData(lsrPoints(lsr.taker)); },
+    legend: function (i) {
+        var c = CF.candles()[i], cfg = CF.S('lsr'); if (!c) return '';
+        var a = lsrAt(lsr.acc, c.time), t = lsrAt(lsr.top, c.time), k = lsrAt(lsr.taker, c.time), out = [];
+        if (cfg.acc && a) out.push('<span style="color:#F0B90B">롱숏 ' + a.v.toFixed(2) + (a.long ? ' (롱 ' + (a.long * 100).toFixed(1) + '%)' : '') + '</span>');
+        if (cfg.top && t) out.push('<span style="color:#E040FB">상위 ' + t.v.toFixed(2) + '</span>');
+        if (cfg.taker && k) out.push('<span style="color:#00BCD4">테이커 ' + k.v.toFixed(2) + '</span>');
+        return out.join(' ') || '<span style="color:#848E9C">롱숏 비율 (최근 30일만)</span>';
+    }
+});
+CF.registerFeature('lsr', {
+    byInterval: true,
+    start: function () { lsrLoad(); lsr.timer = setInterval(lsrLoad, 5 * 60000); },
+    stop: function () { lsr.seq++; clearInterval(lsr.timer); lsr.timer = 0; lsr.acc = []; lsr.top = []; lsr.taker = []; }
+});
+
 window.__flow = { modelLiq: modelLiq, Book: Book, Heat: Heat, oi: oi, liq: liq, big: big, lmap: lmap, walls: walls, fmtUsd: fmtUsd };
 })();

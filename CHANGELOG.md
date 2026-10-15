@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.25.0] - 2026-10-15
+
+### Added
+- **Compare coins** (top of the indicator sheet): up to three other coins rebased to the first visible candle, dashed,
+  live; the legend shows each coin's % move since then.
+- **Funding rate pane**: past fundings per candle (summed on daily candles and above), the predicted next rate as a
+  dashed line with its annualised rate and the time to settlement.
+- **Long / short ratio pane**: all accounts, top traders' positions and (optionally) takers' buy / sell volume.
+- **Pivot points** in the Pine library: daily, weekly or monthly; standard, Fibonacci or Camarilla. The levels match
+  a hand calculation from Binance's previous daily candle.
+
 ## [1.24.0] - 2026-10-15
 
 ### Added
