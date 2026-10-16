@@ -1076,5 +1076,146 @@ CF.registerFeature('lsr', {
     stop: function () { lsr.seq++; clearInterval(lsr.timer); lsr.timer = 0; lsr.acc = []; lsr.top = []; lsr.taker = []; }
 });
 
+// =====================================================================================================
+// Bitfinex margin longs / shorts: the size of all margin positions in the coin (Bitfinex stats1 pos.size, 1 minute).
+// Bitfinex is where a lot of big BTC holders and arbitrage desks leverage, so its long / short build-ups are watched as
+// a whale gauge. Its REST API sends no CORS headers: the app fetches it (AndroidBridge.bfxGet).
+// =====================================================================================================
+CF.defineSettings('bfx', {
+    title: '비트파이넥스 롱 · 숏 설정', onChange: function () { CF.styleSubs(); CF.refreshSub('bfx'); },
+    help: '비트파이넥스 마진 거래에서 열려 있는 롱 · 숏 포지션의 총 수량(코인 단위)입니다.\n\n' +
+        '왜 보나: 비트파이넥스는 큰 보유자(고래)와 차익거래 업체가 많이 쓰는 거래소라, 이 수치가 "큰손의 방향"으로 자주 인용됩니다. 롱이 99% 이상이라 롱숏 "비율"은 거의 늘 100%에 붙어 있어서, 비율보다 수량의 변화를 봅니다.\n\n' +
+        '읽는 법\n• 롱이 빠르게 늘며 가격이 오름: 고래가 추세에 올라타는 중. 다만 급증은 과열 신호이기도 합니다.\n• 롱이 급감: 롱 청산 · 이익 실현. 가격이 버티면 매수세 약화, 떨어지면 하락 가속의 흔적입니다.\n• 숏이 급증(원래 매우 적음): 큰 하락 베팅 또는 헤지. 가격이 오르면 숏 스퀴즈 연료가 됩니다.\n• 숏이 급감하며 가격 급등: 숏 커버링(숏 스퀴즈)입니다.\n\n' +
+        '주의: 비트파이넥스 한 곳의 데이터이고 헤지 · 차익 포지션이 섞여 있어 단독 매매 신호는 아닙니다. 가격 · OI · 펀딩비와 함께 보세요. 1분 단위 자료를 봉에 맞춰 보여주며, 시간봉이 길면 오래된 구간은 비어 있을 수 있습니다(요청 한도). USD 마진 시장이 있는 코인만 나옵니다.',
+    fields: [
+        { k: 'mode', t: 'sel', label: '표시', def: 'pos', opts: [['pos', '포지션 수량'], ['delta', 'N봉 변화량']] },
+        { k: 'span', t: 'sel', label: '변화량 기준 (봉 수)', def: '24', opts: [['6', '6'], ['12', '12'], ['24', '24'], ['48', '48']] },
+        { k: 'long', t: 'bool', label: '롱 표시', def: true },
+        { k: 'cLong', t: 'color', label: '롱 색', def: '#0ECB81', showIf: function (c) { return c.long; } },
+        { k: 'short', t: 'bool', label: '숏 표시', sub: '숏은 롱보다 훨씬 작아서 따로 눈금(숨김)을 씁니다', def: true },
+        { k: 'cShort', t: 'color', label: '숏 색', def: '#F6465D', showIf: function (c) { return c.short; } },
+        { t: 'note', label: '단위는 코인 수량입니다. 비트파이넥스 마진 시장이 없는 코인은 비어 있습니다. 변화량 기준은 "N봉 변화량"일 때와 상단 수치의 % 변화에 쓰입니다.' }
+    ]
+});
+var bfx = { long: {}, short: {}, seq: 0, timer: 0, n: 0, cb: {}, state: 'idle' };
+window.__bfxDone = function (id, text) {
+    var c = bfx.cb[id]; if (!c) return;
+    delete bfx.cb[id]; clearTimeout(c.t);
+    try { c.res(JSON.parse(text)); } catch (e) { c.rej(new Error('bad answer')); }
+};
+function bfxFetch(path) {
+    return new Promise(function (res, rej) {
+        var B = window.AndroidBridge, id = 'b' + (++bfx.n);
+        bfx.cb[id] = { res: res, rej: rej, t: setTimeout(function () { delete bfx.cb[id]; rej(new Error('timeout')); }, 25000) };
+        if (B && typeof B.bfxGet === 'function') { try { B.bfxGet(id + '|' + path); } catch (e) { rej(e); } }
+        else getJson('https://api-pub.bitfinex.com' + path).then(res, rej);        // a desktop browser may block this (no CORS)
+    });
+}
+function bfxSym() {
+    var b = CF.symbol().replace(/USDT$|USDC$/, '').replace(/^1000+/, '');
+    return /^[A-Z0-9]{2,12}$/.test(b) ? 't' + b + (b.length > 3 ? ':USD' : 'USD') : null;
+}
+function bfxPath(sym, side, q) { return '/v2/stats1/pos.size:1m:' + sym + ':' + side + '/hist?' + q; }
+// all the history the loaded candles need, 10,000 minutes a request, newest first (a few pages at most)
+function bfxLoad() {
+    var sym = bfxSym(), seq = ++bfx.seq, cs = CF.candles();
+    if (!sym || !cs.length) { bfx.state = 'none'; CF.scheduleLegend(); return; }
+    bfx.state = 'loading';
+    var t0 = cs[0].time * 1000, MAX_PAGES = 6;
+    function side(name) {
+        var map = {}, end = Date.now() + 60000, page = 0;
+        function next() {
+            return bfxFetch(bfxPath(sym, name, 'limit=10000&end=' + end)).then(function (rows) {
+                if (seq !== bfx.seq || !Array.isArray(rows) || !rows.length) return map;
+                rows.forEach(function (r) { var t = candleStartOf(Math.floor(r[0] / 1000)); if (t != null && map[t] == null) map[t] = +r[1]; });
+                var oldest = rows[rows.length - 1][0]; page++;
+                if (rows.length >= 10000 && oldest > t0 && page < MAX_PAGES) { end = oldest - 1; return next(); }
+                return map;
+            });
+        }
+        return next().catch(function () { return map; });
+    }
+    Promise.all([side('long'), side('short')]).then(function (m) {
+        if (seq !== bfx.seq) return;
+        bfx.long = m[0]; bfx.short = m[1];
+        bfx.state = Object.keys(m[0]).length ? 'ok' : 'none';
+        if (bfx.state === 'none') CF.toast('비트파이넥스에 이 코인의 마진 롱 · 숏 자료가 없어요');
+        CF.refreshSub('bfx');
+    });
+}
+// the newest minutes, every minute
+function bfxPoll() {
+    var sym = bfxSym(), seq = bfx.seq; if (!sym || bfx.state !== 'ok') return;
+    ['long', 'short'].forEach(function (name) {
+        bfxFetch(bfxPath(sym, name, 'limit=3')).then(function (rows) {
+            if (seq !== bfx.seq || !Array.isArray(rows) || !rows.length) return;
+            var t = candleStartOf(Math.floor(rows[0][0] / 1000)); if (t == null) return;
+            bfx[name][t] = +rows[0][1]; CF.refreshSub('bfx');
+        }).catch(function () { /* next minute */ });
+    });
+}
+// one value per loaded candle (a position stays open until it changes, so gaps carry the last value forward)
+function bfxArr(name) {
+    var cs = CF.candles(), m = bfx[name], out = new Array(cs.length), last = null;
+    for (var i = 0; i < cs.length; i++) { if (m[cs[i].time] != null) last = m[cs[i].time]; out[i] = last; }
+    return out;
+}
+function bfxSeriesData(name) {
+    var cs = CF.candles(), a = bfxArr(name), cfg = CF.S('bfx'), span = +cfg.span || 24, out = [];
+    for (var i = 0; i < cs.length; i++) {
+        if (a[i] == null) continue;
+        if (cfg.mode === 'delta') { if (i >= span && a[i - span] != null) out.push({ time: cs[i].time, value: a[i] - a[i - span] }); }
+        else out.push({ time: cs[i].time, value: a[i] });
+    }
+    return out;
+}
+function fmtBfx(v) {
+    var a = Math.abs(v), sgn = CF.S('bfx').mode === 'delta' && v > 0 ? '+' : '';
+    if (a >= 1e6) return sgn + (v / 1e6).toFixed(2) + 'M';
+    if (a >= 1e4) return sgn + (v / 1e3).toFixed(1) + 'K';
+    return sgn + v.toFixed(a >= 100 ? 0 : 2);
+}
+CF.registerSub('bfx', {
+    name: 'BFX 롱숏', color: function () { return CF.S('bfx').cLong; },
+    create: function (pane, sid) {
+        var pf = { type: 'custom', minMove: 0.01, formatter: fmtBfx };
+        var opt = function (c, id) { return Object.assign({ color: c, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: pf }, id ? { priceScaleId: id } : {}); };
+        var o = { lng: chart.addSeries(LW.LineSeries, Object.assign(opt('#0ECB81', sid), { lastValueVisible: true }), pane),
+                  sht: chart.addSeries(LW.LineSeries, opt('#F6465D', sid ? sid + 's' : 'bfxs'), pane), pl: [] };
+        try { o.sht.priceScale().applyOptions({ visible: false, scaleMargins: { top: 0.12, bottom: 0.1 } }); } catch (e) { /* ignore */ }
+        return o;
+    },
+    style: function (o) {
+        var c = CF.S('bfx');
+        o.lng.applyOptions({ visible: c.long, color: c.cLong }); o.sht.applyOptions({ visible: c.short, color: c.cShort });
+        o.pl.forEach(function (l) { try { o.lng.removePriceLine(l); } catch (e) { /* gone */ } }); o.pl = [];
+        if (c.mode === 'delta') o.pl.push(o.lng.createPriceLine({ price: 0, color: 'rgba(132,142,156,.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false }));
+    },
+    setData: function (o) { o.lng.setData(bfxSeriesData('long')); o.sht.setData(bfxSeriesData('short')); },
+    legend: function (i) {
+        var cs = CF.candles(), c = cs[i], cfg = CF.S('bfx'); if (!c) return '';
+        if (bfx.state === 'none') return '<span style="color:#848E9C">BFX 롱숏 · 이 코인은 비트파이넥스 마진 자료가 없어요</span>';
+        if (bfx.state !== 'ok') return '<span style="color:#848E9C">BFX 롱숏 · 불러오는 중…</span>';
+        var la = bfxArr('long'), sa = bfxArr('short'), l = la[i], sh = sa[i], base = CF.symbol().replace(/USDT$|USDC$/, ''), out = [];
+        if (l == null && sh == null) return '<span style="color:#848E9C">BFX 롱숏 · 이 구간은 자료가 없어요</span>';
+        var span = +cfg.span || 24, pl = i >= span ? la[i - span] : null, ps = i >= span ? sa[i - span] : null;
+        function fmtV(v) { var a = Math.abs(v); return (a >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : a >= 1e3 ? (v / 1e3).toFixed(1) + 'K' : v.toFixed(1)) + ' ' + base; }
+        function part(v, prev, color, name) {
+            if (v == null) return '';
+            var h = '<span style="color:' + color + '">' + name + ' ' + fmtV(v) + '</span>';
+            if (prev != null && prev > 0) { var p = (v - prev) / prev * 100; h += ' <span class="' + (p >= 0 ? 'up' : 'down') + '">' + (p >= 0 ? '+' : '') + p.toFixed(1) + '%/' + span + '봉</span>'; }
+            return h;
+        }
+        if (cfg.long) out.push(part(l, pl, cfg.cLong, 'BFX 롱'));
+        if (cfg.short) out.push(part(sh, ps, cfg.cShort, '숏'));
+        return out.join(' ');
+    }
+});
+CF.registerFeature('bfx', {
+    byInterval: true,
+    start: function () { bfxLoad(); bfx.timer = setInterval(bfxPoll, 60000); },
+    stop: function () { bfx.seq++; clearInterval(bfx.timer); bfx.timer = 0; bfx.long = {}; bfx.short = {}; bfx.state = 'idle'; }
+});
+
 window.__flow = { modelLiq: modelLiq, Book: Book, Heat: Heat, oi: oi, liq: liq, big: big, lmap: lmap, walls: walls, fmtUsd: fmtUsd };
 })();

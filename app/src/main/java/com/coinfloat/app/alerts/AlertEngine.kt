@@ -15,8 +15,15 @@ data class Bar(
     val takerBuy: Double
 )
 
-/** What fired: the candle it fired on, a short title for the notification and a line of detail. */
-data class Signal(val candleTime: Long, val key: String, val title: String, val detail: String, val marker: String)
+/**
+ * What fired: the candle it fired on (always the newest closed one, the one the notification is about), a short title
+ * for the notification and a line of detail. `dir` is 1 for a bullish signal, -1 for a bearish one, 0 for neither;
+ * `refTime` is the earlier candle the signal is about (a divergence's pivot), 0 when there is none.
+ */
+data class Signal(
+    val candleTime: Long, val key: String, val title: String, val detail: String, val marker: String,
+    val dir: Int = 0, val refTime: Long = 0
+)
 
 /**
  * Indicator math and the conditions, written like Pine's built-ins so the results match TradingView:
@@ -140,11 +147,11 @@ object AlertEngine {
                     else -> null
                 }
                 if (hit != null) return Signal(
-                    bars[p].openTime, "div-bull-${bars[q].openTime}-${bars[p].openTime}",
+                    bars[n - 1].openTime, "div-bull-${bars[q].openTime}-${bars[p].openTime}",
                     "$name $hit 상승 다이버전스",
                     if (source == Source.VOLUME) "가격은 저점을 낮췄는데 거래량은 줄었습니다 (매도 소진)"
                     else "가격 저점 ${if (priceLL) "↓" else "↑"} · $name 저점 ${if (oscHL) "↑" else "↓"} (${p - q}봉 간격)",
-                    "$name↑"
+                    "$name↑", dir = 1, refTime = bars[p].openTime
                 )
             }
         }
@@ -160,19 +167,25 @@ object AlertEngine {
                     else -> null
                 }
                 if (hit != null) return Signal(
-                    bars[p].openTime, "div-bear-${bars[q].openTime}-${bars[p].openTime}",
+                    bars[n - 1].openTime, "div-bear-${bars[q].openTime}-${bars[p].openTime}",
                     "$name $hit 하락 다이버전스",
                     if (source == Source.VOLUME) "가격은 고점을 높였는데 거래량은 줄었습니다 (매수 약화)"
                     else "가격 고점 ${if (priceHH) "↑" else "↓"} · $name 고점 ${if (oscLH) "↓" else "↑"} (${p - q}봉 간격)",
-                    "$name↓"
+                    "$name↓", dir = -1, refTime = bars[p].openTime
                 )
             }
         }
         return null
     }
 
-    /** The newest closed candle traded at least `mult` times the average volume of the `len` candles before it. */
-    fun volumeSpike(bars: List<Bar>, mult: Double, len: Int = 20): Signal? {
+    /**
+     * The newest closed candle traded at least `mult` times the average volume of the `len` candles before it (RVOL).
+     * `up` / `down` limit it to green / red candles; `minBody` (percent of the open, 0 = off) drops spikes whose body
+     * is smaller than that: big volume with no price move is absorption or a doji, not a breakout.
+     */
+    fun volumeSpike(
+        bars: List<Bar>, mult: Double, len: Int = 20, up: Boolean = true, down: Boolean = true, minBody: Double = 0.0
+    ): Signal? {
         val n = bars.size
         if (n < len + 1) return null
         var sum = 0.0
@@ -180,10 +193,14 @@ object AlertEngine {
         val avg = sum / len
         val last = bars[n - 1]
         if (avg <= 0 || last.volume < mult * avg) return null
+        val green = last.close >= last.open
+        if (green && !up || !green && !down) return null
+        val body = if (last.open > 0) abs(last.close - last.open) / last.open * 100 else 0.0
+        if (minBody > 0 && body < minBody) return null
         val ratio = last.volume / avg
-        val dir = if (last.close >= last.open) "양봉" else "음봉"
+        val dir = if (green) "양봉" else "음봉"
         return Signal(last.openTime, "vol-${last.openTime}", "거래량 급증 · 평균의 ${fmt1(ratio)}배",
-            "$dir · 직전 ${len}봉 평균 대비 ${fmt1(ratio)}배", "V×${fmt1(ratio)}")
+            "$dir ${if (green) "+" else "-"}${fmt2(body)}% · 직전 ${len}봉 평균 대비 ${fmt1(ratio)}배", "V×${fmt1(ratio)}", dir = if (green) 1 else -1)
     }
 
     /** Close beyond the highest high (lowest low) of the `len` candles before it, when the candle before had not broken out. */
@@ -205,10 +222,10 @@ object AlertEngine {
         var loPrev = Double.POSITIVE_INFINITY
         for (i in n - 2 - len until n - 2) { if (i < 0) continue; hiPrev = max(hiPrev, bars[i].high); loPrev = min(loPrev, bars[i].low) }
         if (up && last.close > hi && prev.close <= hiPrev) {
-            return Signal(last.openTime, "brk-up-${last.openTime}", "${len}봉 고점 돌파", "직전 ${len}봉 최고가 ${fmtP(hi)} 위에서 마감", "돌파↑")
+            return Signal(last.openTime, "brk-up-${last.openTime}", "${len}봉 고점 돌파", "직전 ${len}봉 최고가 ${fmtP(hi)} 위에서 마감", "돌파↑", dir = 1)
         }
         if (down && last.close < lo && prev.close >= loPrev) {
-            return Signal(last.openTime, "brk-dn-${last.openTime}", "${len}봉 저점 이탈", "직전 ${len}봉 최저가 ${fmtP(lo)} 아래에서 마감", "이탈↓")
+            return Signal(last.openTime, "brk-dn-${last.openTime}", "${len}봉 저점 이탈", "직전 ${len}봉 최저가 ${fmtP(lo)} 아래에서 마감", "이탈↓", dir = -1)
         }
         return null
     }
@@ -226,10 +243,10 @@ object AlertEngine {
         val lNow = at(last.openTime + intervalMs)          // the line where the candle closed
         val lPrev = at(prev.openTime + intervalMs)
         if (up && prev.close <= lPrev && last.close > lNow) {
-            return Signal(last.openTime, "line-up-${last.openTime}", "$label 상향 돌파", "${fmtP(lNow)} 위에서 마감", "선↑")
+            return Signal(last.openTime, "line-up-${last.openTime}", "$label 상향 돌파", "${fmtP(lNow)} 위에서 마감", "선↑", dir = 1)
         }
         if (down && prev.close >= lPrev && last.close < lNow) {
-            return Signal(last.openTime, "line-dn-${last.openTime}", "$label 하향 이탈", "${fmtP(lNow)} 아래에서 마감", "선↓")
+            return Signal(last.openTime, "line-dn-${last.openTime}", "$label 하향 이탈", "${fmtP(lNow)} 아래에서 마감", "선↓", dir = -1)
         }
         return null
     }
@@ -272,37 +289,38 @@ object AlertEngine {
         when (cond) {
             "rsi" -> {
                 val r = rsi(close, len)
-                if (up && crossUp(r[a], r[z], lvl, lvl)) return Signal(t, "rsi-up-$t", "RSI($len) $lvl 상향 돌파", "RSI ${fmt1(r[a])} → ${fmt1(r[z])}", "RSI↑")
-                if (down && crossDn(r[a], r[z], lvl, lvl)) return Signal(t, "rsi-dn-$t", "RSI($len) $lvl 하향 이탈", "RSI ${fmt1(r[a])} → ${fmt1(r[z])}", "RSI↓")
+                if (up && crossUp(r[a], r[z], lvl, lvl)) return Signal(t, "rsi-up-$t", "RSI($len) $lvl 상향 돌파", "RSI ${fmt1(r[a])} → ${fmt1(r[z])}", "RSI↑", dir = 1)
+                if (down && crossDn(r[a], r[z], lvl, lvl)) return Signal(t, "rsi-dn-$t", "RSI($len) $lvl 하향 이탈", "RSI ${fmt1(r[a])} → ${fmt1(r[z])}", "RSI↓", dir = -1)
             }
             "pma" -> {
                 val m = avg(len)
-                if (up && crossUp(close[a], close[z], m[a], m[z])) return Signal(t, "pma-up-$t", "가격이 $maName$len 위로 돌파", "$maName$len ${fmtP(m[z])} 위에서 마감", "$maName↑")
-                if (down && crossDn(close[a], close[z], m[a], m[z])) return Signal(t, "pma-dn-$t", "가격이 $maName$len 아래로 이탈", "$maName$len ${fmtP(m[z])} 아래에서 마감", "$maName↓")
+                if (up && crossUp(close[a], close[z], m[a], m[z])) return Signal(t, "pma-up-$t", "가격이 $maName$len 위로 돌파", "$maName$len ${fmtP(m[z])} 위에서 마감", "$maName↑", dir = 1)
+                if (down && crossDn(close[a], close[z], m[a], m[z])) return Signal(t, "pma-dn-$t", "가격이 $maName$len 아래로 이탈", "$maName$len ${fmtP(m[z])} 아래에서 마감", "$maName↓", dir = -1)
             }
             "mama" -> {
                 val f = avg(len)
                 val s = avg(len2)
-                if (up && crossUp(f[a], f[z], s[a], s[z])) return Signal(t, "mama-up-$t", "골든 크로스 $maName$len × $len2", "$maName$len ${fmtP(f[z])}이 $maName$len2 ${fmtP(s[z])} 위로", "골든")
-                if (down && crossDn(f[a], f[z], s[a], s[z])) return Signal(t, "mama-dn-$t", "데드 크로스 $maName$len × $len2", "$maName$len ${fmtP(f[z])}이 $maName$len2 ${fmtP(s[z])} 아래로", "데드")
+                if (up && crossUp(f[a], f[z], s[a], s[z])) return Signal(t, "mama-up-$t", "골든 크로스 $maName$len × $len2", "$maName$len ${fmtP(f[z])}이 $maName$len2 ${fmtP(s[z])} 위로", "골든", dir = 1)
+                if (down && crossDn(f[a], f[z], s[a], s[z])) return Signal(t, "mama-dn-$t", "데드 크로스 $maName$len × $len2", "$maName$len ${fmtP(f[z])}이 $maName$len2 ${fmtP(s[z])} 아래로", "데드", dir = -1)
             }
             "macd", "macd0" -> {
                 val (m, sg) = macd(close)
                 val ref = if (cond == "macd") sg else DoubleArray(n) { 0.0 }
                 val what = if (cond == "macd") "시그널" else "0선"
-                if (up && crossUp(m[a], m[z], ref[a], ref[z])) return Signal(t, "$cond-up-$t", "MACD $what 상향 교차", "MACD ${fmtP(m[z])}", "MACD↑")
-                if (down && crossDn(m[a], m[z], ref[a], ref[z])) return Signal(t, "$cond-dn-$t", "MACD $what 하향 교차", "MACD ${fmtP(m[z])}", "MACD↓")
+                if (up && crossUp(m[a], m[z], ref[a], ref[z])) return Signal(t, "$cond-up-$t", "MACD $what 상향 교차", "MACD ${fmtP(m[z])}", "MACD↑", dir = 1)
+                if (down && crossDn(m[a], m[z], ref[a], ref[z])) return Signal(t, "$cond-dn-$t", "MACD $what 하향 교차", "MACD ${fmtP(m[z])}", "MACD↓", dir = -1)
             }
             "bb" -> {
                 val (u, l) = bollinger(close, len, bbm)
-                if (up && crossUp(close[a], close[z], u[a], u[z])) return Signal(t, "bb-up-$t", "볼린저 상단 돌파 ($len, $bbm)", "상단 ${fmtP(u[z])} 위에서 마감", "BB↑")
-                if (down && crossDn(close[a], close[z], l[a], l[z])) return Signal(t, "bb-dn-$t", "볼린저 하단 이탈 ($len, $bbm)", "하단 ${fmtP(l[z])} 아래에서 마감", "BB↓")
+                if (up && crossUp(close[a], close[z], u[a], u[z])) return Signal(t, "bb-up-$t", "볼린저 상단 돌파 ($len, $bbm)", "상단 ${fmtP(u[z])} 위에서 마감", "BB↑", dir = 1)
+                if (down && crossDn(close[a], close[z], l[a], l[z])) return Signal(t, "bb-dn-$t", "볼린저 하단 이탈 ($len, $bbm)", "하단 ${fmtP(l[z])} 아래에서 마감", "BB↓", dir = -1)
             }
         }
         return null
     }
 
     private fun fmt1(v: Double) = String.format(java.util.Locale.US, "%.1f", v)
+    private fun fmt2(v: Double) = String.format(java.util.Locale.US, "%.2f", v)
     fun fmtP(v: Double): String {
         val a = abs(v)
         val dec = when { a >= 1000 -> 1; a >= 1 -> 3; a >= 0.01 -> 5; else -> 8 }

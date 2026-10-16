@@ -232,5 +232,105 @@ ad = high == low ? 0 : ((2 * close - low - high) / (high - low)) * volume
 cmf = math.sum(ad, len) / math.sum(volume, len)
 plot(cmf, "CMF", style=plot.style_columns, color = cmf >= 0 ? color.new(#0ECB81, 30) : color.new(#F6465D, 30))
 hline(0, "0", color=#787B86)
+` },
+{ id: 'rvol', cat: '거래량', name: '상대 거래량 (RVOL)', desc: '직전 N봉 평균 대비 거래량 배수 (알람의 "거래량 급증"과 같은 기준)', src: `//@version=5
+indicator("상대 거래량", shorttitle="RVOL", overlay=false)
+len = input.int(20, "평균 기간 (직전 N봉)", minval=2)
+thr = input.float(3.0, "강조 기준 (배)", step=0.5)
+avg = ta.sma(volume[1], len)
+rv = avg > 0 ? volume / avg : 0
+plot(rv, "RVOL", style=plot.style_columns, color = rv >= thr ? (close >= open ? #0ECB81 : #F6465D) : color.new(#787B86, 55))
+hline(thr, "기준", color=#F0B90B)
+hline(1, "평균", color=color.new(#787B86, 50))
+` },
+{ id: 'wavetrend', cat: '모멘텀', name: '웨이브트렌드 오실레이터', desc: '크립토에서 인기 있는 과매수 · 과매도 + 교차 신호 (LazyBear)', src: `//@version=5
+indicator("웨이브트렌드", shorttitle="WT", overlay=false)
+n1 = input.int(10, "채널 길이", minval=1)
+n2 = input.int(21, "평균 길이", minval=1)
+obLvl = input.int(60, "과매수", minval=1)
+osLvl = input.int(-60, "과매도", maxval=-1)
+ap = hlc3
+esa = ta.ema(ap, n1)
+d = ta.ema(math.abs(ap - esa), n1)
+ci = (ap - esa) / (0.015 * d)
+wt1 = ta.ema(ci, n2)
+wt2 = ta.sma(wt1, 4)
+plot(wt1, "WT1", color=#2962FF, linewidth=2)
+plot(wt2, "WT2", color=#FF6D00)
+plot(wt1 - wt2, "차이", style=plot.style_columns, color=color.new(#787B86, 70))
+h0 = hline(obLvl, "과매수", color=#787B86)
+h1 = hline(osLvl, "과매도", color=#787B86)
+hline(0, "0", color=color.new(#787B86, 50))
+plotshape(ta.crossover(wt1, wt2) and wt2 < osLvl ? wt2 : na, "매수 후보", shape.circle, location.absolute, #0ECB81, size=size.tiny)
+plotshape(ta.crossunder(wt1, wt2) and wt2 > obLvl ? wt2 : na, "매도 후보", shape.circle, location.absolute, #F6465D, size=size.tiny)
+` },
+{ id: 'bbpb', cat: '변동성', name: '볼린저 %B', desc: '가격이 볼린저 밴드 안 어디쯤인지 (0 = 하단, 1 = 상단)', src: `//@version=5
+indicator("볼린저 %B", shorttitle="%B", overlay=false)
+len = input.int(20, "기간", minval=2)
+mult = input.float(2.0, "표준편차 배수", step=0.1)
+basis = ta.sma(close, len)
+dev = mult * ta.stdev(close, len)
+pb = (close - (basis - dev)) / (2 * dev)
+plot(pb, "%B", color=#2962FF, linewidth=2)
+h0 = hline(1, "상단", color=#787B86)
+hline(0.5, "중심", color=color.new(#787B86, 50))
+h1 = hline(0, "하단", color=#787B86)
+fill(h0, h1, color=color.rgb(33, 150, 243, 92), title="배경")
+` },
+{ id: 'bbw', cat: '변동성', name: '볼린저 밴드폭', desc: '밴드가 좁아지면(압축) 큰 움직임 전조, 넓으면 과열', src: `//@version=5
+indicator("볼린저 밴드폭", shorttitle="BBW", overlay=false)
+len = input.int(20, "기간", minval=2)
+mult = input.float(2.0, "표준편차 배수", step=0.1)
+lookback = input.int(120, "저점 비교 기간", minval=10)
+basis = ta.sma(close, len)
+bw = 2 * mult * ta.stdev(close, len) / basis * 100
+plot(bw, "밴드폭 %", color=#2962FF, linewidth=2)
+plot(ta.lowest(bw, lookback), "최근 최저", color=#F0B90B)
+` },
+{ id: 'chop', cat: '추세 강도', name: '초피니스 지수 (CHOP)', desc: '61.8 위는 횡보, 38.2 아래는 추세장', src: `//@version=5
+indicator("초피니스 지수", shorttitle="CHOP", overlay=false)
+len = input.int(14, "기간", minval=2)
+trSum = ta.sma(ta.tr, len) * len
+ci = 100 * math.log10(trSum / (ta.highest(high, len) - ta.lowest(low, len))) / math.log10(len)
+plot(ci, "CHOP", color=#2962FF, linewidth=2)
+h0 = hline(61.8, "횡보", color=#787B86)
+h1 = hline(38.2, "추세", color=#787B86)
+fill(h0, h1, color=color.rgb(33, 150, 243, 92), title="배경")
+` },
+{ id: 'utbot', cat: '추세', name: 'UT Bot (ATR 추적 손절)', desc: 'ATR 추적선을 가격이 뚫으면 매수 · 매도 표시', src: `//@version=5
+indicator("UT Bot", shorttitle="UT", overlay=true)
+key = input.float(1.0, "민감도 (배수)", step=0.1)
+atrLen = input.int(10, "ATR 기간", minval=1)
+nLoss = key * ta.atr(atrLen)
+var float stop = 0.0
+prev = nz(stop[1])
+stop := close > prev and close[1] > prev ? math.max(prev, close - nLoss) : close < prev and close[1] < prev ? math.min(prev, close + nLoss) : close > prev ? close - nLoss : close + nLoss
+plot(stop, "추적선", color = close > stop ? #0ECB81 : #F6465D, linewidth=2)
+plotshape(ta.crossover(close, stop), "매수", shape.labelup, location.belowbar, #0ECB81, text="B", textcolor=color.white, size=size.tiny)
+plotshape(ta.crossunder(close, stop), "매도", shape.labeldown, location.abovebar, #F6465D, text="S", textcolor=color.white, size=size.tiny)
+` },
+{ id: 'rsidiv', cat: '모멘텀', name: 'RSI 다이버전스', desc: '알람의 RSI 다이버전스와 같은 기준 (왼쪽 5 · 오른쪽 3봉, 간격 5~60봉)', src: `//@version=5
+indicator("RSI 다이버전스", shorttitle="RSI Div", overlay=false)
+len = input.int(14, "RSI 기간", minval=2)
+lbL = input.int(5, "왼쪽 봉 수", minval=1)
+lbR = input.int(3, "오른쪽 봉 수", minval=1)
+rangeLower = input.int(5, "두 점 사이 최소 봉", minval=1)
+rangeUpper = input.int(60, "두 점 사이 최대 봉", minval=2)
+osc = ta.rsi(close, len)
+plFound = not na(ta.pivotlow(osc, lbL, lbR))
+phFound = not na(ta.pivothigh(osc, lbL, lbR))
+inRangeL = ta.barssince(plFound[1]) >= rangeLower - 1 and ta.barssince(plFound[1]) <= rangeUpper - 1
+inRangeH = ta.barssince(phFound[1]) >= rangeLower - 1 and ta.barssince(phFound[1]) <= rangeUpper - 1
+oscHL = osc[lbR] > ta.valuewhen(plFound, osc[lbR], 1) and inRangeL
+priceLL = low[lbR] < ta.valuewhen(plFound, low[lbR], 1)
+oscLH = osc[lbR] < ta.valuewhen(phFound, osc[lbR], 1) and inRangeH
+priceHH = high[lbR] > ta.valuewhen(phFound, high[lbR], 1)
+bull = plFound and priceLL and oscHL
+bear = phFound and priceHH and oscLH
+plot(osc, "RSI", color=#B388FF, linewidth=1)
+hline(70, "70", color=#787B86)
+hline(30, "30", color=#787B86)
+plotshape(bull ? osc[lbR] : na, "상승 다이버전스", shape.labelup, location.absolute, #0ECB81, text="강세", textcolor=color.white, offset=-lbR, size=size.tiny)
+plotshape(bear ? osc[lbR] : na, "하락 다이버전스", shape.labeldown, location.absolute, #F6465D, text="약세", textcolor=color.white, offset=-lbR, size=size.tiny)
 ` }
 ];

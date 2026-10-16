@@ -5,7 +5,8 @@ import org.json.JSONObject
 
 /**
  * An alert the user set on the chart. Kinds:
- *  - "vol"  volume of a closed candle >= mult x the average of the previous 20
+ *  - "vol"  volume of a closed candle >= mult x the average of the previous `vlen` (20); optionally only green / red
+ *           candles (up / down) and only with a body of at least `minBody` percent
  *  - "div"  divergence (src: rsi | macd | cvd | vol; reg / hid; bull / bear)
  *  - "brk"  close beyond the highest high / lowest low of the previous `len` candles
  *  - "line" close across a price level or a line drawn on the chart (t1, p1, t2, p2)
@@ -34,7 +35,10 @@ data class AlertRule(
     val lvl: Double = 70.0,
     val len2: Int = 50,
     val ma: String = "ema",
-    val bbm: Double = 2.0
+    val bbm: Double = 2.0,
+    // "vol": average length and the smallest candle body (percent) that counts
+    val vlen: Int = 20,
+    val minBody: Double = 0.0
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("symbol", symbol); put("interval", interval); put("kind", kind); put("on", on); put("once", once)
@@ -42,6 +46,7 @@ data class AlertRule(
         put("len", len); put("right", right); put("volMult", volMult)
         put("t1", t1); put("p1", p1); put("t2", t2); put("p2", p2); put("label", label); put("drawing", drawing)
         put("cond", cond); put("lvl", lvl); put("len2", len2); put("ma", ma); put("bbm", bbm)
+        put("vlen", vlen); put("minBody", minBody)
     }
 
     companion object {
@@ -74,7 +79,9 @@ data class AlertRule(
                 cond = o.optString("cond", "rsi").takeIf { it in CONDS } ?: "rsi",
                 lvl = o.optDouble("lvl", 70.0).let { if (it.isFinite()) it.coerceIn(0.0, 100.0) else 70.0 },
                 len2 = o.optInt("len2", 50).coerceIn(2, 400), ma = if (o.optString("ma") == "sma") "sma" else "ema",
-                bbm = o.optDouble("bbm", 2.0).let { if (it.isFinite()) it.coerceIn(0.5, 5.0) else 2.0 }
+                bbm = o.optDouble("bbm", 2.0).let { if (it.isFinite()) it.coerceIn(0.5, 5.0) else 2.0 },
+                vlen = o.optInt("vlen", 20).coerceIn(5, 200),
+                minBody = o.optDouble("minBody", 0.0).let { if (it.isFinite()) it.coerceIn(0.0, 10.0) else 0.0 }
             )
         }
 
@@ -90,17 +97,17 @@ data class AlertRule(
 /** A fired alert, kept for the history list and the chart markers. */
 data class AlertEvent(
     val ruleId: String, val symbol: String, val interval: String, val candleTime: Long, val at: Long,
-    val title: String, val detail: String, val marker: String
+    val title: String, val detail: String, val marker: String, val dir: Int = 0
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("ruleId", ruleId); put("symbol", symbol); put("interval", interval); put("t", candleTime); put("at", at)
-        put("title", title); put("detail", detail); put("marker", marker)
+        put("title", title); put("detail", detail); put("marker", marker); put("dir", dir)
     }
 
     companion object {
         fun fromJson(o: JSONObject) = AlertEvent(
             o.optString("ruleId"), o.optString("symbol"), o.optString("interval"), o.optLong("t"), o.optLong("at"),
-            o.optString("title"), o.optString("detail"), o.optString("marker")
+            o.optString("title"), o.optString("detail"), o.optString("marker"), o.optInt("dir", 0)
         )
     }
 }

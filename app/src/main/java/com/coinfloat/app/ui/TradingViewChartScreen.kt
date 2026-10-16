@@ -905,6 +905,11 @@ private fun WebView.destroyChart() {
     }
 }
 
+private val BFX_PATH = Regex("""^/v2/stats1/pos\.size:1m:t[A-Z0-9]{2,12}(:USD)?:(long|short)/hist\?[A-Za-z0-9=&]{0,80}$""")
+private val bfxHttp: okhttp3.OkHttpClient by lazy {
+    okhttp3.OkHttpClient.Builder().connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS).readTimeout(15, java.util.concurrent.TimeUnit.SECONDS).build()
+}
+
 /** Calls from the page into the app. */
 private class ChartBridge(
     private val webView: WebView,
@@ -980,6 +985,27 @@ private class ChartBridge(
                 ctx.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         }
+    }
+
+    // Bitfinex's public REST API sends no CORS headers, so the page cannot fetch it itself: it asks the app for the margin
+    // long / short position history (stats1 pos.size) and gets the answer back through window.__bfxDone(id, json).
+    // Only that one host and path shape are reachable; anything else is ignored.
+    @JavascriptInterface
+    fun bfxGet(arg: String?) {
+        val parts = arg.orEmpty().split("|", limit = 2)
+        if (parts.size != 2) return
+        val id = parts[0].filter { it.isLetterOrDigit() }.take(24)
+        val path = parts[1]
+        if (id.isEmpty() || !BFX_PATH.matches(path)) return
+        Thread {
+            val body = runCatching {
+                val req = okhttp3.Request.Builder().url("https://api-pub.bitfinex.com$path").get().build()
+                bfxHttp.newCall(req).execute().use { r -> if (r.isSuccessful) r.body?.string().orEmpty() else "" }
+            }.getOrDefault("")
+            runCatching {
+                webView.post { webView.evaluateJavascript("window.__bfxDone && window.__bfxDone('$id', ${org.json.JSONObject.quote(body)});", null) }
+            }
+        }.start()
     }
 
     // a chart image from the page (PNG, base64) to Android's share sheet

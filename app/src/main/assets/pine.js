@@ -580,7 +580,7 @@ CF.indicatorRows(function () {
         };
         rows.push(b);
     });
-    var lib = el('div', 'row-opt', '<span style="flex:1">＋ 지표 라이브러리<small>일목균형표 · 스토캐스틱 RSI · ADX · SAR · 스퀴즈 등 22개</small></span><span style="color:var(--muted)">›</span>');
+    var lib = el('div', 'row-opt', '<span style="flex:1">＋ 지표 라이브러리<small>일목균형표 · 웨이브트렌드 · UT Bot · RVOL · RSI 다이버전스 · 스퀴즈 등 30개</small></span><span style="color:var(--muted)">›</span>');
     lib.onclick = openLibrary;
     var paste = el('div', 'row-opt', '<span style="flex:1">＋ Pine Script 붙여넣기<small>트레이딩뷰 오픈소스 스크립트 · 직접 작성</small></span><span style="color:var(--muted)">›</span>');
     paste.onclick = function () { openEditor(null); };
@@ -617,6 +617,15 @@ function backBtn(fn) {
 }
 
 // ---- UI: script settings (inputs from the script, style per plot) ----------------------------------------------------
+var helpTab = false;
+// the explanation of a script: the library's own text, or for a pasted script its leading // comments
+function helpOf(s) {
+    var l = s.lib && libOf(s.lib);
+    if (l) return l.help || (window.PINE_HELP && window.PINE_HELP[l.id]) || (l.name + '\n\n' + l.desc);
+    var lines = String(s.src || '').split('\n').map(function (x) { return x.trim(); })
+        .filter(function (x) { return x.indexOf('//') === 0 && !/^\/\/\s*@version/.test(x); }).map(function (x) { return x.replace(/^\/\/+\s?/, ''); }).slice(0, 14);
+    return titleOf(s) + '\n\n' + (lines.length ? lines.join('\n') : '내 스크립트입니다. 코드 맨 위에 // 로 설명을 적어 두면 이 탭에 보입니다.');
+}
 function openScriptSettings(s) {
     if (!window.PINE_LIB || !s.__meta || s.__metaSrc !== srcOf(s)) {
         ensureLib().then(function () { return ask({ type: 'meta', src: srcOf(s) }); }).then(function (d) {
@@ -627,6 +636,19 @@ function openScriptSettings(s) {
     var rt = rts[s.id];
     var rows = [];
     var meta = s.__meta;
+    // 설정 | 설명: the explanation is the last tab
+    var tabs = el('div', 'dtabs');
+    [['set', '설정'], ['help', '설명']].forEach(function (t) {
+        var b = el('button', (helpTab ? 'help' : 'set') === t[0] ? 'on' : '', t[1]);
+        b.onclick = function () { helpTab = t[0] === 'help'; openScriptSettings(s); };
+        tabs.appendChild(b);
+    });
+    if (helpTab) {
+        CF.openSheet(esc(titleOf(s)), [tabs, CF.helpBox(helpOf(s))]);
+        backBtn(CF.openIndicators);
+        return;
+    }
+    rows.push(tabs);
     if (rt && rt.err) rows.push(el('div', 'note', '<b style="color:#F6465D">실행 오류</b><br>' + esc(rt.err)));
     if (meta.length) rows.push(CF.sectionTitle('입력값'));
     meta.forEach(function (m) { var r = inputRow(s, m); if (r) rows.push(r); });

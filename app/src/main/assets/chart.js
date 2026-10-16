@@ -43,6 +43,7 @@ var SCHEMA = {}, cfgCache = {}, cfgSaveT = null, HEX = /^#[0-9a-fA-F]{6}$/;
     if (old && old.map && !CFGS.ma) CFGS.ma = { lines: old.map(function (m) { return { p: m.p, on: m.on }; }) };
 })();
 function defineSettings(key, def) { SCHEMA[key] = def; delete cfgCache[key]; }
+var HELP = {};                          // key -> explanation shown on the last tab ("설명") of the settings sheet (help.js)
 function clampN(v, a, b) { return v < a ? a : v > b ? b : v; }
 var MAX_LINES = 10;
 function fixLines(f, v) {
@@ -253,7 +254,7 @@ var chartType = LS.get('type', 'candle');                       // candle | ha |
 var ind = Object.assign({
     vol: true, ma: true, ema: false, boll: false, rsi: false, macd: false,
     cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: false,
-    vwap: false, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false
+    vwap: false, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false, bfx: false
 }, LS.get('ind', {}));
 var railOpen = LS.get('rail', false);
 var active = true, immersive = false, started = false;
@@ -3136,7 +3137,15 @@ function templateBox(key, rerender) {
     box.appendChild(menu);
     return box;
 }
-var settingsKey = null;
+var settingsKey = null, helpTab = {};
+// the text of a "설명" tab: paragraphs split on blank lines, lines starting with • kept as list lines
+function helpBox(text) {
+    var box = document.createElement('div'); box.className = 'help';
+    String(text).split('\n\n').forEach(function (para, i) {
+        var d = document.createElement('div'); d.className = i === 0 ? 'hp title' : 'hp'; d.textContent = para; box.appendChild(d);
+    });
+    return box;
+}
 function openSettings(key, back) {
     var def = SCHEMA[key]; if (!def) return;
     var sheet = $('sheet'), keep = settingsKey === key ? sheet.scrollTop : 0;
@@ -3147,6 +3156,17 @@ function openSettings(key, back) {
     if (back) h.querySelector('.back').onclick = back;
     sheet.appendChild(h);
     var rerender = function () { openSettings(key, back); };
+    var help = def.help || HELP[key];
+    if (help) {                                                   // 설정 | 설명 (the explanation is always the last tab)
+        var tabs = document.createElement('div'); tabs.className = 'dtabs';
+        [['set', '설정'], ['help', '설명']].forEach(function (t) {
+            var b = document.createElement('button'); b.textContent = t[1]; b.className = (helpTab[key] ? 'help' : 'set') === t[0] ? 'on' : '';
+            b.onclick = function () { helpTab[key] = t[0] === 'help'; sheet.scrollTop = 0; openSettings(key, back); };
+            tabs.appendChild(b);
+        });
+        sheet.appendChild(tabs);
+        if (helpTab[key]) { sheet.appendChild(helpBox(help)); $('sheet_bg').classList.add('show', 'live'); sheet.scrollTop = 0; backState(); return; }
+    }
     if (key === 'chart') [['▶  바 리플레이', '고른 봉부터 한 봉씩 재생하며 매매 연습', replayPick], ['⤴  차트 이미지 공유', '코인 · 시간봉 · 시각이 들어간 이미지', shareChart]].forEach(function (a) {
         var b = document.createElement('button'); b.className = 'row-opt'; b.innerHTML = '<span>' + a[0] + '<small>' + a[1] + '</small></span><span style="color:var(--muted)">›</span>';
         b.onclick = a[2]; sheet.appendChild(b);
@@ -3234,6 +3254,7 @@ function openIndicators() {
         switchRow('미결제약정 (OI)', 'Binance 선물 · 별도 창', 'oi', true),
         switchRow('펀딩비', '지난 펀딩 · 예상 펀딩 · 연환산', 'fund', true),
         switchRow('롱 · 숏 비율', '전체 계정 · 상위 트레이더 · 시장가 체결 (최근 30일)', 'lsr', true),
+        switchRow('비트파이넥스 롱 · 숏', '고래 지표 · 마진 롱/숏 포지션 수량과 변화 (BTC · ETH 등)', 'bfx', true),
         switchRow('실시간 청산', '청산 주문 버블 + 봉별 청산량', 'liq', true),
         switchRow('대량 체결', '큰 체결만 버블로 표시', 'trades', true),
         switchRow('풋프린트', '확대하면 가격별 매수·매도 체결량 · 불균형 · POC', 'fp', true),
@@ -3719,7 +3740,7 @@ window.CF = {
     legend: function (fn) { legendHooks.push(fn); }, openSheet: openSheet, closeSheet: closeSheet, sectionTitle: sectionTitle,
     noteRow: noteRow, colorStrip: colorStrip, openIndicators: function () { openIndicators(); }, bridge: bridge,
     backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); },
-    barTint: setBarTint, openSettings: function (k) { openSettings(k); },
+    barTint: setBarTint, openSettings: function (k) { openSettings(k); }, HELP: HELP, helpBox: helpBox,
     drawingBusy: function () { return DR.sel != null || !!DR.tool; },
     addHline: function (p) {
         if (!candles.length) return;

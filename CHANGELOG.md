@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.28.0] - 2026-10-17
+
+### Added
+- **Bitfinex margin longs / shorts pane** (지표 → 오더플로우 → 비트파이넥스 롱 · 숏): the size of all margin long and short
+  positions in the coin, or their change over N candles, with the % change in the legend. Bitfinex's REST API sends no
+  CORS headers, so the app fetches it for the page (one host, one path shape). Checked against the live API on BTC 1h.
+- **"설명" tab** (last tab) in every indicator's settings and in Pine script settings: what it measures, how to read it,
+  typical settings and the usual traps. A pasted script shows its leading `//` comments there.
+- **7 Pine library scripts**: relative volume (RVOL, the alert's own calculation), WaveTrend, Bollinger %B, Bollinger
+  bandwidth, Choppiness Index, UT Bot and an RSI divergence with the alert's rules (so a bell can be checked by eye).
+  All 30 library scripts were run through PineTS on BTC 1h candles.
+- **Volume spike alert options**: average length (10 / 20 / 50 / 100), green / red candles only, minimum candle body.
+  The form shows how often each multiple fires (measured on Binance: BTC 15m 3x ~ 4-5 a day, 5x ~ 1-1.5).
+
+### Changed
+- Alert history rows say which candle the alert was about and when the notification came; tapping one takes the chart there.
+  The notification text names the closed candle ("10/17 14:15 봉 마감").
+- 🔔 markers are green below the candle for bullish signals, red above for bearish ones.
+
+### Fixed
+- **Bells not matching notifications**: a divergence alert was drawn on its pivot candle, 3 candles before the one that
+  closed when the notification came; it now sits on the candle that triggered it. Alarms that arrive late (Doze) now check
+  every candle closed since the last check (up to 6) instead of only the newest, so a signal in between is not lost.
+
 ## [1.27.0] - 2026-10-15
 
 ### Added

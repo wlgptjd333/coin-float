@@ -62,6 +62,25 @@ class AlertEngineTest {
     }
 
     @Test
+    fun volumeSpikeCanBeLimitedToDirectionAndBody() {
+        val flat = List(21) { 100.0 }
+        val vols = List(21) { 10.0 } + 40.0
+        val green = bars(flat + 101.0, vols = vols)             // body 1%
+        val red = bars(flat + 99.0, vols = vols)
+        assertEquals(1, AlertEngine.volumeSpike(green, 3.0)!!.dir)
+        assertEquals(-1, AlertEngine.volumeSpike(red, 3.0)!!.dir)
+        assertNull(AlertEngine.volumeSpike(green, 3.0, up = false, down = true))
+        assertNull(AlertEngine.volumeSpike(red, 3.0, up = true, down = false))
+        assertNotNull(AlertEngine.volumeSpike(green, 3.0, minBody = 0.5))
+        assertNull(AlertEngine.volumeSpike(green, 3.0, minBody = 2.0))
+        // the average length matters: the last 10 candles averaged 10, the last 20 averaged 5.5
+        val ramp = bars(flat + 100.0, vols = List(11) { 1.0 } + List(10) { 10.0 } + 30.0)
+        assertNotNull(AlertEngine.volumeSpike(ramp, 3.0, len = 10))
+        assertNull(AlertEngine.volumeSpike(ramp, 5.5, len = 20))
+        assertNotNull(AlertEngine.volumeSpike(ramp, 5.0, len = 20))
+    }
+
+    @Test
     fun breakoutFiresOnTheFirstCloseBeyondTheRange() {
         val flat = List(21) { 100.0 }
         assertNotNull(AlertEngine.breakout(bars(flat + 102.0), 20, up = true, down = false))
@@ -94,6 +113,12 @@ class AlertEngineTest {
         var bull = 0; var bear = 0
         for (n in 45..b.size) {
             val s = AlertEngine.divergence(b.subList(0, n), AlertEngine.Source.RSI, regular = true, hidden = false, bull = true, bear = true)
+            if (s != null) {
+                // the signal belongs to the candle that just closed (that is when the notification goes out), and points back at the pivot
+                assertEquals(b[n - 1].openTime, s.candleTime)
+                assertTrue(s.refTime in 1 until s.candleTime)
+                assertEquals(if (s.title.contains("상승")) 1 else -1, s.dir)
+            }
             if (s != null && s.title.contains("상승")) bull++
             if (s != null && s.title.contains("하락")) bear++
         }
@@ -163,5 +188,8 @@ class AlertEngineTest {
         val r = AlertRule.fromJson(JSONObject("""{"id":"a","symbol":"btcusdt","interval":"15m","kind":"vol","mult":999}"""))
         assertEquals("BTCUSDT", r!!.symbol)
         assertEquals(50.0, r.mult, 0.0)
+        assertEquals(20, r.vlen)                                   // rules saved before 1.28 have no average length
+        val v = AlertRule.fromJson(JSONObject("""{"id":"a","symbol":"BTCUSDT","interval":"15m","kind":"vol","vlen":1,"minBody":99}"""))!!
+        assertEquals(5, v.vlen); assertEquals(10.0, v.minBody, 0.0)
     }
 }

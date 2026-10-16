@@ -8,6 +8,12 @@ var CF = window.CF; if (!CF) return;
 var LS = CF.LS;
 var IVS = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '1w'];
 var IV_LABEL = { '1m': '1분', '3m': '3분', '5m': '5분', '15m': '15분', '30m': '30분', '1h': '1시간', '2h': '2시간', '4h': '4시간', '6h': '6시간', '8h': '8시간', '12h': '12시간', '1d': '일봉', '1w': '주봉' };
+// how often "volume >= N x the average of the 20 candles before" fires (Binance USD-M, BTC / ETH / SOL / DOGE, 78 days of 15m and
+// 312 days of 1h candles), so the threshold can be picked by how many alerts a day is bearable
+var VOL_GUIDE = '하루에 몇 번 울리나 (실측, BTC · ETH 기준 / 알트는 20% 정도 적음)\n' +
+    '· 15분봉: 2배 약 10번 · 3배 4~5번 · 4배 2~3번 · 5배 1~1.5번\n' +
+    '· 1시간봉: 2배 약 3번 · 3배 1.3번 · 4배 0.7번 · 5배 0.4번\n' +
+    '추천: 15분봉은 4~5배, 1시간봉은 3배. 3배 신호의 약 3분의 1이 미국 장 시작 무렵(UTC 12~14시)에 몰립니다.';
 var SRC_LABEL = { rsi: 'RSI', macd: 'MACD', cvd: 'CVD', vol: '거래량' };
 
 // ---- storage: the app (bridge); in a desktop browser a local copy so the page can be tried out -------------------------
@@ -33,7 +39,7 @@ function curIv() { var i = CF.interval(); return IVS.indexOf(i) >= 0 ? i : '15m'
 // ---- describing a rule ---------------------------------------------------------------------------------------------------
 function dirText(r, a, b) { return r.up && r.down ? a + '·' + b : r.up ? a : b; }
 function describe(r) {
-    if (r.kind === 'vol') return '거래량 급증 · 평균의 ' + r.mult + '배 이상';
+    if (r.kind === 'vol') return '거래량 급증 · 직전 ' + (r.vlen || 20) + '봉 평균의 ' + r.mult + '배 이상' + (r.up && r.down ? '' : r.up ? ' · 양봉만' : ' · 음봉만') + (r.minBody > 0 ? ' · 몸통 ' + r.minBody + '%↑' : '');
     if (r.kind === 'div') return SRC_LABEL[r.src] + ' 다이버전스 · ' + [r.reg ? '일반' : '', r.hid ? '히든' : ''].filter(Boolean).join('·') + ' · ' + dirText(r, '상승', '하락');
     if (r.kind === 'brk') return r.len + '봉 ' + dirText(r, '고점 돌파', '저점 이탈') + (r.volMult ? ' · 거래량 확인' : '');
     if (r.kind === 'line') return (r.label || CF.fmtPrice(r.p1)) + ' ' + dirText(r, '상향 돌파', '하향 이탈');
@@ -58,8 +64,11 @@ var markers = null, markersOn = null;
 function refreshMarkers() {
     var ms = CF.mainSeries(), sym = CF.symbol(), iv = CF.interval();
     if (markers && markersOn !== ms) { try { markers.detach(); } catch (e) { /* gone */ } markers = null; }
+    // the bell sits on the candle the alert was about (the one that closed when the notification came): green below for a
+    // bullish signal, red above for a bearish one, amber for the rest
     var list = data.history.filter(function (e) { return e.symbol === sym && e.interval === iv; }).map(function (e) {
-        return { time: Math.floor(e.t / 1000), position: 'aboveBar', shape: 'circle', color: '#F0B90B', size: 0.6, text: '🔔' + (e.marker || '') };
+        var d = e.dir || 0, col = d > 0 ? CF.C.up : d < 0 ? CF.C.down : '#F0B90B';
+        return { time: Math.floor(e.t / 1000), position: d > 0 ? 'belowBar' : 'aboveBar', shape: 'circle', color: col, size: 0.6, text: '🔔' + (e.marker || '') };
     }).sort(function (a, b) { return a.time - b.time; });
     if (!list.length && !markers) return;
     if (!markers) { markers = CF.LW.createSeriesMarkers(ms, []); markersOn = ms; }
@@ -70,7 +79,19 @@ CF.onData(function (kind) { if (kind === 'all') { refreshMarkers(); refreshBadge
 // ---- the sheet --------------------------------------------------------------------------------------------------------------
 function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
 function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-function fmtTime(ms) { var d = new Date(ms); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + CF.pad2(d.getHours()) + ':' + CF.pad2(d.getMinutes()); }
+function fmtTime(ms) {                                  // in the chart's time zone (phone or UTC), like the time axis
+    var d = new Date(ms), utc = CF.S('chart').tz === 'utc';
+    return (utc ? d.getUTCMonth() + 1 : d.getMonth() + 1) + '/' + (utc ? d.getUTCDate() : d.getDate()) + ' ' + CF.pad2(utc ? d.getUTCHours() : d.getHours()) + ':' + CF.pad2(utc ? d.getUTCMinutes() : d.getMinutes());
+}
+// from the history list: take the chart to the candle an alert fired on, so the bell and the notification can be compared
+function showEvent(e) {
+    if (e.symbol !== CF.symbol()) { CF.toast(base(e.symbol) + ' 차트에서 볼 수 있어요'); return; }
+    if (e.interval !== CF.interval()) { CF.changeInterval(e.interval); CF.toast(IV_LABEL[e.interval] + '으로 바꿨어요 · 다시 눌러 위치로 이동'); CF.closeSheet(); return; }
+    var i = CF.indexOfTime(Math.floor(e.t / 1000));
+    if (i < 0) { CF.toast('그 봉은 아직 불러오지 않았어요 · 차트를 왼쪽으로 밀어 보세요'); return; }
+    CF.closeSheet();
+    try { CF.chart.timeScale().setVisibleLogicalRange({ from: i - 40, to: i + 12 }); } catch (err) { /* ignore */ }
+}
 function ruleRow(r, showSym) {
     var row = el('div', 'row-opt');
     row.innerHTML = '<span style="flex:1;min-width:0">' + (showSym ? '<b>' + esc(base(r.symbol)) + '</b> ' : '') + esc(IV_LABEL[r.interval] || r.interval) + ' · ' + esc(describe(r)) +
@@ -95,8 +116,10 @@ function openList() {
     if (data.history.length) {
         rows.push(CF.sectionTitle('최근 울린 알람'));
         data.history.slice(0, 15).forEach(function (e) {
-            rows.push(el('div', 'row-opt', '<span style="flex:1;min-width:0"><b>' + esc(base(e.symbol)) + '</b> ' + esc(IV_LABEL[e.interval] || e.interval) + ' · ' + esc(e.title) +
-                '<small>' + esc(e.detail) + ' · ' + fmtTime(e.at) + '</small></span>'));
+            var hr = el('div', 'row-opt', '<span style="flex:1;min-width:0"><b>' + esc(base(e.symbol)) + '</b> ' + esc(IV_LABEL[e.interval] || e.interval) + ' · ' + esc(e.title) +
+                '<small>' + esc(e.detail) + '</small><small>' + fmtTime(e.t) + ' 봉 · 알림 ' + fmtTime(e.at) + ' · 눌러서 차트에서 보기</small></span>');
+            hr.onclick = function () { showEvent(e); };
+            rows.push(hr);
         });
         var clr = el('button', 'reset', '기록 지우기'); clr.onclick = function () { action('clear'); data.history = []; if (!hasBridge) store(); refreshMarkers(); openList(); };
         rows.push(clr);
@@ -137,10 +160,10 @@ function indDefaults(r, c) {
 }
 function lastClose() { var cs = CF.candles(); return cs.length ? cs[cs.length - 1].close : 0; }
 function openForm(rule, preset) {
-    if (rule) draft = { orig: rule, r: JSON.parse(JSON.stringify(rule)) };
+    if (rule) { draft = { orig: rule, r: JSON.parse(JSON.stringify(rule)) }; if (draft.r.vlen == null) draft.r.vlen = 20; if (draft.r.minBody == null) draft.r.minBody = 0; }
     else {
         var p = lastClose();
-        draft = { orig: null, r: Object.assign({ id: uid(), symbol: CF.symbol(), interval: curIv(), kind: 'vol', on: true, once: false, mult: 3, src: 'rsi', reg: true, hid: false,
+        draft = { orig: null, r: Object.assign({ id: uid(), symbol: CF.symbol(), interval: curIv(), kind: 'vol', on: true, once: false, mult: 4, vlen: 20, minBody: 0, src: 'rsi', reg: true, hid: false,
             up: true, down: true, len: 50, right: 3, volMult: 1.5, t1: 0, p1: +CF.fmtPrice(p).replace(/,/g, '') || p, t2: 0, p2: 0, label: '', drawing: '' }, preset || {}) };
     }
     renderForm();
@@ -154,8 +177,14 @@ function renderForm() {
     }));
     rows.push(seg('확인할 봉', IVS.map(function (i) { return [i, IV_LABEL[i]]; }), r.interval, function (i) { r.interval = i; rr(); }));
     if (r.kind === 'vol') {
-        rows.push(seg('직전 20봉 평균의 몇 배 이상', [[2, '2배'], [3, '3배'], [5, '5배'], [10, '10배']].map(function (o) { return [o[0], o[1]]; }), r.mult, function (m) { r.mult = m; rr(); }));
+        rows.push(seg('평균의 몇 배 이상', [[2, '2배'], [3, '3배'], [4, '4배'], [5, '5배'], [10, '10배']], r.mult, function (m) { r.mult = m; rr(); }));
         rows.push(numField('직접 입력 (배)', r.mult, function (n) { r.mult = Math.max(1.2, Math.min(50, n)); }));
+        rows.push(seg('평균을 낼 직전 봉 수', [[10, '10'], [20, '20'], [50, '50'], [100, '100']], r.vlen, function (n) { r.vlen = n; rr(); }));
+        rows.push(toggle('양봉일 때', r.up, function (v) { r.up = v; if (!v && !r.down) r.down = true; rr(); }, '오르는 쪽 거래량 폭발'));
+        rows.push(toggle('음봉일 때', r.down, function (v) { r.down = v; if (!v && !r.up) r.up = true; rr(); }, '내리는 쪽 거래량 폭발'));
+        rows.push(seg('캔들 몸통이 최소', [[0, '제한 없음'], [0.1, '0.1%'], [0.2, '0.2%'], [0.5, '0.5%']], r.minBody, function (v) { r.minBody = v; rr(); }));
+        rows.push(CF.noteRow('거래량만 크고 가격이 거의 안 움직인 봉(도지 · 흡수)을 거르려면 몸통 조건을 켜세요. 3배 신호의 약 3분의 1이 몸통 0.2% 미만이었습니다.'));
+        rows.push(CF.noteRow(VOL_GUIDE));
     } else if (r.kind === 'div') {
         rows.push(seg('지표', [['rsi', 'RSI'], ['macd', 'MACD'], ['cvd', 'CVD'], ['vol', '거래량']], r.src, function (s) { r.src = s; if (s === 'vol') { r.reg = true; r.hid = false; } rr(); }));
         rows.push(toggle('일반 다이버전스', r.reg, function (v) { r.reg = v; if (!v && !r.hid) r.hid = true; rr(); }, '가격은 새 고점(저점)인데 지표는 못 따라감 · 추세 전환 신호'));

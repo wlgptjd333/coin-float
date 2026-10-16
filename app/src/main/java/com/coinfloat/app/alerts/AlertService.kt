@@ -114,6 +114,7 @@ class AlertReceiver : BroadcastReceiver() {
 object AlertRunner {
     private val http = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).build()
     private const val BARS = 300
+    private const val MAX_CATCHUP = 6
 
     /** Closed candles only (the forming one is dropped). */
     fun fetchBars(symbol: String, interval: String, now: Long): List<Bar> {
@@ -131,7 +132,7 @@ object AlertRunner {
 
     /** Signals of one rule on the newest closed candle. */
     fun evaluate(rule: AlertRule, bars: List<Bar>): Signal? = when (rule.kind) {
-        "vol" -> AlertEngine.volumeSpike(bars, rule.mult)
+        "vol" -> AlertEngine.volumeSpike(bars, rule.mult, rule.vlen, rule.up, rule.down, rule.minBody)
         "div" -> AlertEngine.divergence(
             bars,
             when (rule.src) { "macd" -> AlertEngine.Source.MACD; "cvd" -> AlertEngine.Source.CVD; "vol" -> AlertEngine.Source.VOLUME; else -> AlertEngine.Source.RSI },
@@ -164,14 +165,20 @@ object AlertRunner {
             if (bars.isEmpty()) continue
             val st = state.optJSONObject(r.id) ?: JSONObject()
             val sent = st.optJSONArray("keys") ?: JSONArray()
-            val sig = evaluate(r, bars)
-            st.put("last", bars.last().openTime)
-            if (sig != null && (0 until sent.length()).none { sent.optString(it) == sig.key }) {
+            val seen = st.optLong("last", 0L)
+            // Every closed candle the rule has not seen is checked as it stood when it closed (an alarm that came late,
+            // after the phone dozed through a candle or two, still catches what happened), oldest first.
+            val fresh = if (seen <= 0L) listOf(bars.lastIndex)
+            else bars.indices.filter { bars[it].openTime > seen }.takeLast(MAX_CATCHUP)
+            for (k in fresh) {
+                val sig = evaluate(r, bars.subList(0, k + 1)) ?: continue
+                if ((0 until sent.length()).any { sent.optString(it) == sig.key }) continue
                 sent.put(sig.key)
                 while (sent.length() > 20) sent.remove(0)
-                events += AlertEvent(r.id, r.symbol, r.interval, sig.candleTime, now, sig.title, sig.detail, sig.marker)
-                if (r.once) disable += r.id
+                events += AlertEvent(r.id, r.symbol, r.interval, sig.candleTime, now, sig.title, sig.detail, sig.marker, sig.dir)
+                if (r.once) { disable += r.id; break }
             }
+            st.put("last", bars.last().openTime)
             st.put("keys", sent)
             state.put(r.id, st)
         }
@@ -206,12 +213,13 @@ object AlertNotifier {
             putExtra(MainActivity.EXTRA_TARGET_INTERVAL, e.interval)
         }
         val id = (e.ruleId + e.candleTime).hashCode()
+        val detail = e.detail + "\n" + candleLabel(e)
         val pi = PendingIntent.getActivity(context, id, tap, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("$base ${label(e.interval)} · ${e.title}")
             .setContentText(e.detail)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(e.detail))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
@@ -222,6 +230,12 @@ object AlertNotifier {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
         runCatching { NotificationManagerCompat.from(context).notify(id, n) }
+    }
+
+    /** "10/17 14:15 봉 마감" - which candle the alert is about, so it can be found on the chart (the 🔔 sits on that candle). */
+    fun candleLabel(e: AlertEvent): String {
+        val f = java.text.SimpleDateFormat(if (e.interval == "1d" || e.interval == "1w") "M/d" else "M/d HH:mm", java.util.Locale.KOREA)
+        return "${f.format(java.util.Date(e.candleTime))} 봉 마감 (${label(e.interval)})"
     }
 
     fun label(interval: String) = when {
