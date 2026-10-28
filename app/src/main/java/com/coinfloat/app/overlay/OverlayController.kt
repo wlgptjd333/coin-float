@@ -394,8 +394,9 @@ class OverlayController(private val context: Context) {
         if (!latestSettings.isChartEnabled) return
         val symbol = tappedSymbol ?: latestSettings.selectedSymbols.firstOrNull() ?: "BTCUSDT"
         if (isMiniChartShowing) {
-            // tapping the coin that is already open closes the chart; another coin switches to it
-            if (symbol == currentChartSymbol) hideMiniChart() else { currentChartSymbol = symbol; loadChartData() }
+            // The price box toggles the chart. Switching coins here instead (when the tapped row differs from the
+            // chart's coin) made a tap after a coin change inside the chart swap coins rather than close it.
+            hideMiniChart()
         } else {
             currentChartSymbol = symbol
             currentChartInterval = latestSettings.defaultChartInterval

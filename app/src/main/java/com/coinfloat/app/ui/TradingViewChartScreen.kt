@@ -18,8 +18,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -325,15 +323,12 @@ private fun LiveChartHeader(
             prevPrice = livePriceFloat
         }
     }
-    val animatedPriceColor by animateColorAsState(
-        targetValue = priceColor,
-        animationSpec = tween(durationMillis = 180),
-        label = "PriceColor"
-    )
+    // The color switches at once, like the floating window. A fade here ran ~14 animation frames a second (the price
+    // flips direction several times a second), and every one of them redrew the whole window, the chart WebView included.
     ChartHeader(
         symbol = symbol,
         formattedPrice = formattedPrice,
-        priceColor = animatedPriceColor,
+        priceColor = priceColor,
         changePercent = liveChange,
         ticker24h = ticker24h,
         fundingInfo = fundingInfo,

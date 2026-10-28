@@ -74,6 +74,7 @@ fun SettingsContent(
     onRefreshRateProfileChange: (RefreshRateProfile) -> Unit,
     onOpenAppInfo: () -> Unit,
     onShowStabilityHelp: () -> Unit,
+    onShowGuide: () -> Unit,
     onShowLicenses: () -> Unit,
     onShowPrivacy: () -> Unit
 ) {
@@ -195,6 +196,16 @@ fun SettingsContent(
             }
         }
         if (settings.isChartEnabled) Caption("미니 차트 오른쪽 아래 손잡이를 끌면 크기를, 위쪽을 끌면 위치를 바꿀 수 있어요.")
+
+        SectionLabel("차트 · 알람 도움말")
+        Group {
+            ListRow(
+                title = "상황별 지표 · 알람 사용 설명서",
+                subtitle = "추천 프로필 5종 · 알람 3단계 대응법 · 백테스트 요약",
+                onClick = onShowGuide,
+                trailing = { Chevron() }
+            )
+        }
 
         SectionLabel("안정적으로 사용하기")
         Group {

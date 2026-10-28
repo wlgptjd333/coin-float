@@ -764,7 +764,28 @@ function validate(code) {
 
 // names of library scripts are needed for the list; scripts that were on last time start with the chart's data
 if (scripts.length) ensureLib().then(function () { if (scripts.some(function (s) { return s.on; }) && CF.candles().length) runAll(); });
+CF.pineGet = function () {
+    return scripts.filter(function (s) { return s.on; }).map(function (s) {
+        return { lib: s.lib, src: s.lib ? '' : s.src, on: true, inputs: JSON.parse(JSON.stringify(s.inputs || {})), style: JSON.parse(JSON.stringify(s.style || {})) };
+    });
+};
+CF.pineSet = function (list) {
+    scripts.forEach(function (s) { if (s.on) { s.on = false; teardown(s.id); } });
+    (list || []).slice(0, MAX_ON).forEach(function (it) {
+        if (!it || (!it.lib && !it.src)) return;
+        var s = it.lib
+            ? scripts.filter(function (x) { return x.lib === it.lib; })[0]
+            : scripts.filter(function (x) { return !x.lib && x.src === it.src; })[0];
+        if (!s) { s = { id: nextId++, lib: it.lib || undefined, src: it.lib ? '' : (it.src || ''), on: false, inputs: {}, style: {} }; scripts.push(s); }
+        s.on = it.on !== false;
+        s.inputs = JSON.parse(JSON.stringify(it.inputs || {}));
+        s.style = JSON.parse(JSON.stringify(it.style || {}));
+    });
+    save();
+    if (scripts.some(function (s) { return s.on; })) ensureLib().then(function () { if (CF.candles().length) runAll(); });
+};
 window.__pine = { scripts: function () { return scripts; }, rts: rts, runAll: runAll };
 window.__pineBusy = function () { return running; };
 window.__pineCost = function () { return lastCost; };
 })();
+

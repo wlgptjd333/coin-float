@@ -20,10 +20,103 @@ var SRC_LABEL = { rsi: 'RSI', macd: 'MACD', cvd: 'CVD', vol: '거래량' };
 var B = window.AndroidBridge;
 var hasBridge = !!(B && typeof B.alertsGet === 'function');
 var data = { rules: [], history: [], exact: true, notif: true };
+var ALERT_PROFILES = LS.get('alertProfiles', []); if (!Array.isArray(ALERT_PROFILES)) ALERT_PROFILES = [];
+var BUILTIN_ALERT_PROFILES = [
+    {
+        n: '추천 정예 · 실전 표준',
+        d: '기본 추천 · 15m 거래량 4배(몸통 0.2%) · 1h 20봉 돌파 · 1h RSI 다이버전스 · 4h EMA200 (하루 ~4.3회)',
+        rules: [
+            { interval: '15m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true },
+            { interval: '1h', kind: 'brk', len: 20, volMult: 1.5, up: true, down: true },
+            { interval: '1h', kind: 'div', src: 'rsi', reg: true, hid: false, right: 3, up: true, down: true },
+            { interval: '4h', kind: 'ind', cond: 'pma', ma: 'ema', len: 200, up: true, down: true }
+        ]
+    },
+    {
+        n: '초집중 · 저빈도 (확실한 자리만)',
+        d: '피로도 최소 · 15m 거래량 5배(몸통 0.5%) · 1h 50봉 돌파 · 4h RSI 다이버전스 · 4h EMA200 (하루 1~2회)',
+        rules: [
+            { interval: '15m', kind: 'vol', mult: 5, vlen: 20, minBody: 0.5, up: true, down: true },
+            { interval: '1h', kind: 'brk', len: 50, volMult: 1.5, up: true, down: true },
+            { interval: '4h', kind: 'div', src: 'rsi', reg: true, hid: false, right: 3, up: true, down: true },
+            { interval: '4h', kind: 'ind', cond: 'pma', ma: 'ema', len: 200, up: true, down: true }
+        ]
+    },
+    {
+        n: '단타 · 변동성 스캘핑',
+        d: '15분봉 집중 · 거래량 3배(몸통 0.2%) · 20봉 돌파 · 볼린저 이탈 · CVD 다이버전스 (하루 6~8회)',
+        rules: [
+            { interval: '15m', kind: 'vol', mult: 3, vlen: 20, minBody: 0.2, up: true, down: true },
+            { interval: '15m', kind: 'brk', len: 20, volMult: 1.5, up: true, down: true },
+            { interval: '15m', kind: 'ind', cond: 'bb', len: 20, bbm: 2, up: true, down: true },
+            { interval: '15m', kind: 'div', src: 'cvd', reg: true, hid: false, right: 3, up: true, down: true }
+        ]
+    },
+    {
+        n: '스윙 · 구조 & 다이버전스',
+        d: '1시간·4시간봉 중심 · 1h 거래량 3배 · 1h RSI/MACD 다이버전스 · 4h 20봉 돌파 · 4h EMA 50×200 교차',
+        rules: [
+            { interval: '1h', kind: 'vol', mult: 3, vlen: 20, minBody: 0.2, up: true, down: true },
+            { interval: '1h', kind: 'div', src: 'rsi', reg: true, hid: false, right: 3, up: true, down: true },
+            { interval: '1h', kind: 'div', src: 'macd', reg: true, hid: false, right: 3, up: true, down: true },
+            { interval: '4h', kind: 'brk', len: 20, volMult: 1.5, up: true, down: true },
+            { interval: '4h', kind: 'ind', cond: 'mama', ma: 'ema', len: 50, len2: 200, up: true, down: true }
+        ]
+    }
+];
+var alertProfOpen = false;
+var curAlertProfile = LS.get('curAlertProfile', BUILTIN_ALERT_PROFILES[0].n);
+function makeRule(sym, tpl) {
+    return Object.assign({
+        id: uid(), symbol: sym, interval: '15m', kind: 'vol', on: true, once: false,
+        mult: 4, vlen: 20, minBody: 0.2, src: 'rsi', reg: true, hid: false,
+        up: true, down: true, len: 20, right: 3, volMult: 1.5,
+        cond: 'pma', ma: 'ema', len2: 200, lvl: 70, bbm: 2,
+        t1: 0, p1: 0, t2: 0, p2: 0, label: '', drawing: ''
+    }, JSON.parse(JSON.stringify(tpl)), { id: uid(), symbol: tpl.symbol && tpl.allCoins ? tpl.symbol : sym, on: tpl.on !== false });
+}
+function applyAlertProfile(prof, syms, silent) {
+    if (prof.allCoins && Array.isArray(prof.rules)) {
+        data.rules = prof.rules.map(function (r) { return Object.assign({}, JSON.parse(JSON.stringify(r)), { id: uid() }); });
+    } else {
+        var targets = Array.isArray(syms) && syms.length ? syms : [CF.symbol()];
+        // Keep other coins' rules and any drawn-line rules on the target coin
+        var kept = data.rules.filter(function (r) { return targets.indexOf(r.symbol) < 0 || !!r.drawing; });
+        var added = [];
+        targets.forEach(function (s) {
+            (prof.rules || []).forEach(function (tpl) { added.push(makeRule(s, tpl)); });
+        });
+        data.rules = kept.concat(added).slice(0, 100);
+    }
+    curAlertProfile = prof.n; LS.set('curAlertProfile', curAlertProfile);
+    store(); refreshMarkers();
+    if (!silent) CF.toast('"' + prof.n + '" 알람 프로필을 적용했어요');
+}
 function load() {
     try { var t = hasBridge ? B.alertsGet('') : JSON.stringify(Object.assign({ exact: true, notif: true }, LS.get('alertsDev', { rules: [], history: [] }))); data = JSON.parse(t) || data; }
     catch (e) { /* keep what we had */ }
     data.rules = Array.isArray(data.rules) ? data.rules : []; data.history = Array.isArray(data.history) ? data.history : [];
+    if (!LS.get('alertProfileInitV129', false)) {
+        LS.set('alertProfileInitV129', true);
+        if (data.rules.length) {
+            var isAlreadyDefault = data.rules.length === 4 && data.rules.every(function (r) { return String(r.id || '').indexOf('def-') === 0; });
+            if (!isAlreadyDefault && !ALERT_PROFILES.some(function (p) { return p.n === '이전 내 알람 (백업)'; })) {
+                ALERT_PROFILES.unshift({
+                    n: '이전 내 알람 (백업)',
+                    d: '업데이트 전 설정해 둔 알람 (' + data.rules.length + '개 · 전체 코인 복원)',
+                    allCoins: true,
+                    rules: JSON.parse(JSON.stringify(data.rules))
+                });
+                LS.set('alertProfiles', ALERT_PROFILES);
+            }
+            var syms = [];
+            data.rules.forEach(function (r) { if (r.symbol && syms.indexOf(r.symbol) < 0 && syms.length < 3) syms.push(r.symbol); });
+            if (!syms.length) syms = [CF.symbol() || 'BTCUSDT'];
+            if (!isAlreadyDefault) applyAlertProfile(BUILTIN_ALERT_PROFILES[0], syms, true);
+        } else {
+            applyAlertProfile(BUILTIN_ALERT_PROFILES[0], [CF.symbol() || 'BTCUSDT'], true);
+        }
+    }
     refreshBadge(); refreshMarkers();
 }
 function store() {
@@ -92,6 +185,45 @@ function showEvent(e) {
     CF.closeSheet();
     try { CF.chart.timeScale().setVisibleLogicalRange({ from: i - 40, to: i + 12 }); } catch (err) { /* ignore */ }
 }
+function alertProfilesBox() {
+    var box = el('div', 'tplbox'), sym = CF.symbol();
+    var bar = el('div', 'drow', '<button class="tplb">알람 프로필 · ' + esc(curAlertProfile) + ' ' + (alertProfOpen ? '▴' : '▾') + '</button><span style="flex:1;color:var(--muted);font-size:12px">' + esc(base(sym)) + ' 알람 세트 전환 · 저장</span>');
+    bar.querySelector('.tplb').onclick = function () { alertProfOpen = !alertProfOpen; openList(); };
+    box.appendChild(bar);
+    if (!alertProfOpen) return box;
+    var menu = el('div', 'tplmenu');
+    BUILTIN_ALERT_PROFILES.concat(ALERT_PROFILES).forEach(function (prof, i) {
+        var mine = i >= BUILTIN_ALERT_PROFILES.length, r = el('div', 'tplrow');
+        var isCur = curAlertProfile === prof.n;
+        r.innerHTML = '<button class="ap"></button>' + (mine ? '<button class="rm" aria-label="삭제">✕</button>' : '');
+        r.querySelector('.ap').innerHTML = (isCur ? '<span style="color:#F0B90B">● </span>' : '') + esc(prof.n) +
+            '<small style="display:block;color:var(--muted);font-size:11px">' + esc(prof.d || ((prof.rules ? prof.rules.length : 0) + '개 알람 규칙')) + '</small>';
+        r.querySelector('.ap').onclick = function () { applyAlertProfile(prof, [sym]); openList(); };
+        if (mine) r.querySelector('.rm').onclick = function () { ALERT_PROFILES.splice(i - BUILTIN_ALERT_PROFILES.length, 1); LS.set('alertProfiles', ALERT_PROFILES); openList(); };
+        menu.appendChild(r);
+    });
+    var add = el('div', 'tplrow', '<input type="text" maxlength="24" placeholder="새 알람 프로필 이름"><button class="sv">' + esc(base(sym)) + ' 알람 저장</button>');
+    var inp = add.querySelector('input');
+    add.querySelector('.sv').onclick = function () {
+        var mine = data.rules.filter(function (r) { return r.symbol === sym && !r.drawing; });
+        if (!mine.length) { CF.toast('저장할 알람 규칙이 없어요'); return; }
+        var name = inp.value.trim() || ('내 알람 ' + (ALERT_PROFILES.length + 1));
+        var cleanRules = mine.map(function (r) {
+            var cp = JSON.parse(JSON.stringify(r));
+            delete cp.id; delete cp.symbol;
+            return cp;
+        });
+        var prof = { n: name, d: cleanRules.map(function (r) { return (IV_LABEL[r.interval] || r.interval) + ' ' + describe(r).split(' · ')[0]; }).join(' · '), rules: cleanRules }, at = -1;
+        ALERT_PROFILES.forEach(function (x, j) { if (x.n === name) at = j; });
+        if (at >= 0) ALERT_PROFILES[at] = prof; else ALERT_PROFILES.push(prof);
+        if (ALERT_PROFILES.length > 20) ALERT_PROFILES.shift();
+        curAlertProfile = name; LS.set('curAlertProfile', curAlertProfile);
+        LS.set('alertProfiles', ALERT_PROFILES); CF.toast('"' + name + '" 알람 프로필 저장'); openList();
+    };
+    menu.appendChild(add);
+    box.appendChild(menu);
+    return box;
+}
 function ruleRow(r, showSym) {
     var row = el('div', 'row-opt');
     row.innerHTML = '<span style="flex:1;min-width:0">' + (showSym ? '<b>' + esc(base(r.symbol)) + '</b> ' : '') + esc(IV_LABEL[r.interval] || r.interval) + ' · ' + esc(describe(r)) +
@@ -106,10 +238,15 @@ function openList() {
     var sym = CF.symbol(), rows = [];
     if (!data.notif) rows.push(warnRow('알림이 꺼져 있어 알람이 와도 보이지 않아요', '알림 켜기', 'notif'));
     if (!data.exact) rows.push(warnRow('정확한 시간 알람이 꺼져 있어 몇 분 늦게 울릴 수 있어요', '허용하기', 'exact'));
+    rows.push(alertProfilesBox());
+    var guideRow = el('div', 'row-opt', '<span style="flex:1">📖 알람 3단계 대응법 · 실측 빈도 설명서<small>알람이 울렸을 때 차트에서 확인하는 순서와 백테스트 결과</small></span><span style="color:var(--muted)">›</span>');
+    guideRow.setAttribute('role', 'button');
+    guideRow.onclick = function () { if (CF.openGuide) CF.openGuide(openList, 'alerts'); };
+    rows.push(guideRow);
     rows.push(CF.sectionTitle(base(sym) + ' 알람'));
     var mine = data.rules.filter(function (r) { return r.symbol === sym; });
     mine.forEach(function (r) { rows.push(ruleRow(r, false)); });
-    if (!mine.length) rows.push(CF.noteRow('아직 없어요. 아래에서 추가하거나, 그린 수평선·추세선을 눌러 "🔔 알람"으로 만들 수 있어요.'));
+    if (!mine.length) rows.push(CF.noteRow('아직 없어요. 위 알람 프로필에서 추천 세트를 고르거나 아래에서 추가하세요.'));
     var add = el('button', 'reset', '＋ 알람 추가'); add.onclick = function () { openForm(null); }; rows.push(add);
     var others = data.rules.filter(function (r) { return r.symbol !== sym; });
     if (others.length) { rows.push(CF.sectionTitle('다른 코인')); others.forEach(function (r) { rows.push(ruleRow(r, true)); }); }
@@ -154,8 +291,8 @@ var draft = null;
 function indDefaults(r, c) {
     r.cond = c; r.up = true; r.down = true;
     if (c === 'rsi') { r.len = 14; r.lvl = 70; r.down = false; }
-    if (c === 'pma') { r.len = 50; r.ma = 'ema'; }
-    if (c === 'mama') { r.len = 50; r.len2 = 200; r.ma = 'sma'; }
+    if (c === 'pma') { r.len = 200; r.ma = 'ema'; }
+    if (c === 'mama') { r.len = 50; r.len2 = 200; r.ma = 'ema'; }
     if (c === 'bb') { r.len = 20; r.bbm = 2; }
 }
 function lastClose() { var cs = CF.candles(); return cs.length ? cs[cs.length - 1].close : 0; }
@@ -163,8 +300,8 @@ function openForm(rule, preset) {
     if (rule) { draft = { orig: rule, r: JSON.parse(JSON.stringify(rule)) }; if (draft.r.vlen == null) draft.r.vlen = 20; if (draft.r.minBody == null) draft.r.minBody = 0; }
     else {
         var p = lastClose();
-        draft = { orig: null, r: Object.assign({ id: uid(), symbol: CF.symbol(), interval: curIv(), kind: 'vol', on: true, once: false, mult: 4, vlen: 20, minBody: 0, src: 'rsi', reg: true, hid: false,
-            up: true, down: true, len: 50, right: 3, volMult: 1.5, t1: 0, p1: +CF.fmtPrice(p).replace(/,/g, '') || p, t2: 0, p2: 0, label: '', drawing: '' }, preset || {}) };
+        draft = { orig: null, r: Object.assign({ id: uid(), symbol: CF.symbol(), interval: curIv(), kind: 'vol', on: true, once: false, mult: 4, vlen: 20, minBody: 0.2, src: 'rsi', reg: true, hid: false,
+            up: true, down: true, len: 20, right: 3, volMult: 1.5, t1: 0, p1: +CF.fmtPrice(p).replace(/,/g, '') || p, t2: 0, p2: 0, label: '', drawing: '' }, preset || {}) };
     }
     renderForm();
 }
