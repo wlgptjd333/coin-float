@@ -103,6 +103,10 @@ import com.coinfloat.app.market.PriceFormatter
 import com.coinfloat.app.market.SymbolInfo
 import com.coinfloat.app.market.Ticker24h
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.rememberCoroutineScope
 import java.util.Locale
 
 private val ChartBg = Color(0xFF131722)
@@ -766,6 +770,8 @@ class ChartWebHolder {
     var onBackState: (Boolean) -> Unit = {}
     /** The page's file input (settings import): opens the system file picker; the callback gets the picked file. */
     var onPickFile: (android.webkit.ValueCallback<Array<android.net.Uri>>) -> Unit = { it.onReceiveValue(null) }
+    /** Google Drive sync from the page: save (json) or load (null); done(ok, text) gets the loaded file or an error. */
+    var onDrive: (json: String?, done: (Boolean, String) -> Unit) -> Unit = { _, done -> done(false, "차트 화면을 다시 열어 주세요") }
     /** Interval to switch to on the next load (an alert notification was tapped), used once. */
     var forceInterval: String? = null
 
@@ -809,6 +815,17 @@ private fun ChartWebView(
         pendingFile = null
     }
 
+    // Google's consent screen for the Drive sync (only the first time, or when Google asks again)
+    val activity = LocalContext.current as? Activity
+    val driveScope = rememberCoroutineScope()
+    var pendingConsent by remember { mutableStateOf<((Intent?) -> Unit)?>(null) }
+    val consentLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        pendingConsent?.invoke(result.data.takeIf { result.resultCode == Activity.RESULT_OK })
+        pendingConsent = null
+    }
+
     // the (long-lived) page always calls back into the screen that is showing it now
     SideEffect {
         holder.symbol = { latestSymbol }
@@ -821,6 +838,29 @@ private fun ChartWebView(
             pendingFile?.onReceiveValue(null)
             pendingFile = callback
             runCatching { filePicker.launch("*/*") }.onFailure { callback.onReceiveValue(null); pendingFile = null }
+        }
+        holder.onDrive = drive@{ json, done ->
+            val act = activity ?: return@drive done(false, "Google 로그인을 열 수 없어요")
+            com.coinfloat.app.sync.DriveSync.authorize(
+                act,
+                resolve = { sender, onResult ->
+                    pendingConsent?.invoke(null)
+                    pendingConsent = onResult
+                    runCatching { consentLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(sender).build()) }
+                        .onFailure { pendingConsent = null; onResult(null) }
+                }
+            ) { token ->
+                if (token == null) return@authorize done(false, "Google 로그인이 취소됐어요")
+                driveScope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching {
+                            if (json != null) { com.coinfloat.app.sync.DriveSync.upload(token, json); "" }
+                            else com.coinfloat.app.sync.DriveSync.download(token) ?: error("드라이브에 저장된 설정이 없어요")
+                        }
+                    }
+                    result.fold({ done(true, it) }, { done(false, it.message ?: "Google 드라이브에 연결하지 못했어요") })
+                }
+            }
         }
     }
 
@@ -851,6 +891,7 @@ private fun ChartWebView(
                         onBackState = { holder.onBackState(it) },
                         onCandleClose = { holder.candleClose = parseCandleClose(it) },
                         onPickFile = { holder.onPickFile(it) },
+                        onDrive = { json, done -> holder.onDrive(json, done) },
                         forceInterval = { holder.forceInterval.also { holder.forceInterval = null } },
                         onRendererGone = {
                             // the renderer died: throw this WebView away and build a fresh one
@@ -929,7 +970,8 @@ private class ChartBridge(
     private val onOpenSearch: () -> Unit,
     private val onExitImmersive: () -> Unit,
     private val onBackState: (Boolean) -> Unit,
-    private val onCandleClose: (String) -> Unit
+    private val onCandleClose: (String) -> Unit,
+    private val onDrive: (String?, (Boolean, String) -> Unit) -> Unit
 ) {
     // The callbacks are named on* on purpose: a callback named like its method (candleClose) made candleClose(value)
     // call the method itself, which re-posted itself forever and kept the main thread busy (1.11.0).
@@ -1050,6 +1092,25 @@ private class ChartBridge(
         webView.post { runCatching { ctx.startActivity(Intent.createChooser(send, "설정 파일 저장").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
     }
 
+    // Google Drive sync ("<id>|<json>" to save, "<id>|" to load); the answer comes back through window.__driveDone
+    @JavascriptInterface
+    fun driveSave(arg: String?) = drive(arg, save = true)
+
+    @JavascriptInterface
+    fun driveLoad(arg: String?) = drive(arg, save = false)
+
+    private fun drive(arg: String?, save: Boolean) {
+        val parts = arg.orEmpty().split("|", limit = 2)
+        val id = parts[0].filter { it.isLetterOrDigit() }.take(24)
+        if (id.isEmpty()) return
+        val json = if (save) parts.getOrNull(1)?.takeIf { it.isNotEmpty() && it.length <= 5_000_000 } ?: return else null
+        webView.post {
+            onDrive(json) { ok, text ->
+                webView.post { webView.evaluateJavascript("window.__driveDone && window.__driveDone('$id', $ok, ${org.json.JSONObject.quote(text)});", null) }
+            }
+        }
+    }
+
     @JavascriptInterface
     fun copyText(text: String?) {
         val value = text.orEmpty().take(5_000_000)
@@ -1082,7 +1143,8 @@ private fun createChartWebView(
     onCandleClose: (String) -> Unit,
     onRendererGone: () -> Unit,
     forceInterval: () -> String? = { null },
-    onPickFile: (android.webkit.ValueCallback<Array<android.net.Uri>>) -> Unit = { it.onReceiveValue(null) }
+    onPickFile: (android.webkit.ValueCallback<Array<android.net.Uri>>) -> Unit = { it.onReceiveValue(null) },
+    onDrive: (String?, (Boolean, String) -> Unit) -> Unit = { _, done -> done(false, "") }
 ): WebView {
     val debuggable = (ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     if (debuggable) WebView.setWebContentsDebuggingEnabled(true)
@@ -1125,7 +1187,7 @@ private fun createChartWebView(
             textZoom = 100                      // the dense chart layout must not reflow with the system font scale
         }
 
-        addJavascriptInterface(ChartBridge(this, onOpenSymbolSearch, onExitImmersive, onBackState, onCandleClose), "AndroidBridge")
+        addJavascriptInterface(ChartBridge(this, onOpenSymbolSearch, onExitImmersive, onBackState, onCandleClose, onDrive), "AndroidBridge")
 
         webChromeClient = object : android.webkit.WebChromeClient() {
             override fun onShowFileChooser(

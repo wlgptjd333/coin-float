@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.31.0] - 2026-10-29
+
+### Added
+- **Google Drive sync** in ⚙ 차트 설정 › 설정 백업 · 가져오기, in the app and on the web: save the settings file to and
+  load it from the signed-in Google account's hidden CoinFloat folder (`drive.appdata`, non-sensitive; nothing else in
+  Drive is visible to the app). The app uses Android's Google sign-in, the web Google's browser sign-in; both read and
+  write the same file, so settings move between phone and browser.
+
 ## [1.30.1] - 2026-10-29
 
 ### Fixed
