@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.29.1] - 2026-10-28
+
+### Fixed
+- **Floating window tap with the mini chart open**: after changing the coin inside the chart, a tap on the price box
+  switched the chart back to the tapped coin and only a second tap closed it. A tap on the price box now always closes
+  the open chart (coins are changed with the name in the chart's header).
+- **Prices on the lock screen**: the notification on the lock screen showed the prices from the moment the phone was
+  locked, because the market feed paused until unlock. It now keeps running while the screen is on, locked or not, and
+  the notification follows every second there; the floating window catches up when the phone is unlocked.
+
+### Performance
+- **Chart screen**: the price in the header faded between the up and down colors. The fade ran about 14 animation frames
+  a second (the price changes direction several times a second), and each one redrew the whole window, chart WebView
+  included. Measured on a Galaxy S23+ with the chart idle: 207 frames in 15 s, 22 % of them late. The color now switches
+  at once, as in the floating window.
+
 ## [1.29.0] - 2026-10-17
 
 Built and installed on the phone on 2026-10-17 but never committed; restored on 2026-10-28 from the installed APK
