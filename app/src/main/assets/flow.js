@@ -781,8 +781,9 @@ var HEAT_KEEP_MS = 6 * 3600 * 1000, HEAT_MAX_MAPS = 6, HEAT_IDX = 'heatIdx', hea
 function heatDb() {
     if (!heatDbP) heatDbP = new Promise(function (res, rej) {
         if (!window.indexedDB) { rej(new Error('no indexedDB')); return; }
-        var r = indexedDB.open('cf_heatmap', 1);
-        r.onupgradeneeded = function () { r.result.createObjectStore('maps'); };
+        // version 2 also repairs a database that exists without its store
+        var r = indexedDB.open('cf_heatmap', 2);
+        r.onupgradeneeded = function () { if (!r.result.objectStoreNames.contains('maps')) r.result.createObjectStore('maps'); };
         r.onsuccess = function () { res(r.result); };
         r.onerror = function () { rej(r.error); };
     });
