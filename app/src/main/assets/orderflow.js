@@ -885,6 +885,8 @@ function liveSources() {
 }
 function xLegend() {
     if (!X.want) return '';
+    // it adds to the footprint and the DOM's tape; with neither on there is nothing to add to (it used to look broken)
+    if (!E.users) return '<span style="color:#F0B90B">풋프린트나 호가 · 체결 패널(DOM)을 켜면 합산돼요</span>';
     var parts = [];
     Object.keys(X.status).forEach(function (id) {
         var st = X.status[id], txt = st.state === 'live' ? '✓' : st.state === 'none' ? '없음' : st.state === 'mismatch' ? '제외' : '연결 중';
