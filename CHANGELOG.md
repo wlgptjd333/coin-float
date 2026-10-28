@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   historical volatility, standard deviation, Vortex, Mass Index (59 in all).
 - The Pine paste sheet explains how to bring over an open-source TradingView script and links to TradingView's
   community scripts (TradingView offers no API to import them automatically).
+- **Order-book heatmap history is kept**: leaving the chart (app in the background, another tab) stops the order-book
+  stream to save battery, and the heatmap used to start empty on every return and took minutes to fill again (one
+  column every 1.5-20 s; Binance has no order-book history to download). The map is now stored on the device per coin
+  and interval (the 6 most recent, up to 6 hours, ≤ 384 KB each): on return it is back at once, the time away shows as
+  an empty gap, and recording continues. Order-book walls were already back within a second or two.
+
+### Fixed
+- Taps on the chart legend (▾ and the new indicator rows) could do nothing: the legend was rebuilt on every price tick,
+  so a tap often ended on an element that had just been replaced. Only the numbers change now.
 
 ## [1.31.1] - 2026-10-29
 

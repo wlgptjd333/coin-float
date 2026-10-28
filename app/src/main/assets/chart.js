@@ -3457,8 +3457,29 @@ function indexOfTime(t) {
     return -1;
 }
 function val(arr, i, dig) { return arr[i] == null ? null : (dig == null ? fmtPrice(arr[i]) : arr[i].toFixed(dig)); }
-var legendOpen = LS.get('legendOpen', false), legendHtml = '';
-function setLegend(html) { if (html !== legendHtml) { legendHtml = html; $('legend').innerHTML = html; } }
+var legendOpen = LS.get('legendOpen', false), legendHtml = '', legendRowsSig = '', lgBox = null;
+// The legend updates with every price tick. Its buttons (▾ and the indicator rows) are kept as the same elements and
+// only the numbers in them change: replacing them mid-tap made the tap land on a removed element and do nothing.
+function legendBox() {
+    if (!lgBox) {
+        $('legend').innerHTML = '<div class="row" id="lg_r1"><span id="lg_ohlc"></span><button class="lg-t" id="lg_t" aria-label="지표 값 펼치기"></button></div><div id="lg_l2"></div><div id="lg_rows"></div>';
+        lgBox = { r1: $('lg_r1'), ohlc: $('lg_ohlc'), t: $('lg_t'), l2: $('lg_l2'), rows: $('lg_rows') };
+    }
+    return lgBox;
+}
+function setText(el, html) { if (el.__h !== html) { el.__h = html; el.innerHTML = html; } }
+function setLegend(ohlc, toggle, l2, rows) {
+    var bx = legendBox();
+    bx.r1.style.display = ohlc ? '' : 'none';
+    setText(bx.ohlc, ohlc || '');
+    bx.t.style.display = toggle ? '' : 'none'; if (toggle) setText(bx.t, toggle);
+    setText(bx.l2, l2 || '');
+    rows = rows || [];
+    var sig = rows.map(function (r) { return r.shell; }).join('');
+    if (sig !== legendRowsSig) { legendRowsSig = sig; bx.rows.innerHTML = sig; }
+    var bs = bx.rows.querySelectorAll('.li-n');
+    rows.forEach(function (r, j) { if (bs[j]) setText(bs[j], r.body); });
+}
 function renderLegend() {
     var n = candles.length; if (!n) { setLegend(''); return; }
     var i = crossTime != null ? indexOfTime(crossTime) : -1; if (i < 0) i = n - 1;
@@ -3467,11 +3488,10 @@ function renderLegend() {
     var c = candles[i], b = chartType === 'ha' && haBars[i] ? haBars[i] : c;
     var cls = c.close >= c.open ? 'up' : 'down', chg = c.open ? (c.close - c.open) / c.open * 100 : 0;
     var open = mode === 'full' && (legendOpen || crossTime != null);
-    var l1 = '<div class="row">O <span class="' + cls + '">' + fmtPrice(b.open) + '</span> H <span class="' + cls + '">' + fmtPrice(b.high) +
+    var l1 = 'O <span class="' + cls + '">' + fmtPrice(b.open) + '</span> H <span class="' + cls + '">' + fmtPrice(b.high) +
         '</span> L <span class="' + cls + '">' + fmtPrice(b.low) + '</span> C <span class="' + cls + '">' + fmtPrice(b.close) + '</span> <span class="' + cls + '">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</span>';
     if (ind.vol) l1 += ' &nbsp;Vol <b>' + fmtVol(c.volume) + '</b>';
-    if (mode === 'full') l1 += '<button class="lg-t" id="lg_t" aria-label="지표 값 펼치기">' + (open ? '▴' : '▾') + '</button>';
-    l1 += '</div>';
+    var toggle = mode === 'full' ? (open ? '▴' : '▾') : '';
     var parts = [];
     if (open) {
         // the indicators themselves are rows of their own (legendRows); this line keeps what is not one
@@ -3480,7 +3500,7 @@ function renderLegend() {
         legendHooks.forEach(function (fn) { try { var h = fn(i); if (h) parts.push(h); } catch (e) { console.error(e); } });
     }
     var l2 = parts.length ? '<div class="row">' + parts.join(' &nbsp;') + '</div>' : '';
-    setLegend(l1 + l2 + (mode === 'full' ? legendRows(i, open) : ''));
+    setLegend(l1, toggle, l2, mode === 'full' ? legendRows(i, open) : []);
     fillPaneValues(i);
 }
 // ---- indicator rows on the chart, TradingView-style: one row per indicator laid over the price (name + values at the
@@ -3531,17 +3551,20 @@ function legendItems(i) {
     legendItemHooks.forEach(function (fn) { try { out = out.concat(fn(i) || []); } catch (e) { console.error(e); } });
     return out;
 }
+// rows as { shell: the row with an empty name button (rebuilt only when a row is added, removed, selected or hidden),
+// body: the name and values that go into that button on every tick }
 function legendRows(i, open) {
-    var items = legendItems(i); if (!items.length) return '';
     // collapsed (▾): the rows stay, names only, so they can still be tapped
-    return items.map(function (it) {
-        var sel = legendSel === it.k;
-        var body = open || sel ? it.html : (it.html.match(/^<b>.*?<\/b>/) || [it.html])[0];
-        return '<div class="row li' + (sel ? ' sel' : '') + (it.hidden ? ' off' : '') + '"><button class="li-n" data-k="' + escHtml(it.k) + '" data-a="sel">' + body + '</button>' +
-            '<span class="li-b"><button data-k="' + escHtml(it.k) + '" data-a="eye" aria-label="' + (it.hidden ? '보이기' : '숨기기') + '">' + (it.hidden ? EYE_OFF : EYE) + '</button>' +
-            (it.settings ? '<button data-k="' + escHtml(it.k) + '" data-a="cfg" aria-label="설정">⚙</button>' : '') +
-            '<button data-k="' + escHtml(it.k) + '" data-a="x" aria-label="삭제">✕</button></span></div>';
-    }).join('');
+    return legendItems(i).map(function (it) {
+        var sel = legendSel === it.k, k = escHtml(it.k);
+        return {
+            body: open || sel ? it.html : (it.html.match(/^<b>.*?<\/b>/) || [it.html])[0],
+            shell: '<div class="row li' + (sel ? ' sel' : '') + (it.hidden ? ' off' : '') + '"><button class="li-n" data-k="' + k + '" data-a="sel"></button>' +
+                '<span class="li-b"><button data-k="' + k + '" data-a="eye" aria-label="' + (it.hidden ? '보이기' : '숨기기') + '">' + (it.hidden ? EYE_OFF : EYE) + '</button>' +
+                (it.settings ? '<button data-k="' + k + '" data-a="cfg" aria-label="설정">⚙</button>' : '') +
+                '<button data-k="' + k + '" data-a="x" aria-label="삭제">✕</button></span></div>'
+        };
+    });
 }
 $('legend').addEventListener('click', function (e) {
     var t = e.target.closest && e.target.closest('button'); if (!t) return;
