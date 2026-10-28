@@ -103,7 +103,7 @@ defineSettings('chart', {
         { t: 'sec', label: '화면' },
         { k: 'theme', t: 'sel', label: '배경', def: 'dark', opts: [['dark', '다크'], ['black', '블랙']] },
         { k: 'grid', t: 'sel', label: '격자', def: 'both', opts: [['both', '가로·세로'], ['horz', '가로만'], ['none', '없음']] },
-        { k: 'cross', t: 'sel', label: '십자선', def: 'magnet', opts: [['free', '자유'], ['magnet', '캔들에 붙이기']] },
+        { k: 'cross', t: 'sel', label: '십자선', sub: '길게 누르면 나타나고, 끌어서 옮기고, 한 번 더 탭하면 사라져요', def: 'free', opts: [['free', '자유 (TradingView 기본)'], ['magnet', '캔들에 붙이기']] },
         { k: 'tz', t: 'sel', label: '시간대', def: 'local', opts: [['local', '휴대폰 시간'], ['utc', 'UTC']] },
         { k: 'sep', t: 'bool', label: '날짜 구분선', sub: '분 · 시간봉은 하루, 일봉은 한 주가 바뀌는 곳에 세로선', def: false },
         { k: 'hilo', t: 'bool', label: '화면 최고가 · 최저가 표시', def: true },
@@ -332,7 +332,9 @@ var chart = LW.createChart($('chart'), {
     timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 8, minBarSpacing: MIN_BAR_SPACING, maxBarSpacing: MAX_BAR_SPACING, tickMarkFormatter: tickFmt },
     localization: { timeFormatter: crosshairTimeFmt },
     kineticScroll: { touch: true, mouse: false },
-    trackingMode: { exitMode: LW.TrackingModeExitMode.OnTouchEnd },
+    // touch, like TradingView: a long press shows the crosshair, dragging moves it (instead of the chart), it stays
+    // after the finger lifts so the values can be read, and the next tap hides it
+    trackingMode: { exitMode: LW.TrackingModeExitMode.OnNextTap },
     handleScale: { axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: { time: true, price: true }, mouseWheel: true, pinch: true },
     handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: S('chart').vdrag }
 });

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.31.1] - 2026-10-29
+
+### Changed
+- **Crosshair works like TradingView** (app and web): a long press shows it, dragging moves it freely instead of
+  scrolling the chart, it stays after the finger lifts (the legend keeps that candle's values) and the next tap hides
+  it. It used to vanish as soon as the finger lifted. The default is the free crosshair again; the horizontal line
+  snapped to candle prices ("캔들에 붙이기", the 1.29.0 default) and jumped instead of following the finger. Mouse:
+  the crosshair follows the pointer as before.
+
 ## Web - 2026-10-29
 
 ### Added
