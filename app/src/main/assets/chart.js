@@ -2999,6 +2999,7 @@ function switchRow(text, sub, key, gear) {
         ind[key] = !ind[key]; LS.set('ind', ind);
         if (hiddenInd[key]) { delete hiddenInd[key]; saveHidden(); }
         b.querySelector('.switch').classList.toggle('on', ind[key]);
+        if (key === 'xex' && ind.xex && !ind.fp && !ind.dom) toast('합산은 풋프린트나 호가 · 체결 패널에 더해져요', 'DOM 켜기', function () { ind.dom = true; LS.set('ind', ind); applyIndicators(); });
         applyIndicators();
     };
     return b;
@@ -3389,7 +3390,7 @@ function openIndicators() {
         switchRow('대량 체결', '큰 체결만 버블로 표시', 'trades', true),
         switchRow('풋프린트', '확대하면 가격별 매수·매도 체결량 · 불균형 · POC', 'fp', true),
         switchRow('호가 · 체결 패널 (DOM)', '차트 오른쪽에 호가 사다리와 실시간 체결 목록', 'dom', true),
-        switchRow('다른 거래소 체결 합산', 'Bybit · OKX · Hyperliquid · Bitfinex 체결을 풋프린트 · 체결 목록에 더함', 'xex', true),
+        switchRow('다른 거래소 체결 합산', '풋프린트 · 호가·체결 패널에 Bybit · OKX · Hyperliquid · Bitfinex 체결을 더함 (⚙ 에서 거래소 선택 · 위 둘 중 하나가 켜져 있어야 작동)', 'xex', true),
         sectionTitle('호가창 · 청산맵'),
         switchRow('호가 벽', '매수/매도 벽 · 우측 깊이 막대', 'depth', true),
         switchRow('호가 히트맵', '유동성 변화를 시간별 색으로', 'heat', true),

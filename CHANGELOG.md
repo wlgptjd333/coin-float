@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an empty gap, and recording continues. Order-book walls were already back within a second or two.
 
 ### Fixed
+- **Cross-exchange trades (다른 거래소 체결 합산)** looked like they did nothing: they are added to the footprint and the
+  DOM's tape, so with neither of those on there was nothing to add to. Switching it on alone now says so (with a button
+  to open the DOM), and its legend row says it until one of them is on. Measured on BTC with the DOM on: Binance was 46 %
+  of the traded value over 20 s, Hyperliquid 23 %, OKX 17 %, Bybit 14 % (~60 trades a second in all).
 - Taps on the chart legend (▾ and the new indicator rows) could do nothing: the legend was rebuilt on every price tick,
   so a tap often ended on an element that had just been replaced. Only the numbers change now.
 
