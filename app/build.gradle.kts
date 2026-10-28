@@ -24,8 +24,8 @@ android {
         applicationId = "com.coinfloat.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 60
-        versionName = "1.30.1"
+        versionCode = 61
+        versionName = "1.31.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -96,6 +96,9 @@ dependencies {
 
     // DataStore Preferences
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Google sign-in for the Drive settings sync (AuthorizationClient)
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     // OkHttp (WebSocket & REST)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

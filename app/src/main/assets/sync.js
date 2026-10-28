@@ -94,6 +94,31 @@ function row(title, sub, fn) {
     b.onclick = fn; return b;
 }
 
+// In the app, Google Drive goes through Android's own Google sign-in (Google does not allow it inside a WebView); the
+// web version's web/cloud.js does the same with Google's browser sign-in. Both use the same file in the same folder.
+if (isApp && typeof B.driveSave === 'function' && !window.CF_CLOUD) {
+    var pending = {}, seq = 0;
+    window.__driveDone = function (id, ok, text) { var cb = pending[id]; delete pending[id]; if (cb) cb(ok, text); };
+    var drive = function (name, arg, cb) {
+        var id = 'd' + (++seq); pending[id] = cb;
+        try { B[name](id + '|' + (arg || '')); } catch (e) { delete pending[id]; cb(false, 'Google 드라이브에 연결하지 못했어요'); }
+    };
+    window.CF_CLOUD = {
+        rows: function (collect, importText) {
+            return [
+                CF.sectionTitle('Google 드라이브 동기화'),
+                row('☁️  드라이브에 저장', '내 Google 계정의 앱 전용 공간에 지금 설정 올리기 (웹과 같은 파일)', function () {
+                    CF.toast('Google 드라이브에 저장하는 중…');
+                    drive('driveSave', JSON.stringify(collect()), function (ok, t) { CF.toast(ok ? 'Google 드라이브에 저장했어요' : t); });
+                }),
+                row('☁️  드라이브에서 불러오기', '다른 기기 · 웹에서 올린 설정으로 바꾸기', function () {
+                    drive('driveLoad', '', function (ok, t) { if (ok) importText(t); else CF.toast(t); });
+                })
+            ];
+        }
+    };
+}
+
 CF.openSync = function (backFn) {
     var rows = [
         CF.noteRow('지표 · 지표 프로필 · 작도 · 화면 배치 · Pine 스크립트 · 알람 규칙을 한 파일로 옮겨요. 앱과 웹(브라우저) 어디서 만든 파일이든 서로 가져올 수 있어요.'),
