@@ -209,7 +209,7 @@ class ScreenshotTest {
                     onSymbolDisplayModeChange = {}, onShow24hChangeChange = {}, onUpDownSchemeChange = {}, onFontSizeChange = {}, onTextColorChange = {}, onTextOpacityChange = {},
                     onBackgroundColorChange = {}, onBackgroundOpacityChange = {}, onPaddingChange = {}, onChartEnabledChange = {},
                     onChartIntervalChange = {}, onChartSizeProfileChange = {}, onCustomChartSizeChange = { _, _ -> },
-                    onRefreshRateProfileChange = {}, onOpenAppInfo = {}, onShowStabilityHelp = {}, onShowLicenses = {}, onShowPrivacy = {}
+                    onRefreshRateProfileChange = {}, onOpenAppInfo = {}, onShowStabilityHelp = {}, onShowGuide = {}, onShowLicenses = {}, onShowPrivacy = {}
                 )
             }
         }
@@ -223,7 +223,7 @@ class ScreenshotTest {
             onSymbolDisplayModeChange = {}, onShow24hChangeChange = {}, onUpDownSchemeChange = {}, onFontSizeChange = {}, onTextColorChange = {}, onTextOpacityChange = {},
             onBackgroundColorChange = {}, onBackgroundOpacityChange = {}, onPaddingChange = {}, onChartEnabledChange = {},
             onChartIntervalChange = {}, onChartSizeProfileChange = {}, onCustomChartSizeChange = { _, _ -> },
-            onRefreshRateProfileChange = {}, onOpenAppInfo = {}, onShowStabilityHelp = {}, onShowLicenses = {}, onShowPrivacy = {}
+            onRefreshRateProfileChange = {}, onOpenAppInfo = {}, onShowStabilityHelp = {}, onShowGuide = {}, onShowLicenses = {}, onShowPrivacy = {}
         )
     }
 }
