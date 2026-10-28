@@ -41,6 +41,8 @@ class FloatingOverlayService : Service() {
         // notification follows more slowly then.
         private const val NOTIFICATION_PRICE_MS = 2_000L
         private const val NOTIFICATION_PRICE_OVERLAY_MS = 10_000L
+        // On the lock screen the notification is the only price in view, and it is only looked at for a moment.
+        private const val NOTIFICATION_PRICE_LOCKED_MS = 1_000L
 
         private val _isServiceActive = MutableStateFlow(false)
         val isServiceActive: StateFlow<Boolean> = _isServiceActive.asStateFlow()
@@ -58,9 +60,12 @@ class FloatingOverlayService : Service() {
 
     // The market feed only has a consumer while the screen is on AND the overlay is visible. Keeping the socket
     // open for a hidden or screen-off overlay only burns radio and battery; resuming takes a few hundred ms.
+    // A screen that is on but locked still counts: the lock screen shows the notification's prices, which would
+    // otherwise be frozen at the moment the phone was locked.
     private var feedScreenOn = true
     private var feedOverlayVisible = true
     private var feedRunning: Boolean? = null
+    private var keyguardLocked = false
 
     private fun syncFeed() {
         if (!isServiceRunning) return
@@ -80,18 +85,27 @@ class FloatingOverlayService : Service() {
                     overlayController.onScreenStateChanged(false)
                 }
                 Intent.ACTION_SCREEN_ON -> {
-                    // Behind the lock screen the overlay is invisible: keep the feed paused until the user unlocks.
-                    val locked = isKeyguardLocked()
-                    Log.d(TAG, "Screen ON detected (locked=$locked)")
-                    overlayController.onScreenStateChanged(!locked)
-                    feedScreenOn = !locked
+                    // Behind the lock screen the overlay is invisible (its chart stays idle), but the notification
+                    // on the lock screen is not: resume the feed so it shows current prices.
+                    keyguardLocked = isKeyguardLocked()
+                    Log.d(TAG, "Screen ON detected (locked=$keyguardLocked)")
+                    overlayController.onScreenStateChanged(!keyguardLocked)
+                    feedScreenOn = true
                     syncFeed()
                 }
                 Intent.ACTION_USER_PRESENT -> {
                     Log.d(TAG, "Unlocked: resuming market data")
+                    keyguardLocked = false
                     overlayController.onScreenStateChanged(true)
                     feedScreenOn = true
                     syncFeed()
+                    // catch the overlay up with prices that arrived while it was hidden behind the lock screen
+                    if (overlayController.isShowing()) {
+                        overlayController.updatePrices(
+                            marketDataRepository.marketPrices.value,
+                            marketDataRepository.symbolInfoCache.value
+                        )
+                    }
                 }
             }
         }
@@ -117,7 +131,8 @@ class FloatingOverlayService : Service() {
         }
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         // The service can be (re)started while the screen is off; no screen event will arrive to tell us.
-        feedScreenOn = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive && !isKeyguardLocked()
+        feedScreenOn = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive
+        keyguardLocked = isKeyguardLocked()
 
         CoinFloatNotification.createNotificationChannel(this)
 
@@ -368,7 +383,8 @@ class FloatingOverlayService : Service() {
             // Caps redraw rate to ~6.7 FPS, saving ~75% CPU and conserving battery.
             marketDataRepository.marketPrices
                 .collect { prices ->
-                    if (overlayController.isShowing()) {
+                    // behind the lock screen nobody sees the window; it catches up on unlock (ACTION_USER_PRESENT)
+                    if (!keyguardLocked && overlayController.isShowing()) {
                         overlayController.updatePrices(
                             prices = prices,
                             symbolInfoMap = marketDataRepository.symbolInfoCache.value
@@ -408,7 +424,11 @@ class FloatingOverlayService : Service() {
         val key = NotificationKey(settings.selectedSymbols, state, settings.isOverlayVisible, content)
         if (key == lastNotificationKey) return
         if (priceOnly) {
-            val every = if (settings.isOverlayVisible) NOTIFICATION_PRICE_OVERLAY_MS else NOTIFICATION_PRICE_MS
+            val every = when {
+                keyguardLocked -> NOTIFICATION_PRICE_LOCKED_MS
+                settings.isOverlayVisible -> NOTIFICATION_PRICE_OVERLAY_MS
+                else -> NOTIFICATION_PRICE_MS
+            }
             val wait = every - (System.currentTimeMillis() - lastNotifyAt)
             if (wait > 0) {
                 // post the newest prices once the interval is over (unless something newer is posted first)
