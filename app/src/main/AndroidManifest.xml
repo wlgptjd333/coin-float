@@ -64,6 +64,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- brings the floating window back after an app update or a reboot when it was on -->
+        <receiver
+            android:name=".overlay.OverlayRestoreReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>
