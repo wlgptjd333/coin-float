@@ -784,8 +784,10 @@ function heatDb() {
         // version 2 also repairs a database that exists without its store
         var r = indexedDB.open('cf_heatmap', 2);
         r.onupgradeneeded = function () { if (!r.result.objectStoreNames.contains('maps')) r.result.createObjectStore('maps'); };
-        r.onsuccess = function () { res(r.result); };
-        r.onerror = function () { rej(r.error); };
+        // another tab running a newer page asks to upgrade: let go of the database instead of blocking it forever
+        r.onsuccess = function () { var db = r.result; db.onversionchange = function () { db.close(); heatDbP = null; }; res(db); };
+        r.onerror = function () { heatDbP = null; rej(r.error); };
+        r.onblocked = function () { heatDbP = null; rej(new Error('heatmap store busy')); };
     });
     return heatDbP;
 }
