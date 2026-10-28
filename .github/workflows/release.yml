@@ -56,15 +56,18 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
+      # Manual runs on a branch (fix/xyz) would otherwise put a "/" in the file name
       - name: Rename APK
         run: |
+          NAME="${GITHUB_REF_NAME//\//-}"
+          echo "APK_NAME=$NAME" >> "$GITHUB_ENV"
           mkdir -p release-artifacts
-          cp app/build/outputs/apk/release/app-release.apk release-artifacts/CoinFloat-${{ github.ref_name }}.apk
+          cp app/build/outputs/apk/release/app-release.apk "release-artifacts/CoinFloat-$NAME.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CoinFloat-${{ github.ref_name }}
+          name: CoinFloat-${{ env.APK_NAME }}
           path: release-artifacts/*.apk
 
       - name: Create GitHub Release
