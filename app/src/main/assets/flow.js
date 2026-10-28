@@ -771,23 +771,91 @@ function paintHeat(ctx, w, h) {
         tag(ctx, '호가 대기물량  적음 → 많음', gx, gy - 8, '#9aa3b2', 'left');
     }
 }
+// ---- heatmap history across pauses and restarts ------------------------------------------------------------------------
+// The map only exists while the page records it (Binance has no order-book history), and leaving the chart stops the
+// order-book stream to save battery. It used to start empty again on every return and took minutes to fill (one column
+// per 1.5-20 s). Now the columns are kept on the device (IndexedDB) per coin and interval: the 6 most recent maps, up to
+// 6 hours old. On return the stored map is drawn at once and the time away is filled with empty columns, then live
+// columns continue. ≤ 384 KB per map (1200 columns × 320 rows, one byte per cell).
+var HEAT_KEEP_MS = 6 * 3600 * 1000, HEAT_MAX_MAPS = 6, HEAT_IDX = 'heatIdx', heatDbP = null;
+function heatDb() {
+    if (!heatDbP) heatDbP = new Promise(function (res, rej) {
+        if (!window.indexedDB) { rej(new Error('no indexedDB')); return; }
+        var r = indexedDB.open('cf_heatmap', 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore('maps'); };
+        r.onsuccess = function () { res(r.result); };
+        r.onerror = function () { rej(r.error); };
+    });
+    return heatDbP;
+}
+function heatSave() {
+    if (!Heat.key || !Heat.cv || !Heat.buf.length || Heat.savedCols === Heat.cols + ':' + Heat.t0) return;
+    Heat.savedCols = Heat.cols + ':' + Heat.t0;
+    var rows = Heat.ROWS, n = Heat.buf.length, flat = new Uint8Array(n * rows), key = Heat.key;
+    for (var c = 0; c < n; c++) flat.set(Heat.buf[c], c * rows);
+    var rec = { at: Date.now(), low: Heat.low, step: Heat.step, t0: Heat.t0, dt: Heat.dt, cols: n, med: Heat.med, rows: rows, buf: flat };
+    heatDb().then(function (db) {
+        var st = db.transaction('maps', 'readwrite').objectStore('maps'), idx = CF.LS.get(HEAT_IDX, {}) || {};
+        st.put(rec, key); idx[key] = rec.at;
+        Object.keys(idx).sort(function (a, b) { return idx[b] - idx[a]; }).forEach(function (k, j) {   // newest few, recent only
+            if (j >= HEAT_MAX_MAPS || rec.at - idx[k] > HEAT_KEEP_MS) { st.delete(k); delete idx[k]; }
+        });
+        CF.LS.set(HEAT_IDX, idx);
+    }).catch(function () { /* storage unavailable: the map just starts empty next time */ });
+}
+function heatLoad(key) {
+    return heatDb().then(function (db) {
+        return new Promise(function (res) {
+            var r = db.transaction('maps').objectStore('maps').get(key);
+            r.onsuccess = function () { res(r.result || null); }; r.onerror = function () { res(null); };
+        });
+    }).catch(function () { return null; });
+}
+// a stored map, continued to now: the time away becomes empty columns (nothing was recorded then)
+function heatRestore(rec) {
+    var now = Date.now() / 1000;
+    if (!rec || rec.rows !== Heat.ROWS || rec.dt !== Heat.dt || Date.now() - rec.at > HEAT_KEEP_MS) return false;
+    var gap = Math.max(0, Math.floor((now - (rec.t0 + rec.cols * rec.dt)) / rec.dt));
+    if (gap >= Heat.COLS) return false;                                       // nothing of it would still be on the map
+    var buf = [], c;
+    for (c = 0; c < rec.cols; c++) buf.push(rec.buf.slice(c * rec.rows, (c + 1) * rec.rows));
+    for (c = 0; c < gap; c++) buf.push(new Uint8Array(rec.rows));
+    var drop = Math.max(0, buf.length - Heat.COLS);
+    Heat.cv = document.createElement('canvas'); Heat.cv.width = Heat.COLS; Heat.cv.height = Heat.ROWS;
+    Heat.cx = Heat.cv.getContext('2d', { willReadFrequently: true });
+    Heat.buf = buf.slice(drop); Heat.cols = Heat.buf.length; Heat.t0 = rec.t0 + drop * rec.dt;
+    Heat.low = rec.low; Heat.step = rec.step; Heat.high = Heat.low + Heat.step * Heat.ROWS; Heat.med = rec.med;
+    heatRecolor();
+    CF.redraw();
+    return true;
+}
 CF.registerFeature('heat', {
     byInterval: true,                                                          // sampling step follows the candle interval
     start: function () {
         Heat.dt = clamp(CF.secs() / 30, 1.5, 20);
         Book.start(); Heat.cv = null; Heat.cols = 0; Heat.buf = [];
+        Heat.key = CF.symbol() + '|' + Heat.dt; Heat.savedCols = null; Heat.loading = true;
         Heat.off = CF.layer('bottom', paintHeat);
         Heat.last = 0; Heat.startedAt = Date.now();                            // first column as soon as the book is ready, then every dt
         setTimeout(function () { CF.redraw(); }, 8100);                          // repaint once to clear the color key
+        var key = Heat.key;
+        heatLoad(key).then(function (rec) {
+            if (Heat.key !== key || !Heat.timer) return;                         // stopped or switched meanwhile
+            if (!Heat.cols && heatRestore(rec)) Heat.last = Date.now();
+            Heat.loading = false;
+        });
         Heat.timer = setInterval(function () {
             var n = Date.now();
+            if (Heat.loading) return;                                          // a stored map may be on its way
             if ((Heat.cols === 0 || n - Heat.last >= Heat.dt * 1000 - 100) && heatSample()) Heat.last = n;
+            if (n - (Heat.savedAt || 0) > 60000) { Heat.savedAt = n; heatSave(); }  // the app can be killed without a stop
         }, 1000);
     },
     stop: function () {
         clearInterval(Heat.timer); Heat.timer = null;
+        heatSave();
         if (Heat.off) { Heat.off(); Heat.off = null; }
-        Heat.cv = null; Heat.cols = 0; Heat.buf = []; Book.stop();
+        Heat.cv = null; Heat.cols = 0; Heat.buf = []; Heat.key = null; Book.stop();
     }
 });
 
