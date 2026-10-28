@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.32.0] - 2026-10-29
+
+### Added
+- **Indicator rows on the chart, like TradingView**: every indicator drawn over the price (MA, EMA, Bollinger, VWAP,
+  Supertrend, volume profile, order-flow overlays, Pine scripts) has its own row at the top left with its values. Tap a
+  row for 👁 hide (the row stays, dimmed, to bring it back), ⚙ settings and ✕ remove. Indicators in their own pane keep
+  the pane's tag (⚙ ⋯ ✕). With the legend folded (▾) the rows show names only.
+- **Indicator search** at the top of the 지표 sheet: filters the list by Korean or English name and abbreviation
+  (e.g. "bollinger", "oi", "풋프린트") and finds library scripts too; the library has its own search.
+- **29 more library indicators** written from their published formulas, covering TradingView's free built-ins that were
+  missing: DEMA, TEMA, MA ribbon, envelope, linear regression channel, Williams Alligator, McGinley Dynamic, TRIX, TSI,
+  Ultimate Oscillator, momentum, PPO, DPO, KST, Coppock curve, Fisher transform, balance of power, CMO, bull/bear
+  power, accumulation/distribution, Chaikin oscillator, Elder force index, ease of movement, volume oscillator, PVT,
+  historical volatility, standard deviation, Vortex, Mass Index (59 in all).
+- The Pine paste sheet explains how to bring over an open-source TradingView script and links to TradingView's
+  community scripts (TradingView offers no API to import them automatically).
+
 ## [1.31.1] - 2026-10-29
 
 ### Changed

@@ -332,5 +332,286 @@ hline(70, "70", color=#787B86)
 hline(30, "30", color=#787B86)
 plotshape(bull ? osc[lbR] : na, "상승 다이버전스", shape.labelup, location.absolute, #0ECB81, text="강세", textcolor=color.white, offset=-lbR, size=size.tiny)
 plotshape(bear ? osc[lbR] : na, "하락 다이버전스", shape.labeldown, location.absolute, #F6465D, text="약세", textcolor=color.white, offset=-lbR, size=size.tiny)
+` },
+{ id: 'dema', cat: '추세', name: '이중 지수이동평균 (DEMA)', desc: 'EMA보다 지연이 적은 이동평균', src: `//@version=5
+indicator("이중 지수이동평균", shorttitle="DEMA", overlay=true)
+len = input.int(21, "기간", minval=1)
+src = input.source(close, "소스")
+e1 = ta.ema(src, len)
+e2 = ta.ema(e1, len)
+plot(2 * e1 - e2, "DEMA", color=#43BCCD, linewidth=2)
+` },
+{ id: 'tema', cat: '추세', name: '삼중 지수이동평균 (TEMA)', desc: 'DEMA보다 더 빠르게 반응하는 이동평균', src: `//@version=5
+indicator("삼중 지수이동평균", shorttitle="TEMA", overlay=true)
+len = input.int(21, "기간", minval=1)
+src = input.source(close, "소스")
+e1 = ta.ema(src, len)
+e2 = ta.ema(e1, len)
+e3 = ta.ema(e2, len)
+plot(3 * (e1 - e2) + e3, "TEMA", color=#FF9800, linewidth=2)
+` },
+{ id: 'ribbon', cat: '추세', name: '이동평균 리본', desc: 'EMA 20~55 여덟 개 · 펼쳐지면 추세, 꼬이면 횡보', src: `//@version=5
+indicator("이동평균 리본", shorttitle="MA Ribbon", overlay=true)
+start = input.int(20, "첫 기간", minval=1)
+step = input.int(5, "간격", minval=1)
+src = input.source(close, "소스")
+plot(ta.ema(src, start), "EMA 1", color=#F6465D)
+plot(ta.ema(src, start + step), "EMA 2", color=#FF7043)
+plot(ta.ema(src, start + step * 2), "EMA 3", color=#F0B90B)
+plot(ta.ema(src, start + step * 3), "EMA 4", color=#C0CA33)
+plot(ta.ema(src, start + step * 4), "EMA 5", color=#0ECB81)
+plot(ta.ema(src, start + step * 5), "EMA 6", color=#00BCD4)
+plot(ta.ema(src, start + step * 6), "EMA 7", color=#2962FF)
+plot(ta.ema(src, start + step * 7), "EMA 8", color=#B388FF)
+` },
+{ id: 'envelope', cat: '변동성', name: '엔벨로프', desc: '이동평균 위아래 일정 % 띠', src: `//@version=5
+indicator("엔벨로프", shorttitle="Env", overlay=true)
+len = input.int(20, "기간", minval=1)
+pct = input.float(5.0, "폭 (%)", minval=0.1, step=0.5)
+useEma = input.string("SMA", "이동평균", options=["SMA", "EMA"])
+basis = useEma == "EMA" ? ta.ema(close, len) : ta.sma(close, len)
+up = basis * (1 + pct / 100)
+dn = basis * (1 - pct / 100)
+plot(basis, "기준선", color=#FF6D00)
+p1 = plot(up, "위", color=#2962FF)
+p2 = plot(dn, "아래", color=#2962FF)
+fill(p1, p2, color=color.rgb(41, 98, 255, 92), title="배경")
+` },
+{ id: 'linregch', cat: '추세', name: '선형 회귀 채널', desc: '회귀선 ± 표준편차 띠', src: `//@version=5
+indicator("선형 회귀 채널", shorttitle="LinReg", overlay=true)
+len = input.int(100, "기간", minval=2)
+mult = input.float(2.0, "표준편차 배수", minval=0.1, step=0.1)
+src = input.source(close, "소스")
+mid = ta.linreg(src, len, 0)
+dev = ta.stdev(src, len)
+plot(mid, "회귀선", color=#FF9800, linewidth=2)
+p1 = plot(mid + mult * dev, "위", color=#2962FF)
+p2 = plot(mid - mult * dev, "아래", color=#F6465D)
+fill(p1, p2, color=color.rgb(41, 98, 255, 94), title="배경")
+` },
+{ id: 'alligator', cat: '추세', name: '윌리엄스 앨리게이터', desc: '턱 · 이빨 · 입술 세 개의 평활 이평 (앞으로 이동)', src: `//@version=5
+indicator("윌리엄스 앨리게이터", shorttitle="Alligator", overlay=true)
+jawLen = input.int(13, "턱 기간", minval=1)
+teethLen = input.int(8, "이빨 기간", minval=1)
+lipsLen = input.int(5, "입술 기간", minval=1)
+plot(ta.rma(hl2, jawLen), "턱", offset=8, color=#2962FF)
+plot(ta.rma(hl2, teethLen), "이빨", offset=5, color=#E91E63)
+plot(ta.rma(hl2, lipsLen), "입술", offset=3, color=#66BB6A)
+` },
+{ id: 'mcginley', cat: '추세', name: '맥긴리 다이내믹', desc: '시장 속도에 맞춰 스스로 조절되는 이동평균', src: `//@version=5
+indicator("맥긴리 다이내믹", shorttitle="McGinley", overlay=true)
+len = input.int(14, "기간", minval=1)
+var float md = na
+md := na(md[1]) ? ta.ema(close, len) : md[1] + (close - md[1]) / (len * math.pow(close / md[1], 4))
+plot(md, "McGinley", color=#00BCD4, linewidth=2)
+` },
+{ id: 'trix', cat: '모멘텀', name: 'TRIX', desc: '삼중 평활 EMA의 변화율 · 0선 교차', src: `//@version=5
+indicator("TRIX", shorttitle="TRIX", overlay=false)
+len = input.int(18, "기간", minval=1)
+sig = input.int(9, "시그널", minval=1)
+t = 10000 * ta.change(ta.ema(ta.ema(ta.ema(math.log(close), len), len), len))
+plot(t, "TRIX", color=#F23645)
+plot(ta.ema(t, sig), "시그널", color=#2962FF)
+hline(0, "0", color=#787B86)
+` },
+{ id: 'tsi', cat: '모멘텀', name: '트루 스트렝스 지수 (TSI)', desc: '이중 평활 모멘텀 · 시그널 교차', src: `//@version=5
+indicator("트루 스트렝스 지수", shorttitle="TSI", overlay=false)
+longLen = input.int(25, "긴 기간", minval=1)
+shortLen = input.int(13, "짧은 기간", minval=1)
+sigLen = input.int(13, "시그널", minval=1)
+pc = ta.change(close)
+num = ta.ema(ta.ema(pc, longLen), shortLen)
+den = ta.ema(ta.ema(math.abs(pc), longLen), shortLen)
+tsi = den == 0 ? 0 : 100 * num / den
+plot(tsi, "TSI", color=#2962FF)
+plot(ta.ema(tsi, sigLen), "시그널", color=#E91E63)
+hline(0, "0", color=#787B86)
+` },
+{ id: 'uo', cat: '모멘텀', name: '얼티밋 오실레이터', desc: '7 · 14 · 28봉 매수 압력을 합친 0~100', src: `//@version=5
+indicator("얼티밋 오실레이터", shorttitle="UO", overlay=false)
+l1 = input.int(7, "짧은 기간", minval=1)
+l2 = input.int(14, "중간 기간", minval=1)
+l3 = input.int(28, "긴 기간", minval=1)
+bp = close - math.min(low, nz(close[1], close))
+trr = math.max(high, nz(close[1], close)) - math.min(low, nz(close[1], close))
+a1 = math.sum(bp, l1) / math.sum(trr, l1)
+a2 = math.sum(bp, l2) / math.sum(trr, l2)
+a3 = math.sum(bp, l3) / math.sum(trr, l3)
+uo = 100 * (4 * a1 + 2 * a2 + a3) / 7
+plot(uo, "UO", color=#F44336)
+hline(70, "70", color=#787B86)
+hline(30, "30", color=#787B86)
+` },
+{ id: 'mom', cat: '모멘텀', name: '모멘텀', desc: '현재가 − N봉 전 가격', src: `//@version=5
+indicator("모멘텀", shorttitle="Mom", overlay=false)
+len = input.int(10, "기간", minval=1)
+src = input.source(close, "소스")
+m = src - src[len]
+plot(m, "Mom", color=#2962FF)
+hline(0, "0", color=#787B86)
+` },
+{ id: 'ppo', cat: '모멘텀', name: '가격 오실레이터 (PPO)', desc: 'MACD를 % 로 · 코인끼리 비교하기 좋음', src: `//@version=5
+indicator("가격 오실레이터", shorttitle="PPO", overlay=false)
+fastLen = input.int(12, "빠른 기간", minval=1)
+slowLen = input.int(26, "느린 기간", minval=1)
+sigLen = input.int(9, "시그널", minval=1)
+f = ta.ema(close, fastLen)
+s = ta.ema(close, slowLen)
+ppo = s == 0 ? 0 : (f - s) / s * 100
+sig = ta.ema(ppo, sigLen)
+plot(ppo - sig, "히스토그램", style=plot.style_columns, color = ppo - sig >= 0 ? color.new(#0ECB81, 40) : color.new(#F6465D, 40))
+plot(ppo, "PPO", color=#2962FF)
+plot(sig, "시그널", color=#FF6D00)
+hline(0, "0", color=#787B86)
+` },
+{ id: 'dpo', cat: '모멘텀', name: '추세 제거 가격 오실레이터 (DPO)', desc: '추세를 빼고 주기만 보기', src: `//@version=5
+indicator("추세 제거 가격 오실레이터", shorttitle="DPO", overlay=false)
+len = input.int(21, "기간", minval=2)
+back = math.floor(len / 2) + 1
+ma = ta.sma(close, len)
+plot(close - ma[back], "DPO", color=#43A047)
+hline(0, "0", color=#787B86)
+` },
+{ id: 'kst', cat: '모멘텀', name: 'KST (Know Sure Thing)', desc: '네 가지 기간 변화율의 가중 합', src: `//@version=5
+indicator("Know Sure Thing", shorttitle="KST", overlay=false)
+sigLen = input.int(9, "시그널", minval=1)
+r1 = ta.sma(ta.roc(close, 10), 10)
+r2 = ta.sma(ta.roc(close, 15), 10)
+r3 = ta.sma(ta.roc(close, 20), 10)
+r4 = ta.sma(ta.roc(close, 30), 15)
+kst = r1 + 2 * r2 + 3 * r3 + 4 * r4
+plot(kst, "KST", color=#009688)
+plot(ta.sma(kst, sigLen), "시그널", color=#F44336)
+hline(0, "0", color=#787B86)
+` },
+{ id: 'coppock', cat: '모멘텀', name: '코폭 곡선', desc: '장기 바닥 신호 (0 아래에서 상승 전환)', src: `//@version=5
+indicator("코폭 곡선", shorttitle="Coppock", overlay=false)
+wmaLen = input.int(10, "WMA 기간", minval=1)
+longRoc = input.int(14, "긴 변화율", minval=1)
+shortRoc = input.int(11, "짧은 변화율", minval=1)
+c = ta.wma(ta.roc(close, longRoc) + ta.roc(close, shortRoc), wmaLen)
+plot(c, "Coppock", style=plot.style_columns, color = c >= 0 ? color.new(#0ECB81, 30) : color.new(#F6465D, 30))
+hline(0, "0", color=#787B86)
+` },
+{ id: 'fisher', cat: '모멘텀', name: '피셔 변환', desc: '가격을 정규분포로 바꿔 전환점을 날카롭게', src: `//@version=5
+indicator("피셔 변환", shorttitle="Fisher", overlay=false)
+len = input.int(9, "기간", minval=1)
+hi = ta.highest(hl2, len)
+lo = ta.lowest(hl2, len)
+rng = hi - lo
+var float v = 0.0
+raw = rng == 0 ? 0.0 : 0.66 * ((hl2 - lo) / rng - 0.5) + 0.67 * nz(v[1])
+v := raw > 0.99 ? 0.999 : raw < -0.99 ? -0.999 : raw
+var float fish = 0.0
+fish := 0.5 * math.log((1 + v) / (1 - v)) + 0.5 * nz(fish[1])
+plot(fish, "Fisher", color=#2962FF)
+plot(fish[1], "트리거", color=#FF6D00)
+hline(1.5, "1.5", color=#787B86)
+hline(0, "0", color=#787B86)
+hline(-1.5, "-1.5", color=#787B86)
+` },
+{ id: 'bop', cat: '모멘텀', name: '세력 균형 (BOP)', desc: '봉 안에서 매수 · 매도 중 누가 이겼나', src: `//@version=5
+indicator("세력 균형", shorttitle="BOP", overlay=false)
+len = input.int(14, "평활 기간", minval=1)
+raw = high == low ? 0 : (close - open) / (high - low)
+b = ta.sma(raw, len)
+plot(b, "BOP", style=plot.style_columns, color = b >= 0 ? color.new(#0ECB81, 30) : color.new(#F6465D, 30))
+hline(0, "0", color=#787B86)
+` },
+{ id: 'cmo', cat: '모멘텀', name: '샹드 모멘텀 오실레이터 (CMO)', desc: '상승폭과 하락폭의 차이 · ±50 과열', src: `//@version=5
+indicator("샹드 모멘텀 오실레이터", shorttitle="CMO", overlay=false)
+len = input.int(9, "기간", minval=1)
+m = ta.change(close)
+su = math.sum(m >= 0 ? m : 0.0, len)
+sd = math.sum(m >= 0 ? 0.0 : -m, len)
+cmo = su + sd == 0 ? 0 : 100 * (su - sd) / (su + sd)
+plot(cmo, "CMO", color=#2962FF)
+hline(50, "50", color=#787B86)
+hline(0, "0", color=#787B86)
+hline(-50, "-50", color=#787B86)
+` },
+{ id: 'bbpower', cat: '모멘텀', name: '강세 · 약세 파워', desc: '고가 · 저가가 EMA에서 얼마나 벗어났나', src: `//@version=5
+indicator("강세 · 약세 파워", shorttitle="BBPower", overlay=false)
+len = input.int(13, "EMA 기간", minval=1)
+e = ta.ema(close, len)
+p = (high - e) + (low - e)
+plot(p, "파워", style=plot.style_columns, color = p >= 0 ? color.new(#0ECB81, 30) : color.new(#F6465D, 30))
+hline(0, "0", color=#787B86)
+` },
+{ id: 'adline', cat: '거래량', name: '누적 분산 (A/D)', desc: '종가 위치 × 거래량의 누적 · 매집 흐름', src: `//@version=5
+indicator("누적 분산", shorttitle="A/D", overlay=false)
+mfm = high == low ? 0 : ((2 * close - low - high) / (high - low)) * volume
+plot(ta.cum(mfm), "A/D", color=#999915)
+` },
+{ id: 'chaikinosc', cat: '거래량', name: '차이킨 오실레이터', desc: 'A/D 선의 빠른 EMA − 느린 EMA', src: `//@version=5
+indicator("차이킨 오실레이터", shorttitle="ChaikinOsc", overlay=false)
+fastLen = input.int(3, "빠른 기간", minval=1)
+slowLen = input.int(10, "느린 기간", minval=1)
+mfm = high == low ? 0 : ((2 * close - low - high) / (high - low)) * volume
+ad = ta.cum(mfm)
+osc = ta.ema(ad, fastLen) - ta.ema(ad, slowLen)
+plot(osc, "Chaikin", color=#EC407A)
+hline(0, "0", color=#787B86)
+` },
+{ id: 'efi', cat: '거래량', name: '엘더 강도 지수', desc: '가격 변화 × 거래량 · 움직임에 실린 힘', src: `//@version=5
+indicator("엘더 강도 지수", shorttitle="EFI", overlay=false)
+len = input.int(13, "기간", minval=1)
+efi = ta.ema(ta.change(close) * volume, len)
+plot(efi, "EFI", color=#F44336)
+hline(0, "0", color=#787B86)
+` },
+{ id: 'eom', cat: '거래량', name: '이동 용이성 (EOM)', desc: '적은 거래량으로 쉽게 움직이는지', src: `//@version=5
+indicator("이동 용이성", shorttitle="EOM", overlay=false)
+len = input.int(14, "기간", minval=1)
+div = input.int(10000, "나눗수", minval=1)
+raw = volume == 0 ? 0 : div * ta.change(hl2) * (high - low) / volume
+plot(ta.sma(raw, len), "EOM", color=#43A047)
+hline(0, "0", color=#787B86)
+` },
+{ id: 'volosc', cat: '거래량', name: '거래량 오실레이터', desc: '짧은 · 긴 거래량 EMA의 차이 (%)', src: `//@version=5
+indicator("거래량 오실레이터", shorttitle="VolOsc", overlay=false)
+shortLen = input.int(5, "짧은 기간", minval=1)
+longLen = input.int(10, "긴 기간", minval=1)
+s = ta.ema(volume, shortLen)
+l = ta.ema(volume, longLen)
+plot(l == 0 ? 0 : 100 * (s - l) / l, "VolOsc", color=#2962FF)
+hline(0, "0", color=#787B86)
+` },
+{ id: 'pvt', cat: '거래량', name: '가격 거래량 추세 (PVT)', desc: '변화율 × 거래량의 누적', src: `//@version=5
+indicator("가격 거래량 추세", shorttitle="PVT", overlay=false)
+r = nz(close[1]) == 0 ? 0 : ta.change(close) / close[1] * volume
+plot(ta.cum(nz(r)), "PVT", color=#2962FF)
+` },
+{ id: 'hv', cat: '변동성', name: '역사적 변동성', desc: '로그 수익률 표준편차의 연 환산 (%)', src: `//@version=5
+indicator("역사적 변동성", shorttitle="HV", overlay=false)
+len = input.int(10, "기간", minval=2)
+per = input.int(365, "1년의 봉 수 (일봉 365)", minval=1)
+r = math.log(close / nz(close[1], close))
+plot(100 * ta.stdev(r, len) * math.sqrt(per), "HV", color=#2962FF)
+` },
+{ id: 'stdev', cat: '변동성', name: '표준편차', desc: '가격이 평균에서 퍼진 정도', src: `//@version=5
+indicator("표준편차", shorttitle="StdDev", overlay=false)
+len = input.int(20, "기간", minval=2)
+src = input.source(close, "소스")
+plot(ta.stdev(src, len), "StdDev", color=#2962FF)
+` },
+{ id: 'vortex', cat: '추세 강도', name: '보텍스 지표', desc: 'VI+ · VI− 교차로 추세 방향', src: `//@version=5
+indicator("보텍스 지표", shorttitle="VI", overlay=false)
+len = input.int(14, "기간", minval=2)
+vmp = math.sum(math.abs(high - nz(low[1], low)), len)
+vmm = math.sum(math.abs(low - nz(high[1], high)), len)
+str = math.sum(ta.tr(true), len)
+plot(str == 0 ? 0 : vmp / str, "VI +", color=#2962FF)
+plot(str == 0 ? 0 : vmm / str, "VI -", color=#E91E63)
+` },
+{ id: 'massidx', cat: '변동성', name: '매스 인덱스', desc: '고저 폭의 확장 · 27 돌파 후 26.5 하회 = 반전 경고', src: `//@version=5
+indicator("매스 인덱스", shorttitle="Mass", overlay=false)
+len = input.int(25, "합산 기간", minval=1)
+span = high - low
+e1 = ta.ema(span, 9)
+e2 = ta.ema(e1, 9)
+plot(math.sum(e2 == 0 ? 1 : e1 / e2, len), "Mass", color=#2962FF)
+hline(27, "27", color=#787B86)
+hline(26.5, "26.5", color=#787B86)
 ` }
 ];
