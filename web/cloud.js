@@ -73,6 +73,9 @@ function row(title, sub, fn) {
 window.CF_CLOUD = {
     rows: function (collect, importText) {
         var CF = window.CF;
+        // load Google's sign-in script now: if it only started loading on the tap, the sign-in popup could open too
+        // long after the tap and the browser would block it
+        loadGis().catch(function () { /* the tap reports it */ });
         return [
             CF.sectionTitle('Google 드라이브 동기화'),
             row('☁️  드라이브에 저장', '내 Google 계정의 앱 전용 공간에 지금 설정 올리기', function () {
