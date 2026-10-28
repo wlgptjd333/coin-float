@@ -38,7 +38,9 @@ jobs:
           sed -e 's|<script src="chart.js"></script>|<script src="config.js"></script>\n<script src="web.js"></script>\n<script src="cloud.js"></script>\n<script src="chart.js"></script>|' \
               -e 's|<title>CoinFloat Chart</title>|<title>CoinFloat</title>\n<link rel="manifest" href="manifest.webmanifest">\n<link rel="icon" href="icon.svg">\n<meta name="theme-color" content="#131722">|' \
               app/src/main/assets/chart.html > _site/index.html
-          grep -q 'src="web.js"' _site/index.html
+          # every deploy gets new script addresses, so browsers never mix a cached old script with a new page
+          sed -i -E "s#<script src=\"([a-z_]+\.js)\"></script>#<script src=\"\1?v=${GITHUB_SHA::8}\"></script>#g" _site/index.html
+          grep -q 'src="web.js?v=' _site/index.html
           touch _site/.nojekyll
 
       - uses: actions/upload-pages-artifact@v3

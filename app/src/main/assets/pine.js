@@ -26,9 +26,12 @@ function srcOf(s) { var l = s.lib && libOf(s.lib); return l ? l.src : s.src; }  
 
 // ---- loading PineTS on demand -------------------------------------------------------------------------------------
 var workerP = null, worker = null, reqs = {}, rid = 0;
+// on the web each deploy loads pine.js as pine.js?v=<build>: the scripts loaded later carry the same tag, so a browser
+// never pairs a cached old library with new code (in the app there is no tag)
+var BUILD = (/[?&]v=([\w-]+)/.exec((document.currentScript && document.currentScript.src) || '') || [])[1];
 function loadScript(src) {
     return new Promise(function (res, rej) {
-        var el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = function () { rej(new Error('load ' + src)); };
+        var el = document.createElement('script'); el.src = BUILD ? src + '?v=' + BUILD : src; el.onload = res; el.onerror = function () { rej(new Error('load ' + src)); };
         document.head.appendChild(el);
     });
 }
