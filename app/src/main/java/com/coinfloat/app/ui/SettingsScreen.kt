@@ -171,6 +171,7 @@ fun SettingsScreen(
                             onRefreshRateProfileChange = viewModel::updateRefreshRateProfile,
                             onOpenAppInfo = ::openAppInfo,
                             onShowStabilityHelp = { infoSheet = InfoSheet.STABILITY },
+                            onShowGuide = { infoSheet = InfoSheet.GUIDE },
                             onShowLicenses = { infoSheet = InfoSheet.LICENSES },
                             onShowPrivacy = { infoSheet = InfoSheet.PRIVACY }
                         )

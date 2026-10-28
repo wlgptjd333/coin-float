@@ -20,7 +20,7 @@ var PAGE = 1500;                     // candles per history request (the exchang
 var MIN_BAR_SPACING = 0.08, MAX_BAR_SPACING = 50;
 // Multiple moving averages: periods are in candles of the current interval. Colors: red, yellow, green, blue, white, purple.
 var MA_DEFAULT = [[5, '#F6465D'], [10, '#F0B90B'], [50, '#0ECB81'], [100, '#00BCD4'], [200, '#FFFFFF'], [400, '#B388FF']];
-var EMA_DEFAULT = [[20, '#FF9800'], [50, '#2962FF']];
+var EMA_DEFAULT = [[20, '#FF9800', true, 1], [50, '#2962FF', true, 1], [200, '#FFFFFF', true, 2]];
 var PALETTE = ['#F6465D', '#FF7043', '#F0B90B', '#FFEB3B', '#0ECB81', '#00BCD4', '#2962FF', '#B388FF', '#E040FB', '#FFFFFF', '#B2B5BE', '#787B86'];
 var LS = {
     get: function (k, d) { try { var v = localStorage.getItem('cf.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -83,7 +83,7 @@ function setCfg(key, k, v) {
 }
 function resetCfg(key) { delete CFGS[key]; delete cfgCache[key]; saveCfg(); var d = SCHEMA[key]; if (d.onChange) d.onChange(S(key), null); }
 
-function lineDef(arr, type, width) { return arr.map(function (d) { return { p: d[0], c: d[1], w: width || 1, t: type, on: d[2] !== false }; }); }
+function lineDef(arr, type, width) { return arr.map(function (d) { return { p: d[0], c: d[1], w: d[3] || width || 1, t: type, on: d[2] !== false }; }); }
 var calcChanged = function () { scheduleRefresh(true); }, styleChanged = function () { scheduleRefresh(false); };
 
 defineSettings('chart', {
@@ -103,7 +103,7 @@ defineSettings('chart', {
         { t: 'sec', label: '화면' },
         { k: 'theme', t: 'sel', label: '배경', def: 'dark', opts: [['dark', '다크'], ['black', '블랙']] },
         { k: 'grid', t: 'sel', label: '격자', def: 'both', opts: [['both', '가로·세로'], ['horz', '가로만'], ['none', '없음']] },
-        { k: 'cross', t: 'sel', label: '십자선', def: 'free', opts: [['free', '자유'], ['magnet', '캔들에 붙이기']] },
+        { k: 'cross', t: 'sel', label: '십자선', def: 'magnet', opts: [['free', '자유'], ['magnet', '캔들에 붙이기']] },
         { k: 'tz', t: 'sel', label: '시간대', def: 'local', opts: [['local', '휴대폰 시간'], ['utc', 'UTC']] },
         { k: 'sep', t: 'bool', label: '날짜 구분선', sub: '분 · 시간봉은 하루, 일봉은 한 주가 바뀌는 곳에 세로선', def: false },
         { k: 'hilo', t: 'bool', label: '화면 최고가 · 최저가 표시', def: true },
@@ -122,7 +122,7 @@ defineSettings('vol', {
         { k: 'opacity', t: 'range', label: '진하기', def: 38, min: 10, max: 100, step: 1, unit: '%' },
         { k: 'height', t: 'range', label: '차지하는 높이', def: 18, min: 8, max: 50, step: 1, unit: '%' },
         { t: 'sec', label: '거래량 이동평균' },
-        { k: 'maOn', t: 'bool', label: '거래량 이동평균선', sub: '평균보다 큰 거래량이 한눈에 보입니다', def: false },
+        { k: 'maOn', t: 'bool', label: '거래량 이동평균선', sub: '평균보다 큰 거래량이 한눈에 보입니다', def: true },
         { k: 'maLen', t: 'num', label: '기간', def: 20, min: 2, max: 200, step: 1, showIf: function (c) { return c.maOn; } },
         { k: 'maColor', t: 'color', label: '선 색', def: '#2962FF', showIf: function (c) { return c.maOn; } }
     ]
@@ -251,11 +251,12 @@ defineSettings('cvd', {
 var symbol = 'BTCUSDT';
 var interval = normInterval(LS.get('interval', '15m'));
 var chartType = LS.get('type', 'candle');                       // candle | ha | line | area
-var ind = Object.assign({
-    vol: true, ma: true, ema: false, boll: false, rsi: false, macd: false,
-    cvd: false, oi: false, liq: false, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: false,
-    vwap: false, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false, bfx: false
-}, LS.get('ind', {}));
+var DEFAULT_IND = {
+    vol: true, ma: false, ema: true, boll: false, rsi: false, macd: false,
+    cvd: true, oi: true, liq: true, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: true,
+    vwap: true, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false, bfx: false
+};
+var ind = Object.assign({}, DEFAULT_IND, LS.get('ind', {}));
 var railOpen = LS.get('rail', false);
 var active = true, immersive = false, started = false;
 var precision = 2;
@@ -639,8 +640,9 @@ function sidOpt(sid) { return sid ? { priceScaleId: sid } : {}; }
 // Panes can be reordered, merged, split, maximized or collapsed, and the layout (order, grouping, heights) is kept.
 // A member that is switched off keeps its place, so switching it back on puts it where it was.
 var pineMembers = {}, subMembers = {}, mounted = [], visGroups = [];
+var DEFAULT_PANE_LAY = { groups: [['cvd'], ['oi', 'liq']], main: [], h: { cvd: 0.28, oi: 0.26, liq: 0.26 }, col: {}, mainH: 1, max: null };
 var paneLay = (function () {
-    var l = LS.get('paneLay', null) || {}, arr = function (a) { return Array.isArray(a) ? a.filter(function (k) { return typeof k === 'string'; }) : []; };
+    var l = LS.get('paneLay', null) || DEFAULT_PANE_LAY, arr = function (a) { return Array.isArray(a) ? a.filter(function (k) { return typeof k === 'string'; }) : []; };
     return { groups: (Array.isArray(l.groups) ? l.groups : []).map(arr).filter(function (g) { return g.length; }), main: arr(l.main),
         h: l.h && typeof l.h === 'object' ? l.h : {}, col: l.col && typeof l.col === 'object' ? l.col : {}, mainH: +l.mainH || 1,
         max: typeof l.max === 'string' ? l.max : null };
@@ -3167,7 +3169,11 @@ function openSettings(key, back) {
         sheet.appendChild(tabs);
         if (helpTab[key]) { sheet.appendChild(helpBox(help)); $('sheet_bg').classList.add('show', 'live'); sheet.scrollTop = 0; backState(); return; }
     }
-    if (key === 'chart') [['▶  바 리플레이', '고른 봉부터 한 봉씩 재생하며 매매 연습', replayPick], ['⤴  차트 이미지 공유', '코인 · 시간봉 · 시각이 들어간 이미지', shareChart]].forEach(function (a) {
+    if (key === 'chart') [
+        ['📖  상황별 지표 · 알람 설명서', '5가지 지표 프로필 · 알람 3단계 대응법 · 백테스트 요약', function () { if (CF.openGuide) CF.openGuide(function () { openSettings('chart', back); }, 'profiles'); }],
+        ['▶  바 리플레이', '고른 봉부터 한 봉씩 재생하며 매매 연습', replayPick],
+        ['⤴  차트 이미지 공유', '코인 · 시간봉 · 시각이 들어간 이미지', shareChart]
+    ].forEach(function (a) {
         var b = document.createElement('button'); b.className = 'row-opt'; b.innerHTML = '<span>' + a[0] + '<small>' + a[1] + '</small></span><span style="color:var(--muted)">›</span>';
         b.onclick = a[2]; sheet.appendChild(b);
     });
@@ -3180,50 +3186,147 @@ function openSettings(key, back) {
 }
 $('cfg_btn').onclick = function () { openSettings('chart'); };
 
-// Indicator sets, like TradingView's indicator templates: which indicators are on and how the panes are arranged, saved
-// under a name and switched in one tap. Two come built in.
+// Indicator profiles, like TradingView's indicator templates: which indicators are on, each indicator's detailed settings,
+// active Pine scripts, and how the panes are arranged, saved under a name and switched in one tap. Five come built in.
 var IND_SETS = LS.get('indSets', []); if (!Array.isArray(IND_SETS)) IND_SETS = [];
 var BUILTIN_SETS = [
-    { n: '기본', d: '거래량 · 이동평균', ind: { vol: true, ma: true } },
-    { n: '오더플로', d: '풋프린트 · 호가 패널 · CVD · 대량 체결 · 거래량', ind: { vol: true, ma: false, fp: true, dom: true, cvd: true, trades: true } },
-    { n: '스윙', d: '이동평균 · 볼린저 · RSI · MACD', ind: { vol: true, ma: true, boll: true, rsi: true, macd: true } }
+    {
+        n: '실전 메인 (구조·수급)',
+        d: '기본 추천 · EMA(20·50·200) · VWAP · 매물대 · CVD(현물비교) · OI+청산',
+        ind: { vol: true, ema: true, vwap: true, vp: true, cvd: true, oi: true, liq: true },
+        cfg: {
+            vol: { maOn: true, maLen: 20, opacity: 38, height: 16 },
+            ema: { lines: [{ p: 20, c: '#FF9800', w: 1, t: 'ema', on: true }, { p: 50, c: '#2962FF', w: 1, t: 'ema', on: true }, { p: 200, c: '#FFFFFF', w: 2, t: 'ema', on: true }] },
+            vwap: { anchor: 'day', b1: true, m1: 1, b2: false },
+            vp: { range: 'visible', rows: 48, side: 'left', width: 24, opacity: 28, split: true, va: true, poc: true, trades: true },
+            cvd: { delta: true, unit: 'usd', reset: 'none', spot: true },
+            oi: { unit: 'usd', width: 2 },
+            liq: { bubbles: true, ttl: '900', minUsd: 50000, labels: true, labelMin: 150000 }
+        },
+        lay: { groups: [['cvd'], ['oi', 'liq']], main: [], h: { cvd: 0.28, oi: 0.26, liq: 0.26 }, col: {}, mainH: 1 },
+        pine: []
+    },
+    {
+        n: '타점 정밀 (풋프린트·DOM)',
+        d: '단타 진입용 · 풋프린트(거래소 합산) · 호가창(DOM) · 대량체결 · 청산',
+        ind: { vol: true, vwap: true, bidask: true, trades: true, liq: true, fp: true, dom: true, xex: true },
+        cfg: {
+            vol: { maOn: true, maLen: 20, opacity: 30, height: 14 },
+            vwap: { anchor: 'day', b1: true, m1: 1, b2: false },
+            bidask: { label: 'axis', lines: true, style: 'dotted', spread: true },
+            trades: { mode: 'auto', floor: 30000, group: 'candle', labels: true },
+            liq: { bubbles: true, ttl: '900', minUsd: 30000, labels: true, labelMin: 100000 },
+            fp: { mode: 'profile',imb: 300, stack: 3, poc: true, summary: true },
+            xex: { bybit: true, okx: true, hl: true, bfx: false }
+        },
+        lay: { groups: [['liq']], main: [], h: { liq: 0.22 }, col: {}, mainH: 1 },
+        pine: []
+    },
+    {
+        n: '고래 · 스윙 (1H·4H 큰 흐름)',
+        d: '방향성 점검 · EMA(20·50·200) · 전체 매물대 · OI+펀딩비 · BFX 고래 · RSI',
+        ind: { vol: true, ema: true, vp: true, oi: true, fund: true, bfx: true, rsi: true },
+        cfg: {
+            vol: { maOn: true, maLen: 20 },
+            ema: { lines: [{ p: 20, c: '#FF9800', w: 1, t: 'ema', on: true }, { p: 50, c: '#2962FF', w: 1, t: 'ema', on: true }, { p: 200, c: '#FFFFFF', w: 2, t: 'ema', on: true }] },
+            vp: { range: 'all', rows: 64, side: 'left', width: 26, opacity: 28, split: true, va: true, poc: true },
+            oi: { unit: 'usd', width: 2 },
+            fund: { pred: true, annual: true },
+            bfx: { mode: 'delta', span: '24', long: true, short: true },
+            rsi: { period: 14, levels: true, ob: 70, os: 30, mid: true, maOn: true, maLen: 14 }
+        },
+        lay: { groups: [['oi', 'fund'], ['bfx'], ['rsi']], main: [], h: { oi: 0.24, fund: 0.24, bfx: 0.24, rsi: 0.22 }, col: {}, mainH: 1 },
+        pine: []
+    },
+    {
+        n: '알람 복기 · 레짐 (RVOL·CHOP·다이버전스)',
+        d: '장세 판별 · EMA · 볼린저 · 상대거래량(RVOL) · 초피니스(CHOP) · RSI 다이버전스',
+        ind: { vol: false, ema: true, boll: true },
+        cfg: {
+            ema: { lines: [{ p: 20, c: '#FF9800', w: 1, t: 'ema', on: true }, { p: 50, c: '#2962FF', w: 1, t: 'ema', on: true }, { p: 200, c: '#FFFFFF', w: 2, t: 'ema', on: true }] },
+            boll: { period: 20, mult: 2, midOn: false, fill: true, fillA: 8 }
+        },
+        lay: { groups: [], main: [], h: {}, col: {}, mainH: 1 },
+        pine: [
+            { lib: 'rvol', on: true, inputs: { in_0: 20, in_1: 4 } },
+            { lib: 'chop', on: true, inputs: { in_0: 14 } },
+            { lib: 'rsidiv', on: true, inputs: { in_0: 14, in_1: 5, in_2: 3 } }
+        ]
+    },
+    {
+        n: '클린 차트 (최소 구성)',
+        d: '작도 · 캔들 분석용 · EMA(20·50·200) · 거래량(MA20)',
+        ind: { vol: true, ema: true },
+        cfg: {
+            vol: { maOn: true, maLen: 20, opacity: 35, height: 15 },
+            ema: { lines: [{ p: 20, c: '#FF9800', w: 1, t: 'ema', on: true }, { p: 50, c: '#2962FF', w: 1, t: 'ema', on: true }, { p: 200, c: '#FFFFFF', w: 2, t: 'ema', on: true }] }
+        },
+        lay: { groups: [], main: [], h: {}, col: {}, mainH: 1 },
+        pine: []
+    }
 ];
 var setsOpen = false;
-function applyIndSet(set) {
+var curIndProfile = LS.get('curIndProfile', BUILTIN_SETS[0].n);
+function applyIndSet(set, silent) {
     Object.keys(ind).forEach(function (k) { ind[k] = !!(set.ind && set.ind[k]); });
     LS.set('ind', ind);
-    if (set.lay) { var l = JSON.parse(JSON.stringify(set.lay)); paneLay.groups = l.groups || []; paneLay.main = l.main || []; paneLay.h = l.h || {}; paneLay.col = l.col || {}; paneLay.mainH = l.mainH || 1; paneLay.max = null; savePaneLay(); relayout(true); }
+    if (set.cfg !== undefined) {
+        var keepChart = CFGS.chart ? JSON.parse(JSON.stringify(CFGS.chart)) : {};
+        CFGS = JSON.parse(JSON.stringify(set.cfg || {}));
+        CFGS.chart = Object.assign(keepChart, set.cfg && set.cfg.chart ? set.cfg.chart : {});
+        CFGS.chart.merge = false;
+        cfgCache = {};
+        LS.set('cfg', CFGS);
+    }
+    if (set.lay) {
+        var l = JSON.parse(JSON.stringify(set.lay));
+        paneLay.groups = l.groups || []; paneLay.main = l.main || []; paneLay.h = l.h || {}; paneLay.col = l.col || {}; paneLay.mainH = l.mainH || 1; paneLay.max = null;
+        savePaneLay();
+    }
+    if (set.pine !== undefined && CF.pineSet) CF.pineSet(set.pine || []);
+    curIndProfile = set.n; LS.set('curIndProfile', curIndProfile);
+    applyChartCfg();
+    relayout(true);
     applyIndicators();
-    toast('"' + set.n + '" 구성으로 바꿨어요');
+    Object.keys(SCHEMA).forEach(function (k) { if (k !== 'chart' && SCHEMA[k].onChange) try { SCHEMA[k].onChange(S(k), null); } catch (e) { /* ignore */ } });
+    if (!silent) toast('"' + set.n + '" 프로필을 적용했어요');
 }
 function setsBox() {
     var box = document.createElement('div'); box.className = 'tplbox';
     var bar = document.createElement('div'); bar.className = 'drow';
-    bar.innerHTML = '<button class="tplb">지표 구성 ' + (setsOpen ? '▴' : '▾') + '</button><span style="flex:1;color:var(--muted);font-size:12px">켜 둔 지표와 창 배치를 저장 · 불러오기</span>';
+    bar.innerHTML = '<button class="tplb">지표 프로필 · ' + escHtml(curIndProfile) + ' ' + (setsOpen ? '▴' : '▾') + '</button><span style="flex:1;color:var(--muted);font-size:12px">지표 · 세부 설정 · 창 배치</span>';
     bar.querySelector('.tplb').onclick = function () { setsOpen = !setsOpen; openIndicators(); };
     box.appendChild(bar);
     if (!setsOpen) return box;
     var menu = document.createElement('div'); menu.className = 'tplmenu';
     BUILTIN_SETS.concat(IND_SETS).forEach(function (st, i) {
         var mine = i >= BUILTIN_SETS.length, r = document.createElement('div'); r.className = 'tplrow';
+        var isCur = curIndProfile === st.n;
         r.innerHTML = '<button class="ap"></button>' + (mine ? '<button class="rm" aria-label="삭제">✕</button>' : '');
-        r.querySelector('.ap').innerHTML = escHtml(st.n) + '<small style="display:block;color:var(--muted);font-size:11px">' + escHtml(st.d || Object.keys(st.ind).filter(function (k) { return st.ind[k]; }).length + '개 지표') + '</small>';
+        r.querySelector('.ap').innerHTML = (isCur ? '<span style="color:#F0B90B">● </span>' : '') + escHtml(st.n) + '<small style="display:block;color:var(--muted);font-size:11px">' + escHtml(st.d || (Object.keys(st.ind || {}).filter(function (k) { return st.ind[k]; }).length + '개 지표 · 세부 설정 포함')) + '</small>';
         r.querySelector('.ap').onclick = function () { applyIndSet(st); openIndicators(); };
         if (mine) r.querySelector('.rm').onclick = function () { IND_SETS.splice(i - BUILTIN_SETS.length, 1); LS.set('indSets', IND_SETS); openIndicators(); };
         menu.appendChild(r);
     });
     var add = document.createElement('div'); add.className = 'tplrow';
-    add.innerHTML = '<input type="text" maxlength="24" placeholder="새 구성 이름"><button class="sv">현재 구성 저장</button>';
+    add.innerHTML = '<input type="text" maxlength="24" placeholder="새 프로필 이름"><button class="sv">현재 프로필 저장</button>';
     var inp = add.querySelector('input');
     add.querySelector('.sv').onclick = function () {
         readPaneHeights();
-        var name = inp.value.trim() || ('구성 ' + (IND_SETS.length + 1)), on = {};
+        var name = inp.value.trim() || ('내 프로필 ' + (IND_SETS.length + 1)), on = {};
         Object.keys(ind).forEach(function (k) { if (ind[k]) on[k] = true; });
-        var st = { n: name, ind: on, lay: JSON.parse(JSON.stringify({ groups: paneLay.groups, main: paneLay.main, h: paneLay.h, col: paneLay.col, mainH: paneLay.mainH })) }, at = -1;
+        var st = {
+            n: name,
+            ind: on,
+            cfg: JSON.parse(JSON.stringify(CFGS || {})),
+            pine: CF.pineGet ? CF.pineGet() : [],
+            lay: JSON.parse(JSON.stringify({ groups: paneLay.groups, main: paneLay.main, h: paneLay.h, col: paneLay.col, mainH: paneLay.mainH }))
+        }, at = -1;
         IND_SETS.forEach(function (x, j) { if (x.n === name) at = j; });
         if (at >= 0) IND_SETS[at] = st; else IND_SETS.push(st);
         if (IND_SETS.length > 20) IND_SETS.shift();
-        LS.set('indSets', IND_SETS); toast('"' + name + '" 저장'); openIndicators();
+        curIndProfile = name; LS.set('curIndProfile', curIndProfile);
+        LS.set('indSets', IND_SETS); toast('"' + name + '" 프로필 저장'); openIndicators();
     };
     menu.appendChild(add);
     box.appendChild(menu);
@@ -3233,11 +3336,15 @@ function openIndicators() {
     settingsKey = null;
     var maLines = S('ma').lines.filter(function (l) { return l.on; }).map(function (l) { return l.p; }).join(' · ');
     var b = S('boll'), r = S('rsi'), m = S('macd');
+    var guideRow = document.createElement('div'); guideRow.className = 'row-opt'; guideRow.setAttribute('role', 'button');
+    guideRow.innerHTML = '<span style="flex:1">📖 상황별 지표 · 알람 사용 설명서<small>5가지 추천 프로필 · 알람 3단계 대응 · 지표 조합 공식</small></span><span style="color:var(--muted)">›</span>';
+    guideRow.onclick = function () { if (CF.openGuide) CF.openGuide(openIndicators, 'profiles'); };
     var cmpRow = document.createElement('div'); cmpRow.className = 'row-opt'; cmpRow.setAttribute('role', 'button');
     cmpRow.innerHTML = '<span style="flex:1">코인 비교<small>' + (cmpSyms().length ? cmpSyms().map(function (s) { return s.replace(/USDT$/, ''); }).join(' · ') : '다른 코인의 % 움직임을 겹쳐 보기') + '</small></span><span style="color:var(--muted)">›</span>';
     cmpRow.onclick = openCompare;
     openSheet('지표', [
         setsBox(),
+        guideRow,
         cmpRow,
         sectionTitle('기본'),
         switchRow('거래량', '', 'vol', true),
@@ -3766,8 +3873,27 @@ function boot() {
     $('app').classList.toggle('rail-closed', !railOpen);
     document.documentElement.style.setProperty('--bg', C.bg);
     DR.attachTo(mainSeries());
-    applyChartCfg();
-    applyType(); applyIndicators();
+    if (!LS.get('indProfileInitV129', false)) {
+        var hadInd = LS.get('ind', null);
+        if (hadInd && Object.keys(hadInd).some(function (k) { return hadInd[k]; })) {
+            if (!IND_SETS.some(function (x) { return x.n === '이전 내 프로필 (백업)'; })) {
+                IND_SETS.unshift({
+                    n: '이전 내 프로필 (백업)',
+                    d: '업데이트 전 사용하던 지표 · 세부 설정 · 창 배치',
+                    ind: hadInd,
+                    cfg: JSON.parse(JSON.stringify(CFGS || {})),
+                    pine: CF.pineGet ? CF.pineGet() : [],
+                    lay: JSON.parse(JSON.stringify({ groups: paneLay.groups, main: paneLay.main, h: paneLay.h, col: paneLay.col, mainH: paneLay.mainH }))
+                });
+                LS.set('indSets', IND_SETS);
+            }
+        }
+        LS.set('indProfileInitV129', true);
+        applyIndSet(BUILTIN_SETS[0], true);
+    } else {
+        applyChartCfg();
+        applyType(); applyIndicators();
+    }
     syncScaleBtns();
     startTimers();
     // The native layer calls loadSymbol() as soon as the page has loaded; standalone, start anyway.

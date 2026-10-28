@@ -55,8 +55,8 @@ CF.defineSettings('liq', {
     fields: [
         { t: 'sec', label: '버블' },
         { k: 'bubbles', t: 'bool', label: '차트에 청산 버블 표시', def: true },
-        { k: 'ttl', t: 'sel', label: '버블 유지 시간 (지나면 서서히 사라짐)', def: '3600', opts: [['60', '1분'], ['300', '5분'], ['900', '15분'], ['3600', '1시간'], ['14400', '4시간'], ['0', '계속 표시']], showIf: function (c) { return c.bubbles; } },
-        { k: 'minUsd', t: 'num', label: '표시 최소 금액 ($)', def: 0, min: 0, max: 5000000, step: 1000, showIf: function (c) { return c.bubbles; } },
+        { k: 'ttl', t: 'sel', label: '버블 유지 시간 (지나면 서서히 사라짐)', def: '900', opts: [['60', '1분'], ['300', '5분'], ['900', '15분'], ['3600', '1시간'], ['14400', '4시간'], ['0', '계속 표시']], showIf: function (c) { return c.bubbles; } },
+        { k: 'minUsd', t: 'num', label: '표시 최소 금액 ($)', def: 50000, min: 0, max: 5000000, step: 1000, showIf: function (c) { return c.bubbles; } },
         { k: 'size', t: 'range', label: '버블 크기', def: 0.9, min: 0.2, max: 2.5, step: 0.1, unit: '×', showIf: function (c) { return c.bubbles; } },
         { k: 'maxR', t: 'range', label: '버블 최대 크기', def: 24, min: 6, max: 40, step: 1, unit: 'px', showIf: function (c) { return c.bubbles; } },
         { k: 'opacity', t: 'range', label: '채우기 진하기', def: 22, min: 0, max: 90, step: 1, unit: '%', showIf: function (c) { return c.bubbles; } },
@@ -74,7 +74,7 @@ CF.defineSettings('trades', {
         { k: 'floor', t: 'num', label: '자동일 때 최소 금액 ($)', def: 30000, min: 1000, max: 5000000, step: 1000, showIf: function (c) { return c.mode === 'auto'; } },
         { k: 'fixed', t: 'num', label: '표시 기준 금액 ($)', def: 100000, min: 1000, max: 20000000, step: 10000, showIf: function (c) { return c.mode === 'fixed'; } },
         { t: 'sec', label: '어떻게 보일까' },
-        { k: 'group', t: 'sel', label: '묶기', def: 'off', opts: [['off', '개별 체결'], ['candle', '봉마다 합산 (매수·매도 각 1개)']] },
+        { k: 'group', t: 'sel', label: '묶기', def: 'candle', opts: [['off', '개별 체결'], ['candle', '봉마다 합산 (매수·매도 각 1개)']] },
         { k: 'ttl', t: 'sel', label: '버블 유지 시간 (지나면 서서히 사라짐)', def: '900', opts: [['60', '1분'], ['300', '5분'], ['900', '15분'], ['3600', '1시간'], ['14400', '4시간'], ['0', '계속 표시']], showIf: function (c) { return c.group === 'off'; } },
         { k: 'size', t: 'range', label: '버블 크기', def: 0.8, min: 0.2, max: 2.5, step: 0.1, unit: '×' },
         { k: 'maxR', t: 'range', label: '버블 최대 크기', def: 24, min: 6, max: 40, step: 1, unit: 'px' },
@@ -1088,7 +1088,7 @@ CF.defineSettings('bfx', {
         '읽는 법\n• 롱이 빠르게 늘며 가격이 오름: 고래가 추세에 올라타는 중. 다만 급증은 과열 신호이기도 합니다.\n• 롱이 급감: 롱 청산 · 이익 실현. 가격이 버티면 매수세 약화, 떨어지면 하락 가속의 흔적입니다.\n• 숏이 급증(원래 매우 적음): 큰 하락 베팅 또는 헤지. 가격이 오르면 숏 스퀴즈 연료가 됩니다.\n• 숏이 급감하며 가격 급등: 숏 커버링(숏 스퀴즈)입니다.\n\n' +
         '주의: 비트파이넥스 한 곳의 데이터이고 헤지 · 차익 포지션이 섞여 있어 단독 매매 신호는 아닙니다. 가격 · OI · 펀딩비와 함께 보세요. 1분 단위 자료를 봉에 맞춰 보여주며, 시간봉이 길면 오래된 구간은 비어 있을 수 있습니다(요청 한도). USD 마진 시장이 있는 코인만 나옵니다.',
     fields: [
-        { k: 'mode', t: 'sel', label: '표시', def: 'pos', opts: [['pos', '포지션 수량'], ['delta', 'N봉 변화량']] },
+        { k: 'mode', t: 'sel', label: '표시', def: 'delta', opts: [['pos', '포지션 수량'], ['delta', 'N봉 변화량']] },
         { k: 'span', t: 'sel', label: '변화량 기준 (봉 수)', def: '24', opts: [['6', '6'], ['12', '12'], ['24', '24'], ['48', '48']] },
         { k: 'long', t: 'bool', label: '롱 표시', def: true },
         { k: 'cLong', t: 'color', label: '롱 색', def: '#0ECB81', showIf: function (c) { return c.long; } },

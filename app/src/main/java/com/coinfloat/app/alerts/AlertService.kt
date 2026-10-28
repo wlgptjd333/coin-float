@@ -31,7 +31,22 @@ import java.util.concurrent.TimeUnit
 class AlertStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("cf_alerts", Context.MODE_PRIVATE)
 
-    fun rules(): List<AlertRule> = AlertRule.listFromJson(prefs.getString("rules", "[]"))
+    fun rules(): List<AlertRule> {
+        if (prefs.contains("rules")) return AlertRule.listFromJson(prefs.getString("rules", "[]"))
+        // First run: start from the recommended set (the chart's "추천 정예 · 실전 표준" alert profile) on BTC
+        return defaultRules("BTCUSDT").also(::saveRules)
+    }
+
+    private fun defaultRules(symbol: String): List<AlertRule> {
+        val s = symbol.uppercase()
+        val id = "def-${s.lowercase()}"
+        return listOf(
+            AlertRule(id = "$id-vol15m", symbol = s, interval = "15m", kind = "vol", mult = 4.0, vlen = 20, minBody = 0.2),
+            AlertRule(id = "$id-brk1h", symbol = s, interval = "1h", kind = "brk", len = 20, volMult = 1.5),
+            AlertRule(id = "$id-div1h", symbol = s, interval = "1h", kind = "div", src = "rsi", reg = true, right = 3),
+            AlertRule(id = "$id-ema4h", symbol = s, interval = "4h", kind = "ind", cond = "pma", ma = "ema", len = 200)
+        )
+    }
     fun saveRules(list: List<AlertRule>) {
         val a = JSONArray(); list.take(AlertRule.MAX_RULES).forEach { a.put(it.toJson()) }
         prefs.edit().putString("rules", a.toString()).apply()

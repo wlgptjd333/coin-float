@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.29.0] - 2026-10-17
+
+Built and installed on the phone on 2026-10-17 but never committed; restored on 2026-10-28 from the installed APK
+(assets byte for byte, the two Kotlin changes from the decompiled classes).
+
+### Added
+- **Indicator profiles** (지표 › 지표 프로필): five built-in setups — 실전 메인 (구조·수급), 타점 정밀 (풋프린트·DOM),
+  고래·스윙, 알람 복기·레짐, 클린 차트 — that switch the indicators, their settings, Pine scripts and pane layout at once.
+  Own profiles can be saved next to them.
+- **Alert profiles** (🔔 알람 › 알람 프로필): four built-in alert sets (추천 정예, 초집중·저빈도, 단타·스캘핑, 스윙) applied to
+  the current coin; own sets can be saved. Rules set before this version are kept as "이전 내 알람 (백업)".
+- **상황별 지표 · 알람 설명서**: profiles, a three-step check when an alert fires, indicator combinations and the measured
+  alert frequencies. Opens from the chart (지표, 🔔 알람, ⚙ 차트 설정) and from 설정 › 차트 · 알람 도움말.
+- A fresh install starts with the recommended alert set on BTC (15m volume 4x, 1h 20-candle breakout, 1h RSI divergence,
+  4h EMA 200).
+
+### Changed
+- New defaults: EMA 20 · 50 · 200, VWAP, volume profile, CVD and OI + liquidations on; crosshair snaps to candles; volume
+  moving average on; liquidation bubbles from $50k for 15 minutes; large trades grouped per candle; Bitfinex pane in
+  N-candle change mode. Saved settings are kept.
+
 ## [1.28.0] - 2026-10-17
 
 ### Added

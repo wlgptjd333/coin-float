@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.coinfloat.app.ui.theme.Cf
 
 /** Dialogs opened from the settings and home screens. Long legal texts are assets so they can change without code. */
-enum class InfoSheet { LICENSES, PRIVACY, STABILITY, PERMISSION }
+enum class InfoSheet { LICENSES, PRIVACY, STABILITY, PERMISSION, GUIDE }
 
 const val STABILITY_HELP = """Samsung Galaxy와 Android 13 이상에서는 절전·보안 정책 때문에 시세창이 꺼지거나 권한이 풀릴 수 있어요. 아래 설정을 한 번 해 두면 안정적이에요.
 
@@ -46,12 +46,20 @@ fun InfoDialog(sheet: InfoSheet, onDismiss: () -> Unit) {
     val (title, body) = when (sheet) {
         InfoSheet.STABILITY -> "안정적으로 사용하기" to STABILITY_HELP
         InfoSheet.PERMISSION -> "권한이 허용되지 않을 때" to PERMISSION_HELP
-        InfoSheet.LICENSES, InfoSheet.PRIVACY -> {
-            val asset = if (sheet == InfoSheet.PRIVACY) "privacy.txt" else "licenses.txt"
+        InfoSheet.LICENSES, InfoSheet.PRIVACY, InfoSheet.GUIDE -> {
+            val asset = when (sheet) {
+                InfoSheet.PRIVACY -> "privacy.txt"
+                InfoSheet.GUIDE -> "guide.txt"
+                else -> "licenses.txt"
+            }
             val text = remember(asset) {
                 runCatching { context.assets.open(asset).bufferedReader().use { it.readText() } }.getOrDefault("문서를 불러오지 못했어요.")
             }
-            (if (sheet == InfoSheet.PRIVACY) "개인정보 처리방침" else "오픈소스 라이선스") to text
+            when (sheet) {
+                InfoSheet.PRIVACY -> "개인정보 처리방침"
+                InfoSheet.GUIDE -> "상황별 지표 · 알람 설명서"
+                else -> "오픈소스 라이선스"
+            } to text
         }
     }
     AlertDialog(
