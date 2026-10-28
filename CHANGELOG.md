@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.30.1] - 2026-10-29
+
+### Fixed
+- The floating window comes back by itself after an app update or a reboot when it was on (it stayed gone until the
+  app was opened). A window hidden from the notification stays hidden.
+
 ## [1.30.0] - 2026-10-28
 
 ### Added
