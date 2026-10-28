@@ -16,7 +16,44 @@ function syncUrl() {
     var url = location.pathname + '?s=' + encodeURIComponent(s) + '&i=' + encodeURIComponent(i);
     if (location.search !== url.slice(location.pathname.length)) history.replaceState(null, '', url);
     saveLast(s, i);
-    document.title = s.replace(/USDT$/, '') + ' · CoinFloat';
+    titleFeed(s);
+}
+
+// ---- live price in the tab title ("BTC 80,512.3 +0.52%"), to glance at from other tabs -----------------------------
+// The chart closes its sockets while the tab is hidden, so the title has its own feed: the coin's 24h mini ticker, one
+// small message a second, kept open in the background too (browsers keep delivering socket messages to hidden tabs).
+var WS_URL = 'wss://fstream.binance.com/market/stream';
+var tf = { sym: null, ws: null, delay: 1000, timer: 0, shown: '' };
+function setTitle(text) { if (text !== tf.shown) { tf.shown = text; document.title = text; } }
+function titleFeed(sym) {
+    if (sym === tf.sym && tf.ws) return;
+    tf.sym = sym;
+    if (tf.ws) { tf.ws.onclose = null; try { tf.ws.close(); } catch (e) { /* closing */ } tf.ws = null; }
+    clearTimeout(tf.timer);
+    setTitle(sym.replace(/USDT$/, '') + ' · CoinFloat');
+    connectTitle();
+}
+function connectTitle() {
+    var sym = tf.sym, name = sym.toLowerCase() + '@miniTicker', ws;
+    try { ws = new WebSocket(WS_URL); } catch (e) { retryTitle(); return; }
+    tf.ws = ws;
+    ws.onopen = function () { tf.delay = 1000; ws.send(JSON.stringify({ method: 'SUBSCRIBE', params: [name], id: 1 })); };
+    ws.onmessage = function (e) {
+        var m; try { m = JSON.parse(e.data); } catch (err) { return; }
+        var d = m && m.stream === name && m.data;
+        if (!d || sym !== tf.sym) return;
+        var close = +d.c, open = +d.o;
+        if (!(close > 0)) return;
+        var price = window.CF && window.CF.symbol() === sym ? window.CF.fmtPrice(close) : String(close);
+        var pct = open > 0 ? (close - open) / open * 100 : null;
+        setTitle(sym.replace(/USDT$/, '') + ' ' + price + (pct == null ? '' : ' ' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'));
+    };
+    ws.onclose = function () { if (tf.ws === ws) { tf.ws = null; retryTitle(); } };
+}
+function retryTitle() {
+    clearTimeout(tf.timer);
+    tf.timer = setTimeout(function () { if (!tf.ws && tf.sym) connectTitle(); }, tf.delay);
+    tf.delay = Math.min(tf.delay * 2, 30000);
 }
 
 // ---- coin search: all USDT perpetuals by 24h volume, from one public request ------------------------------------

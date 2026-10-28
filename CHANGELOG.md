@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## Web - 2026-10-29
+
+### Added
+- The browser tab title shows the live price and 24h change ("BTC 80,512.3 +0.52%"), also while the tab is in the
+  background, so the price can be checked from other tabs.
+
 ## [1.31.0] - 2026-10-29
 
 ### Added
