@@ -272,7 +272,7 @@ function engineRelease(history) {
     if (E.users === 0 || --E.users > 0) return;
     if (E.handler) streams.market.unsub(E.sym.toLowerCase() + '@aggTrade', E.handler);
     E.handler = null;
-    xStop();
+    xSync();                                                              // the CVD may still want the other exchanges
     clearInterval(E.pruneT); E.pruneT = 0;
     clearTimeout(E.bf.timer); E.bf.timer = 0; E.bf.q = [];
     save();
@@ -764,16 +764,16 @@ CF.registerFeature('dom', {
 // Binance contract's price and size units, added to the engine as their own sources (footprint, tape, ladder volume).
 // =====================================================================================================
 CF.defineSettings('xex', {
-    title: '다른 거래소 체결 합산', onChange: function () { if (X.want) { xStop(); xStart(); } CF.redraw(); },
+    title: '다른 거래소 체결 합산', onChange: function () { if (X.want) { xStop(); xStart(); } CF.redraw(); xcChanged(); },
     fields: [
         { k: 'by', t: 'bool', label: 'Bybit', def: true },
         { k: 'ok', t: 'bool', label: 'OKX', def: true },
         { k: 'hl', t: 'bool', label: 'Hyperliquid', def: true },
         { k: 'bf', t: 'bool', label: 'Bitfinex', sub: '비트코인 · 이더리움 등 일부 코인만 무기한 선물이 있습니다', def: false },
-        { t: 'note', label: '켜 둔 거래소의 실시간 체결을 풋프린트 · 체결 목록 · 호가 패널의 체결량에 더합니다. 다른 거래소는 과거 체결을 받지 않아서, 켠 뒤부터 합산됩니다. 1000PEPE처럼 단위가 다른 코인은 바이낸스 단위로 환산하고, 가격이 1% 넘게 다르면 잘못 짝지어진 것으로 보고 자동으로 뺍니다.' }
+        { t: 'note', label: '켜 둔 거래소의 실시간 체결을 CVD · 델타, 풋프린트 · 체결 목록 · 호가 패널의 체결량에 더합니다. 다른 거래소는 과거 체결을 받지 않아서, 켠 뒤부터 합산됩니다. 1000PEPE처럼 단위가 다른 코인은 바이낸스 단위로 환산하고, 가격이 1% 넘게 다르면 잘못 짝지어진 것으로 보고 자동으로 뺍니다.' }
     ]
 });
-var X = { want: false, conns: {}, status: {} };
+var X = { want: false, conns: {}, status: {}, sym: null };
 var XNAME = { bn: 'Binance', by: 'Bybit', ok: 'OKX', hl: 'Hyperliquid', bf: 'Bitfinex' };
 // "1000PEPEUSDT" -> { base: 'PEPE', mult: 1000 }
 function splitSym(sym) {
@@ -791,6 +791,8 @@ function xTrade(src, T, p, q, buy) {
         return;
     }
     st.bad = 0; st.state = 'live'; st.n++;
+    xcAdd(src, T, p, q, buy);
+    if (!E.users || !E.tick || E.sym !== X.sym) return;                  // the CVD alone: no footprint or tape to feed
     addTrade(src, T, p, q, buy);
     for (var i = 0; i < E.listeners.length; i++) { try { E.listeners[i]({ src: src, T: T, p: p, q: q, buy: buy }); } catch (e) { console.error(e); } }
 }
@@ -862,9 +864,15 @@ var XS = {
         }, null, 0);
     }
 };
+// the streams run while something adds them up: the footprint / DOM engine, or the CVD
+function cvdUses() { return !!(CF.ind.cvd && CF.S('cvd').xex); }
+function xNeeded() { return X.want && (E.users > 0 || cvdUses()); }
+function xSync() { if (xNeeded()) xStart(); else if (Object.keys(X.conns).length) xStop(); }
 function xStart() {
-    if (!X.want || !E.users || !E.sym) return;
-    var cfg = CF.S('xex'), sym = E.sym;
+    if (!xNeeded()) return;
+    var cfg = CF.S('xex'), sym = CF.symbol();
+    if (X.sym !== sym) { xStop(); X.sym = sym; }
+    xcOpen(sym);
     Object.keys(XS).forEach(function (id) {
         if (!cfg[id] || X.conns[id]) return;
         X.status[id] = { state: 'wait', bad: 0, n: 0, sym: sym };
@@ -876,7 +884,89 @@ function xStart() {
 function xStop() {
     Object.keys(X.conns).forEach(function (id) { try { X.conns[id].close(); } catch (e) { /* ignore */ } });
     X.conns = {}; X.status = {};
+    xcSave();
 }
+
+// ---- the other exchanges' CVD: taker buys and sells per minute and exchange (coins and dollars), kept 48 hours -----------
+var XC = { sym: null, min: new Map(), dirty: new Set(), saveT: 0, lo: Infinity, hi: -Infinity };
+var xdbP = null;
+function xdb() {
+    if (xdbP) return xdbP;
+    xdbP = new Promise(function (res) {
+        try {
+            var r = indexedDB.open('cf_xcvd', 1);
+            r.onupgradeneeded = function () { if (!r.result.objectStoreNames.contains('min')) r.result.createObjectStore('min'); };
+            r.onsuccess = function () { var d = r.result; d.onversionchange = function () { d.close(); xdbP = null; }; res(d); };
+            r.onerror = r.onblocked = function () { res(null); };
+        } catch (e) { res(null); }
+    });
+    return xdbP;
+}
+function xcCut() { return Math.floor(Date.now() / 1000) - KEEP_DB_H * 3600; }
+function xcSpan(mt) { if (mt < XC.lo) XC.lo = mt; if (mt > XC.hi) XC.hi = mt; }
+function xcOpen(sym) {
+    if (XC.sym === sym) return;
+    xcSave();
+    XC.sym = sym; XC.min = new Map(); XC.dirty = new Set(); XC.lo = Infinity; XC.hi = -Infinity;
+    var cut = xcCut();
+    xdb().then(function (d) {
+        if (!d || XC.sym !== sym) return;
+        try {
+            var tx = d.transaction('min', 'readwrite'), got = 0;
+            tx.objectStore('min').openCursor(IDBKeyRange.bound(keyOf(sym, '0000000000'), keyOf(sym, '9999999999'))).onsuccess = function (e) {
+                var c = e.target.result; if (!c) return;
+                var mt = +String(c.key).split('|')[1];
+                if (mt < cut) c.delete();
+                else if (XC.sym === sym && c.value) {
+                    // a minute that is also live again (left and came back within it): the two halves add up
+                    var m = XC.min.get(mt), v = c.value;
+                    if (!m) { XC.min.set(mt, v); xcSpan(mt); }
+                    else Object.keys(v).forEach(function (id) { var a = m[id] || (m[id] = [0, 0, 0, 0]); for (var k = 0; k < 4; k++) a[k] += v[id][k]; });
+                    got++;
+                }
+                c.continue();
+            };
+            tx.oncomplete = function () { if (got && XC.sym === sym) xcChanged(); };
+        } catch (e) { /* storage gone: live trades still add up */ }
+    });
+}
+function xcAdd(src, T, p, q, buy) {
+    if (!XC.sym || XC.sym !== X.sym) return;
+    var mt = minuteOf(T), m = XC.min.get(mt);
+    if (!m) { m = {}; XC.min.set(mt, m); xcSpan(mt); }
+    var a = m[src] || (m[src] = [0, 0, 0, 0]);
+    if (buy) { a[0] += q; a[2] += p * q; } else { a[1] += q; a[3] += p * q; }
+    XC.dirty.add(mt);
+    if (!XC.saveT) XC.saveT = setTimeout(xcSave, 30000);
+}
+function xcSave() {
+    clearTimeout(XC.saveT); XC.saveT = 0;
+    if (!XC.sym || !XC.dirty.size) return;
+    var sym = XC.sym, cut = xcCut(), rows = [];
+    XC.dirty.forEach(function (mt) { var m = XC.min.get(mt); if (m && mt >= cut) rows.push([keyOf(sym, mt), m]); });
+    XC.dirty.clear();
+    XC.lo = Infinity;
+    XC.min.forEach(function (m, mt) { if (mt < cut) XC.min.delete(mt); else xcSpan(mt); });
+    xdb().then(function (d) {
+        if (!d) return;
+        try { var st = d.transaction('min', 'readwrite').objectStore('min'); rows.forEach(function (r) { st.put(r[1], r[0]); }); }
+        catch (e) { /* storage full or gone */ }
+    });
+}
+// the other exchanges' delta of the candle [t0, t1) (s), from the exchanges chosen in the settings; null where none was recorded
+function xcDelta(t0, t1, usd) {
+    if (XC.sym !== CF.symbol() || t1 <= XC.lo || t0 > XC.hi) return null;
+    var cfg = CF.S('xex'), d = 0, any = false, end = Math.min(t1, XC.hi + 60);
+    for (var mt = Math.max(t0 - (t0 % 60), XC.lo); mt < end; mt += 60) {
+        var m = XC.min.get(mt); if (!m) continue;
+        for (var id in m) { if (!cfg[id]) continue; var v = m[id]; d += usd ? v[2] - v[3] : v[0] - v[1]; any = true; }
+    }
+    return any ? d : null;
+}
+function xcChanged() { if (CF.ind.cvd) CF.scheduleRefresh(true); }
+CF.cvdExtra(xcDelta);
+CF.onData(function (kind) { if (kind === 'all') xSync(); });
+document.addEventListener('visibilitychange', function () { if (document.hidden) xcSave(); });
 // sources the footprint adds up: Binance and every other exchange that delivered trades for this coin
 function liveSources() {
     var ids = ['bn'];
@@ -885,8 +975,8 @@ function liveSources() {
 }
 function xLegend() {
     if (!X.want) return '';
-    // it adds to the footprint and the DOM's tape; with neither on there is nothing to add to (it used to look broken)
-    if (!E.users) return '<span style="color:#F0B90B">풋프린트나 호가 · 체결 패널(DOM)을 켜면 합산돼요</span>';
+    // it adds to the CVD, the footprint and the DOM's tape; with none of them on there is nothing to add to
+    if (!E.users && !cvdUses()) return '<span style="color:#F0B90B">CVD · 풋프린트 · 호가 · 체결 패널 중 하나를 켜면 합산돼요</span>';
     var parts = [];
     Object.keys(X.status).forEach(function (id) {
         var st = X.status[id], txt = st.state === 'live' ? '✓' : st.state === 'none' ? '없음' : st.state === 'mismatch' ? '제외' : '연결 중';
@@ -896,9 +986,9 @@ function xLegend() {
 }
 CF.registerFeature('xex', {
     legend: xLegend,
-    start: function () { X.want = true; xStart(); },
-    stop: function () { X.want = false; xStop(); }
+    start: function () { X.want = true; xStart(); xcChanged(); },
+    stop: function () { X.want = false; xStop(); xcChanged(); }
 });
 
-window.__of = { E: E, X: X, cells: cells, fp: fp, dom: dom, fpInspect: fpInspect, save: save, coverOf: coverOf };
+window.__of = { E: E, X: X, XC: XC, cells: cells, fp: fp, dom: dom, fpInspect: fpInspect, save: save, coverOf: coverOf };
 })();

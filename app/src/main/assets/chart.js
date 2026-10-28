@@ -241,6 +241,9 @@ defineSettings('cvd', {
         { t: 'sec', label: '현물 CVD 비교' },
         { k: 'spot', t: 'bool', label: '바이낸스 현물 CVD 함께 보기', sub: '같은 축에 겹쳐 그립니다. 선물만 오르면 레버리지 주도, 현물이 같이 오르면 실수요 주도로 봅니다', def: true, showIf: function (c) { return c.unit === 'usd'; } },
         { k: 'spotColor', t: 'color', label: '현물 CVD 선 색', def: '#F0B90B', showIf: function (c) { return c.unit === 'usd' && c.spot; } },
+        { t: 'sec', label: '거래소 합산' },
+        { k: 'xex', t: 'bool', label: '다른 거래소 체결도 더하기', sub: '"다른 거래소 체결 합산" 지표가 켜져 있으면 Bybit · OKX · Hyperliquid · Bitfinex 선물 체결을 CVD · 델타에 더합니다', def: true },
+        { t: 'note', label: '다른 거래소는 과거 체결을 주지 않아서, 합산은 켜 둔 동안 받은 체결부터 쌓입니다(폰에 48시간 보관). 범례에 "합산"이 보이면 그 봉에 다른 거래소 체결이 들어간 것입니다.' },
         { t: 'note', label: 'CVD = 시장가 매수 체결 − 시장가 매도 체결의 누적입니다. 거래소가 기록한 체결 방향을 그대로 써서 추정치가 아닙니다. 현물 비교는 금액($) 단위일 때 보입니다(코인 수량은 선물·현물 단위가 다를 수 있음). 초기화 기준은 UTC입니다.' }
     ]
 });
@@ -378,6 +381,7 @@ function volOf(c) {
 // Indicators
 // =====================================================================================================
 var P = {};                                   // calculation parameters, refreshed together with D
+var cvdExtra = null;                          // fn(t0, t1, usd) -> other exchanges' delta of [t0, t1), or null where none was recorded
 // the line series follow the number of average lines in the settings
 function fitPool(pool, n) {
     while (pool.length < n) pool.push(overlayLine('#FFFFFF', 1, true));
@@ -389,13 +393,13 @@ function newD() {
     var b = S('boll'); P.bp = b.period; P.bm = b.mult;
     P.rsi = S('rsi').period;
     var m = S('macd'); P.fast = m.fast; P.slow = Math.max(m.slow, m.fast + 1); P.sig = m.signal;
-    var cv = S('cvd'); P.cvdReset = cv.reset; P.cvdUsd = cv.unit === 'usd';
+    var cv = S('cvd'); P.cvdReset = cv.reset; P.cvdUsd = cv.unit === 'usd'; P.cvdX = cv.xex && ind.xex && !!cvdExtra;
     var r = S('rsi'); P.rsiMa = r.maOn ? r.maLen : 0; P.rsiMaE = r.maType === 'ema';
     P.oscS = m.oscType === 'sma'; P.sigS = m.sigType === 'sma';
     var vo = S('vol'); P.volMa = vo.maOn ? vo.maLen : 0;
     var vw = S('vwap'); P.vwA = vw.anchor; P.vwM1 = vw.m1; P.vwM2 = vw.m2;
     var st = S('st'); P.stLen = st.period; P.stF = st.factor;
-    return { cs: [], ma: P.ma.map(function () { return []; }), ema: P.ema.map(function () { return []; }), bMid: [], bUp: [], bLo: [], rsi: [], rsiG: [], rsiL: [], e12: [], e26: [], macd: [], sig: [], hist: [], cvd: [], delta: [],
+    return { cs: [], ma: P.ma.map(function () { return []; }), ema: P.ema.map(function () { return []; }), bMid: [], bUp: [], bLo: [], rsi: [], rsiG: [], rsiL: [], e12: [], e26: [], macd: [], sig: [], hist: [], cvd: [], delta: [], cvdX: [],
         rsiCs: [], rsiMa: [], mcs: [], vcs: [], volMa: [], vwPV: [], vwV: [], vwPV2: [], vw: [], vwU1: [], vwL1: [], vwU2: [], vwL2: [],
         tr: [], atr: [], stFl: [], stFu: [], stDir: [], stUp: [], stDn: [] };
 }
@@ -415,6 +419,10 @@ function stepInd(i) {
     // order flow: the candle's taker-buy volume against the rest is the bar's delta; its running sum is CVD
     var kc = candles[i];
     D.delta[i] = P.cvdUsd && kc.qv != null ? 2 * kc.qb - kc.qv : 2 * kc.buy - kc.volume;
+    // the other exchanges' trades of the same candle (orderflow.js), where they were recorded
+    var xd = P.cvdX ? cvdExtra(kc.time, i + 1 < candles.length ? candles[i + 1].time : nextOpen(kc.time), P.cvdUsd) : null;
+    D.cvdX[i] = xd != null;
+    if (xd != null) D.delta[i] += xd;
     var fresh = i > 0 && P.cvdReset !== 'none' && cvdPeriod(kc.time) !== cvdPeriod(candles[i - 1].time);
     D.cvd[i] = (i > 0 && !fresh ? D.cvd[i - 1] : 0) + D.delta[i];
     var bp = P.bp;
@@ -949,7 +957,7 @@ SUBS.cvd = {
     },
     legend: function (i) {
         if (D.cvd[i] == null) return '';
-        var h = '<span style="color:' + S('cvd').color + '">CVD ' + signedVol(D.cvd[i]) + '</span>';
+        var h = '<span style="color:' + S('cvd').color + '">CVD ' + signedVol(D.cvd[i]) + '</span>' + (D.cvdX[i] ? ' <span style="color:#B2B5BE">합산</span>' : '');
         if (spotOn()) h += spot.none ? ' <span style="color:#848E9C">현물 없음</span>' : spot.vals && spot.vals[i] != null ? ' <span style="color:' + S('cvd').spotColor + '">현물 ' + signedVol(spot.vals[i]) + '</span>' : '';
         return h + ' <span class="' + (D.delta[i] >= 0 ? 'up' : 'down') + '">Δ ' + signedVol(D.delta[i]) + '</span>';
     }
@@ -2999,7 +3007,7 @@ function switchRow(text, sub, key, gear) {
         ind[key] = !ind[key]; LS.set('ind', ind);
         if (hiddenInd[key]) { delete hiddenInd[key]; saveHidden(); }
         b.querySelector('.switch').classList.toggle('on', ind[key]);
-        if (key === 'xex' && ind.xex && !ind.fp && !ind.dom) toast('합산은 풋프린트나 호가 · 체결 패널에 더해져요', 'DOM 켜기', function () { ind.dom = true; LS.set('ind', ind); applyIndicators(); });
+        if (key === 'xex' && ind.xex && !ind.fp && !ind.dom && !(ind.cvd && S('cvd').xex)) toast('합산은 CVD · 풋프린트 · 호가 · 체결 패널에 더해져요', 'CVD 켜기', function () { ind.cvd = true; LS.set('ind', ind); applyIndicators(); });
         applyIndicators();
     };
     return b;
@@ -3390,7 +3398,7 @@ function openIndicators() {
         switchRow('대량 체결', '큰 체결만 버블로 표시', 'trades', true),
         switchRow('풋프린트', '확대하면 가격별 매수·매도 체결량 · 불균형 · POC', 'fp', true),
         switchRow('호가 · 체결 패널 (DOM)', '차트 오른쪽에 호가 사다리와 실시간 체결 목록', 'dom', true),
-        switchRow('다른 거래소 체결 합산', '풋프린트 · 호가·체결 패널에 Bybit · OKX · Hyperliquid · Bitfinex 체결을 더함 (⚙ 에서 거래소 선택 · 위 둘 중 하나가 켜져 있어야 작동)', 'xex', true),
+        switchRow('다른 거래소 체결 합산', 'CVD · 풋프린트 · 호가·체결 패널에 Bybit · OKX · Hyperliquid · Bitfinex 체결을 더함 (⚙ 에서 거래소 선택)', 'xex', true),
         sectionTitle('호가창 · 청산맵'),
         switchRow('호가 벽', '매수/매도 벽 · 우측 깊이 막대', 'depth', true),
         switchRow('호가 히트맵', '유동성 변화를 시간별 색으로', 'heat', true),
@@ -3988,6 +3996,7 @@ window.CF = {
     chartType: function () { return chartType; }, barSpacing: barSpacingPx,
     candleOverride: function (o) { candleOv = o; candleSeries.applyOptions(o || { borderVisible: !!S('chart').hollow, borderUpColor: C.up, borderDownColor: C.down }); },
     vpTrades: function (fn) { vpTradeHook = fn; vpCache.key = ''; },
+    cvdExtra: function (fn) { cvdExtra = fn; },
     // a pane member from an add-on (Pine script drawn in its own pane); null removes it, forget drops its place
     paneMember: function (key, m) { if (m) pineMembers[key] = m; else if (pineMembers[key]) delete pineMembers[key]; else return; relayout(); },
     paneForget: function (key) { forgetPaneKey(key); },

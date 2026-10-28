@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.33.0] - 2026-10-29
+
+### Added
+- **Cross-exchange CVD**: with "다른 거래소 체결 합산" on, the CVD and the per-candle delta bars add the taker buys and
+  sells of the same perpetual on Bybit, OKX, Hyperliquid and Bitfinex (each switchable in its ⚙) to Binance's. Binance
+  is only about half of the trading (BTC, 20 s sample: Binance 46 %, Hyperliquid 23 %, OKX 17 %, Bybit 14 %), so the
+  Binance-only line showed half the flow. The other exchanges have no trade history to download: their part is
+  recorded while the chart is open, kept on the device for 48 hours per coin, and the CVD legend shows "합산" on the
+  candles that include it. CVD ⚙ has a switch to leave it out.
+
+### Changed
+- "다른 거래소 체결 합산" now works on its own with the CVD; before, it only fed the footprint and the DOM panel, and
+  with neither on it did nothing. The streams run only while one of the three uses them.
 ## [1.32.0] - 2026-10-29
 
 ### Added
