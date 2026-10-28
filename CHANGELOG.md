@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.30.0] - 2026-10-28
+
+### Added
+- **Web version** at https://wlgptjd333.github.io/coin-float/ (GitHub Pages, built from the same chart page): coin search
+  by 24h volume, the coin and interval in the address (`?s=ETHUSDT&i=1h`) so links open the same chart, installable to
+  the home screen. Alerts are stored but only fire in the app; the Bitfinex pane needs the app.
+- **설정 백업 · 가져오기** (⚙ 차트 설정): indicators, indicator profiles, drawings, pane layout, Pine scripts and alert
+  rules as one JSON file, or through the clipboard. The same file moves between the app, the web version and other
+  phones. In the app the file goes to the share sheet (Files, Drive, messengers) and is opened with the system picker.
+- Web only, once an OAuth client ID is set in `web/config.js`: save to / load from Google Drive (the app's hidden
+  folder, sign-in in Google's own window).
+- Chart image share saves a PNG in the browser.
+
 ## [1.29.1] - 2026-10-28
 
 ### Fixed
