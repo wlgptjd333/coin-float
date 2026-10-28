@@ -764,6 +764,8 @@ class ChartWebHolder {
     var onOpenSearch: () -> Unit = {}
     var onExitImmersive: () -> Unit = {}
     var onBackState: (Boolean) -> Unit = {}
+    /** The page's file input (settings import): opens the system file picker; the callback gets the picked file. */
+    var onPickFile: (android.webkit.ValueCallback<Array<android.net.Uri>>) -> Unit = { it.onReceiveValue(null) }
     /** Interval to switch to on the next load (an alert notification was tapped), used once. */
     var forceInterval: String? = null
 
@@ -797,6 +799,16 @@ private fun ChartWebView(
     val latestExit by rememberUpdatedState(onExitImmersive)
     val latestBackState by rememberUpdatedState(onBackState)
 
+    // <input type="file"> in the page (settings import): the picked file goes back to the page's callback; every
+    // callback must be answered exactly once, or the page's file input stops working until it reloads
+    var pendingFile by remember { mutableStateOf<android.webkit.ValueCallback<Array<android.net.Uri>>?>(null) }
+    val filePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        pendingFile?.onReceiveValue(uri?.let { arrayOf(it) })
+        pendingFile = null
+    }
+
     // the (long-lived) page always calls back into the screen that is showing it now
     SideEffect {
         holder.symbol = { latestSymbol }
@@ -805,6 +817,11 @@ private fun ChartWebView(
         holder.onOpenSearch = { latestOpenSearch() }
         holder.onExitImmersive = { latestExit() }
         holder.onBackState = { latestBackState(it) }
+        holder.onPickFile = { callback ->
+            pendingFile?.onReceiveValue(null)
+            pendingFile = callback
+            runCatching { filePicker.launch("*/*") }.onFailure { callback.onReceiveValue(null); pendingFile = null }
+        }
     }
 
     LaunchedEffect(immersive, generation) {
@@ -833,6 +850,7 @@ private fun ChartWebView(
                         onExitImmersive = { holder.onExitImmersive() },
                         onBackState = { holder.onBackState(it) },
                         onCandleClose = { holder.candleClose = parseCandleClose(it) },
+                        onPickFile = { holder.onPickFile(it) },
                         forceInterval = { holder.forceInterval.also { holder.forceInterval = null } },
                         onRendererGone = {
                             // the renderer died: throw this WebView away and build a fresh one
@@ -1017,6 +1035,30 @@ private class ChartBridge(
         webView.post { runCatching { ctx.startActivity(Intent.createChooser(send, "차트 공유").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
     }
 
+    // settings backup from the page ("<file name>|<json>") to Android's share sheet (Files, Drive, messengers)
+    @JavascriptInterface
+    fun saveSettings(arg: String?) {
+        val ctx = webView.context
+        val parts = arg.orEmpty().split("|", limit = 2)
+        if (parts.size != 2 || parts[1].length > 5_000_000) return
+        val name = parts[0].filter { it.isLetterOrDigit() || it == '-' || it == '.' }.take(60).ifEmpty { "coinfloat-settings.json" }
+        val dir = java.io.File(ctx.cacheDir, "shared").apply { mkdirs() }
+        val file = java.io.File(dir, name)
+        runCatching { file.writeText(parts[1]) }.getOrElse { return }
+        val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", file)
+        val send = Intent(Intent.ACTION_SEND).setType("application/json").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        webView.post { runCatching { ctx.startActivity(Intent.createChooser(send, "설정 파일 저장").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+    }
+
+    @JavascriptInterface
+    fun copyText(text: String?) {
+        val value = text.orEmpty().take(5_000_000)
+        webView.post {
+            val cm = webView.context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager ?: return@post
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("CoinFloat 설정", value))
+        }
+    }
+
     @JavascriptInterface
     fun openSymbolSearch(arg: String?) {
         webView.post { onOpenSearch() }
@@ -1039,7 +1081,8 @@ private fun createChartWebView(
     onBackState: (Boolean) -> Unit,
     onCandleClose: (String) -> Unit,
     onRendererGone: () -> Unit,
-    forceInterval: () -> String? = { null }
+    forceInterval: () -> String? = { null },
+    onPickFile: (android.webkit.ValueCallback<Array<android.net.Uri>>) -> Unit = { it.onReceiveValue(null) }
 ): WebView {
     val debuggable = (ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     if (debuggable) WebView.setWebContentsDebuggingEnabled(true)
@@ -1083,6 +1126,18 @@ private fun createChartWebView(
         }
 
         addJavascriptInterface(ChartBridge(this, onOpenSymbolSearch, onExitImmersive, onBackState, onCandleClose), "AndroidBridge")
+
+        webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onShowFileChooser(
+                view: WebView?,
+                callback: android.webkit.ValueCallback<Array<android.net.Uri>>?,
+                params: FileChooserParams?
+            ): Boolean {
+                if (callback == null) return false
+                onPickFile(callback)
+                return true
+            }
+        }
 
         webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {

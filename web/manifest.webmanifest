@@ -1,0 +1,14 @@
+{
+  "name": "CoinFloat",
+  "short_name": "CoinFloat",
+  "description": "Binance USDT-M futures chart with indicators, order flow and alerts",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#131722",
+  "theme_color": "#131722",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

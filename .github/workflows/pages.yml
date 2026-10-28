@@ -1,0 +1,56 @@
+name: Web (GitHub Pages)
+
+# The chart page (app/src/main/assets) as a website: https://wlgptjd333.github.io/coin-float/
+# web/ adds what the Android side does in the app (coin search, address bar state, install manifest).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/src/main/assets/**'
+      - 'web/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chart scripts parse
+        run: for f in app/src/main/assets/*.js web/*.js; do node --check "$f"; done
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp app/src/main/assets/*.js app/src/main/assets/*.txt _site/
+          cp web/* _site/
+          # chart.html becomes index.html: web.js stands in for the app before chart.js runs, plus the install manifest
+          sed -e 's|<script src="chart.js"></script>|<script src="config.js"></script>\n<script src="web.js"></script>\n<script src="cloud.js"></script>\n<script src="chart.js"></script>|' \
+              -e 's|<title>CoinFloat Chart</title>|<title>CoinFloat</title>\n<link rel="manifest" href="manifest.webmanifest">\n<link rel="icon" href="icon.svg">\n<meta name="theme-color" content="#131722">|' \
+              app/src/main/assets/chart.html > _site/index.html
+          grep -q 'src="web.js"' _site/index.html
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
