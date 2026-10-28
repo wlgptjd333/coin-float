@@ -257,6 +257,9 @@ var DEFAULT_IND = {
     vwap: true, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false, bfx: false
 };
 var ind = Object.assign({}, DEFAULT_IND, LS.get('ind', {}));
+// indicators hidden with the eye in their chart legend row: off, but their row stays (dimmed) to bring them back
+var hiddenInd = LS.get('indHidden', {}); if (!hiddenInd || typeof hiddenInd !== 'object') hiddenInd = {};
+function saveHidden() { LS.set('indHidden', hiddenInd); }
 var railOpen = LS.get('rail', false);
 var active = true, immersive = false, started = false;
 var precision = 2;
@@ -2476,6 +2479,7 @@ chart.subscribeClick(function (param) {                            // tap on emp
     var changed = false;
     if (DR.sel != null) { DR.sel = null; changed = true; }
     if (DR.measure) { DR.measure = null; changed = true; }
+    if (legendSel) { legendSel = null; scheduleLegend(); }
     if (changed) { refreshRail(); DR.redraw(); }
 });
 
@@ -2975,14 +2979,25 @@ function closeSheet() {
 }
 $('sheet_bg').addEventListener('click', function (e) { if (e.target === $('sheet_bg')) closeSheet(); });
 
+// extra words the indicator search matches (English names and common abbreviations)
+var IND_KW = {
+    vol: 'volume 볼륨', ma: 'sma moving average 이평 이동평균', ema: 'exponential moving average 이평', boll: 'bollinger bands bb 볼밴',
+    vwap: 'volume weighted average price', st: 'supertrend 슈퍼트랜드', vp: 'volume profile poc 매물대 vpvr', rsi: 'relative strength index',
+    macd: 'moving average convergence divergence', cvd: 'cumulative volume delta 델타', oi: 'open interest 미결제', fund: 'funding rate 펀딩',
+    lsr: 'long short ratio 롱숏', bfx: 'bitfinex whale 고래', liq: 'liquidation 청산', trades: 'large trades whale 고래 체결', fp: 'footprint 풋프린트',
+    dom: 'depth of market order book ladder 호가', xex: 'bybit okx hyperliquid exchange 거래소', depth: 'order book wall 호가벽', heat: 'heatmap 히트맵',
+    liqmap: 'liquidation map heatmap 청산맵', bidask: 'bid ask spread 호가'
+};
 function switchRow(text, sub, key, gear) {
     var hasGear = gear && SCHEMA[key];
     var b = document.createElement('div'); b.className = 'row-opt'; b.setAttribute('role', 'button');
+    b.setAttribute('data-kw', key + ' ' + (IND_KW[key] || ''));
     b.innerHTML = '<span style="flex:1">' + text + (sub ? '<small>' + sub + '</small>' : '') + '</span>' +
         (hasGear ? '<button class="gear" aria-label="설정">⚙</button>' : '') + '<span class="switch' + (ind[key] ? ' on' : '') + '"></span>';
     b.onclick = function (e) {
         if (hasGear && e.target.closest('.gear')) { openSettings(key, openIndicators); return; }
         ind[key] = !ind[key]; LS.set('ind', ind);
+        if (hiddenInd[key]) { delete hiddenInd[key]; saveHidden(); }
         b.querySelector('.switch').classList.toggle('on', ind[key]);
         applyIndicators();
     };
@@ -3275,6 +3290,7 @@ var setsOpen = false;
 var curIndProfile = LS.get('curIndProfile', BUILTIN_SETS[0].n);
 function applyIndSet(set, silent) {
     Object.keys(ind).forEach(function (k) { ind[k] = !!(set.ind && set.ind[k]); });
+    hiddenInd = {}; saveHidden();
     LS.set('ind', ind);
     if (set.cfg !== undefined) {
         var keepChart = CFGS.chart ? JSON.parse(JSON.stringify(CFGS.chart)) : {};
@@ -3349,6 +3365,7 @@ function openIndicators() {
     cmpRow.innerHTML = '<span style="flex:1">코인 비교<small>' + (cmpSyms().length ? cmpSyms().map(function (s) { return s.replace(/USDT$/, ''); }).join(' · ') : '다른 코인의 % 움직임을 겹쳐 보기') + '</small></span><span style="color:var(--muted)">›</span>';
     cmpRow.onclick = openCompare;
     openSheet('지표', [
+        indSearchBox(),
         setsBox(),
         guideRow,
         cmpRow,
@@ -3384,7 +3401,30 @@ function openIndicators() {
         noteRow('⚙ 를 누르면 지표별 색상·두께·기간 등 세부 설정을 바꿀 수 있습니다. 실시간 항목은 켜 둔 동안에만 데이터를 받고, 차트를 벗어나면 자동으로 멈춥니다.')
     ]));
 }
-var indicatorRowHooks = [], legendHooks = [];
+var indicatorRowHooks = [], legendHooks = [], indSearchHooks = [];
+// Search over the indicator sheet: the sheet's own rows are filtered in place (names, descriptions, English names),
+// and hooks add matches that are not rows yet (the Pine library: indSearchHooks)
+function indSearchBox(placeholder, noHooks) {
+    var w = document.createElement('div'); w.className = 'isearch';
+    w.innerHTML = '<input type="search" placeholder="' + escHtml(placeholder || '지표 검색 (예: RSI, 볼린저, ichimoku, 거래량)') + '" autocomplete="off" spellcheck="false">';
+    var inp = w.querySelector('input'), extra = document.createElement('div'), seq = 0;
+    inp.oninput = function () {
+        var q = inp.value.trim().toLowerCase().replace(/\s+/g, ' '), my = ++seq, sheet = $('sheet');
+        if (!extra.parentNode) w.parentNode.insertBefore(extra, w.nextSibling);
+        extra.innerHTML = '';
+        Array.prototype.forEach.call(sheet.children, function (c) {
+            if (c === w || c === extra || c.tagName === 'H3') return;
+            if (!q) { c.style.display = ''; return; }
+            var hay = ((c.textContent || '') + ' ' + (c.getAttribute('data-kw') || '')).toLowerCase();
+            c.style.display = c.classList.contains('row-opt') && q.split(' ').every(function (t) { return hay.indexOf(t) >= 0; }) ? '' : 'none';
+        });
+        if (!q || noHooks) return;
+        indSearchHooks.forEach(function (h) {
+            try { h(q, function (rows) { if (my === seq && rows && rows.length) rows.forEach(function (r) { extra.appendChild(r); }); }); } catch (e) { console.error(e); }
+        });
+    };
+    return w;
+}
 $('ind_btn').onclick = openIndicators;
 var TYPE_NAMES = [['candle', '캔들'], ['bar', '바 (OHLC)'], ['ha', '하이킨 아시'], ['line', '라인'], ['area', '에어리어'], ['baseline', '베이스라인']];
 function refreshTypeBtn() { $('type_btn').innerHTML = ICON[chartType]; }
@@ -3434,34 +3474,93 @@ function renderLegend() {
     l1 += '</div>';
     var parts = [];
     if (open) {
-        if (ind.ma) S('ma').lines.forEach(function (m, k) { if (!m.on) return; var v = val(D.ma[k], i); if (v) parts.push('<span style="color:' + m.c + '">' + (m.t === 'ema' ? 'EMA' : 'MA') + m.p + ' ' + v + '</span>'); });
-        if (ind.ema) S('ema').lines.forEach(function (m, k) { if (!m.on) return; var v = val(D.ema[k], i); if (v) parts.push('<span style="color:' + m.c + '">EMA' + m.p + ' ' + v + '</span>'); });
-        if (ind.vwap && D.vw[i] != null) parts.push('<span style="color:' + S('vwap').color + '">VWAP ' + fmtPrice(D.vw[i]) + '</span>');
-        if (ind.st && D.stDir[i] != null) parts.push('<span style="color:' + (D.stDir[i] === 1 ? S('st').up : S('st').down) + '">ST ' + fmtPrice(D.stDir[i] === 1 ? D.stUp[i] : D.stDn[i]) + (D.stDir[i] === 1 ? ' ▲' : ' ▼') + '</span>');
+        // the indicators themselves are rows of their own (legendRows); this line keeps what is not one
         if (ind.vol && P.volMa && D.volMa[i] != null) parts.push('<span style="color:' + S('vol').maColor + '">Vol MA ' + fmtVol(D.volMa[i]) + '</span>');
-        if (ind.boll && D.bMid[i] != null) {
-            var bc = S('boll');
-            parts.push('<span style="color:' + bc.cMid + '">BOLL ' + fmtPrice(D.bMid[i]) + '</span> <span style="color:' + bc.cBand + '">' + fmtPrice(D.bUp[i]) + ' / ' + fmtPrice(D.bLo[i]) + '</span>');
-        }
         var cl = cmpLegend(i); if (cl) parts.push(cl);
-        if (ind.vp && vpCache.res) {
-            var vr = vpCache.res;
-            parts.push('<span style="color:#F0B90B">POC ' + fmtPrice(vr.lo + (vr.poc + 0.5) * vr.step) + '</span> <span style="color:#B2B5BE">VA ' +
-                fmtPrice(vr.lo + vr.vaLo * vr.step) + ' – ' + fmtPrice(vr.lo + (vr.vaHi + 1) * vr.step) + '</span>');
-        }
-        Object.keys(features).forEach(function (key) {
-            var f = features[key]; if (!f.running || !f.legend) return;
-            var h = f.legend(i, c); if (h) parts.push(h);
-        });
         legendHooks.forEach(function (fn) { try { var h = fn(i); if (h) parts.push(h); } catch (e) { console.error(e); } });
     }
     var l2 = parts.length ? '<div class="row">' + parts.join(' &nbsp;') + '</div>' : '';
-    setLegend(l1 + l2);
+    setLegend(l1 + l2 + (mode === 'full' ? legendRows(i, open) : ''));
     fillPaneValues(i);
 }
+// ---- indicator rows on the chart, TradingView-style: one row per indicator laid over the price (name + values at the
+// crosshair candle); a tap on a row shows hide (eye), settings and remove. A hidden indicator keeps its row, dimmed.
+var legendSel = null, legendSelT = 0, legendItemHooks = [];
+var LEG_NAME = { ma: 'MA', ema: 'EMA', boll: 'BOLL', vwap: 'VWAP', st: 'Supertrend', vp: '매물대' };
+var FEAT_NAME = { fp: '풋프린트', bidask: 'Bid/Ask', trades: '대량 체결', depth: '호가 벽', heat: '호가 히트맵', liqmap: '청산맵', dom: 'DOM',
+    xex: '거래소 합산', liq: '청산', fund: '펀딩비', lsr: '롱숏 비율', bfx: '비트파이넥스', oi: 'OI', cvd: 'CVD' };
+var EYE = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+var EYE_OFF = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l18 18M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6A17.4 17.4 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/></svg>';
+function builtinItem(k, html) {
+    return {
+        k: k, html: html, hidden: !!hiddenInd[k] && !ind[k],
+        settings: SCHEMA[k] ? function () { openSettings(k); } : null,
+        hide: function (h) { ind[k] = !h; if (h) hiddenInd[k] = true; else delete hiddenInd[k]; saveHidden(); LS.set('ind', ind); applyIndicators(); },
+        close: function () { ind[k] = false; delete hiddenInd[k]; saveHidden(); LS.set('ind', ind); applyIndicators(); }
+    };
+}
+function legendItems(i) {
+    var out = [];
+    ['ma', 'ema', 'boll', 'vwap', 'st', 'vp'].forEach(function (k) {
+        if (!ind[k] && !hiddenInd[k]) return;
+        var name = '<b>' + LEG_NAME[k] + '</b>', v = '';
+        if (ind[k]) {
+            if (k === 'ma' || k === 'ema') {
+                name = '<b>' + (k === 'ma' ? 'MA' : 'EMA') + ' ' + S(k).lines.filter(function (m) { return m.on; }).map(function (m) { return m.p; }).join(' ') + '</b>';
+                v = S(k).lines.map(function (m, j) { if (!m.on) return ''; var x = val((k === 'ma' ? D.ma : D.ema)[j], i); return x ? '<span style="color:' + m.c + '">' + x + '</span>' : ''; }).filter(Boolean).join(' ');
+            } else if (k === 'boll' && D.bMid[i] != null) {
+                var bc = S('boll'); name = '<b>BOLL ' + bc.period + ' ' + bc.mult + '</b>';
+                v = '<span style="color:' + bc.cMid + '">' + fmtPrice(D.bMid[i]) + '</span> <span style="color:' + bc.cBand + '">' + fmtPrice(D.bUp[i]) + ' ' + fmtPrice(D.bLo[i]) + '</span>';
+            } else if (k === 'vwap' && D.vw[i] != null) v = '<span style="color:' + S('vwap').color + '">' + fmtPrice(D.vw[i]) + '</span>';
+            else if (k === 'st' && D.stDir[i] != null) v = '<span style="color:' + (D.stDir[i] === 1 ? S('st').up : S('st').down) + '">' + fmtPrice(D.stDir[i] === 1 ? D.stUp[i] : D.stDn[i]) + (D.stDir[i] === 1 ? ' ▲' : ' ▼') + '</span>';
+            else if (k === 'vp' && vpCache.res) {
+                var vr = vpCache.res;
+                v = '<span style="color:#F0B90B">POC ' + fmtPrice(vr.lo + (vr.poc + 0.5) * vr.step) + '</span> <span style="color:#B2B5BE">VA ' + fmtPrice(vr.lo + vr.vaLo * vr.step) + ' – ' + fmtPrice(vr.lo + (vr.vaHi + 1) * vr.step) + '</span>';
+            }
+        }
+        out.push(builtinItem(k, name + (v ? ' ' + v : '')));
+    });
+    // order-flow features drawn on the price chart (footprint, bid/ask, big trades, heatmap ...), with their own values
+    // where they have them; the ones in a pane of their own are handled by that pane's tag
+    Object.keys(features).forEach(function (k) {
+        var f = features[k]; if (SUBS[k] || !(k in ind)) return;
+        if (!ind[k] && !hiddenInd[k]) return;
+        var h = ind[k] && f.running && f.legend ? f.legend(i, candles[i]) : '';
+        out.push(builtinItem(k, '<b>' + escHtml(FEAT_NAME[k] || k) + '</b>' + (h ? ' ' + h : '')));
+    });
+    legendItemHooks.forEach(function (fn) { try { out = out.concat(fn(i) || []); } catch (e) { console.error(e); } });
+    return out;
+}
+function legendRows(i, open) {
+    var items = legendItems(i); if (!items.length) return '';
+    // collapsed (▾): the rows stay, names only, so they can still be tapped
+    return items.map(function (it) {
+        var sel = legendSel === it.k;
+        var body = open || sel ? it.html : (it.html.match(/^<b>.*?<\/b>/) || [it.html])[0];
+        return '<div class="row li' + (sel ? ' sel' : '') + (it.hidden ? ' off' : '') + '"><button class="li-n" data-k="' + escHtml(it.k) + '" data-a="sel">' + body + '</button>' +
+            '<span class="li-b"><button data-k="' + escHtml(it.k) + '" data-a="eye" aria-label="' + (it.hidden ? '보이기' : '숨기기') + '">' + (it.hidden ? EYE_OFF : EYE) + '</button>' +
+            (it.settings ? '<button data-k="' + escHtml(it.k) + '" data-a="cfg" aria-label="설정">⚙</button>' : '') +
+            '<button data-k="' + escHtml(it.k) + '" data-a="x" aria-label="삭제">✕</button></span></div>';
+    }).join('');
+}
 $('legend').addEventListener('click', function (e) {
-    if (!e.target.closest || !e.target.closest('#lg_t')) return;
-    legendOpen = !legendOpen; LS.set('legendOpen', legendOpen); renderLegend();
+    var t = e.target.closest && e.target.closest('button'); if (!t) return;
+    if (t.id === 'lg_t') { legendOpen = !legendOpen; LS.set('legendOpen', legendOpen); renderLegend(); return; }
+    var k = t.getAttribute('data-k'), a = t.getAttribute('data-a'); if (!k) return;
+    clearTimeout(legendSelT);
+    if (a === 'sel') {
+        legendSel = legendSel === k ? null : k;
+        if (legendSel) legendSelT = setTimeout(function () { legendSel = null; renderLegend(); }, 6000);
+        renderLegend(); return;
+    }
+    var it = legendItems(lastLegendI < 0 ? candles.length - 1 : lastLegendI).filter(function (x) { return x.k === k; })[0];
+    legendSel = null;
+    if (it) {
+        if (a === 'eye') { it.hide(!it.hidden); legendSel = k; legendSelT = setTimeout(function () { legendSel = null; renderLegend(); }, 6000); }
+        else if (a === 'cfg' && it.settings) it.settings();
+        else if (a === 'x') it.close();
+    }
+    renderLegend();
 });
 chart.subscribeCrosshairMove(function (param) { crossTime = param && param.time ? param.time : null; scheduleLegend(); });
 
@@ -3850,7 +3949,7 @@ window.CF = {
     styleSubs: function () { Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); }); scheduleLegend(); },
     // for pine.js
     onData: function (fn) { dataHooks.push(fn); }, indicatorRows: function (fn) { indicatorRowHooks.push(fn); },
-    legend: function (fn) { legendHooks.push(fn); }, openSheet: openSheet, closeSheet: closeSheet, sectionTitle: sectionTitle,
+    legend: function (fn) { legendHooks.push(fn); }, legendItems: function (fn) { legendItemHooks.push(fn); }, indicatorSearch: function (fn) { indSearchHooks.push(fn); }, searchBox: function (ph) { return indSearchBox(ph, true); }, openSheet: openSheet, closeSheet: closeSheet, sectionTitle: sectionTitle,
     noteRow: noteRow, colorStrip: colorStrip, openIndicators: function () { openIndicators(); }, bridge: bridge,
     backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); },
     barTint: setBarTint, openSettings: function (k) { openSettings(k); }, HELP: HELP, helpBox: helpBox,

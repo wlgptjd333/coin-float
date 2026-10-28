@@ -136,6 +136,16 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 #legend .row { display: inline-block; white-space: normal; word-break: keep-all; background: rgba(19, 23, 34, .62); border-radius: 6px; padding: 1px 6px; margin-bottom: 2px; }
 #legend .row + .row { display: block; width: fit-content; }
 .lg-t { pointer-events: auto; color: #B2B5BE; font-size: 10px; line-height: 14px; padding: 1px 8px; margin-left: 6px; border-radius: 9px; border: 1px solid var(--line); background: rgba(30, 34, 45, .9); vertical-align: 1px; }
+#legend .row.li { display: flex; align-items: center; width: fit-content; max-width: 100%; padding: 0 2px 0 0; pointer-events: auto; }
+#legend .li-n { color: inherit; font: inherit; text-align: left; padding: 1px 4px; line-height: 1.45; white-space: normal; }
+#legend .li-n b { color: #D1D4DC; }
+#legend .li-b { display: none; align-items: center; }
+#legend .li.sel { background: rgba(30, 34, 45, .95); outline: 1px solid var(--line); }
+#legend .li.sel .li-b { display: inline-flex; }
+#legend .li-b button { color: var(--muted); font-size: 12px; min-width: 26px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
+#legend .li.off .li-n { opacity: .45; }
+.isearch { padding: 2px 0 8px; }
+.isearch input { width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font-size: 14px; -webkit-user-select: text; user-select: text; }
 #pane_tags { position: absolute; inset: 0 60px 0 0; z-index: 6; pointer-events: none; }
 body.pane-max #legend { display: none; }
 .ptag-row { position: absolute; left: 6px; right: 0; display: flex; flex-wrap: wrap; gap: 4px; }

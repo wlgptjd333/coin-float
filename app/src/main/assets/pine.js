@@ -20,7 +20,7 @@ var scripts = LS.get('pine', []);
 if (!Array.isArray(scripts)) scripts = [];
 scripts = scripts.filter(function (s) { return s && typeof s.src === 'string'; });
 var nextId = scripts.reduce(function (m, s) { return Math.max(m, s.id || 0); }, 0) + 1;
-function save() { LS.set('pine', scripts.map(function (s) { return { id: s.id, lib: s.lib, src: s.src, on: s.on, inputs: s.inputs || {}, style: s.style || {} }; })); }
+function save() { LS.set('pine', scripts.map(function (s) { return { id: s.id, lib: s.lib, src: s.src, on: s.on, hidden: !!s.hidden && !s.on, inputs: s.inputs || {}, style: s.style || {} }; })); }
 function libOf(id) { return (window.PINE_LIB || []).filter(function (l) { return l.id === id; })[0]; }
 function srcOf(s) { var l = s.lib && libOf(s.lib); return l ? l.src : s.src; }   // library scripts follow app updates
 
@@ -522,13 +522,22 @@ function legendOf(s, rt, ci) {
     });
     return '<span style="color:#B2B5BE">' + esc(rt.title || titleOf(s)) + '</span>' + (vals.length ? ' ' + vals.join(' ') : '');
 }
-CF.legend(function (ci) {
-    var parts = [];
-    scripts.forEach(function (s) {
-        var rt = rts[s.id]; if (!s.on || !rt || (rt.member && !rt.err)) return;
-        var h = legendOf(s, rt, ci); if (rt.err || h.indexOf('</span> ') > 0) parts.push(h);
+// scripts drawn over the price get a chart legend row each (tap: hide · settings · remove); scripts in a pane of their
+// own are pane members and have the pane's tag instead
+CF.legendItems(function (ci) {
+    return scripts.filter(function (s) {
+        var rt = rts[s.id];
+        return s.on ? !!rt && (!rt.member || !!rt.err) : !!s.hidden;
+    }).map(function (s) {
+        var rt = rts[s.id], name = '<b>' + esc((rt && rt.title) || titleOf(s)) + '</b>';
+        var html = !s.on ? name : rt.err ? name + ' <span style="color:#F6465D">오류</span>' : name + legendOf(s, rt, ci).replace(/^<span[^>]*>[^<]*<\/span>/, '');
+        return {
+            k: 'p' + s.id, html: html, hidden: !s.on,
+            settings: function () { openScriptSettings(s); },
+            hide: function (h) { if (h) { s.hidden = true; setOn(s, false); } else if (setOn(s, true)) { s.hidden = false; save(); } },
+            close: function () { s.hidden = false; setOn(s, false); }
+        };
     });
-    return parts.join(' &nbsp;');
 });
 function fmt(v) { var a = Math.abs(v); return a >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : a >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : a >= 1000 ? CF.fmtPrice(v) : a >= 1 ? v.toFixed(2) : v.toFixed(4); }
 function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -580,31 +589,43 @@ CF.indicatorRows(function () {
         };
         rows.push(b);
     });
-    var lib = el('div', 'row-opt', '<span style="flex:1">＋ 지표 라이브러리<small>일목균형표 · 웨이브트렌드 · UT Bot · RVOL · RSI 다이버전스 · 스퀴즈 등 30개</small></span><span style="color:var(--muted)">›</span>');
+    var lib = el('div', 'row-opt', '<span style="flex:1">＋ 지표 라이브러리<small>TradingView 기본 지표들 · 일목 · TSI · KST · 앨리게이터 · 피셔 · RVOL 등 59개</small></span><span style="color:var(--muted)">›</span>');
     lib.onclick = openLibrary;
-    var paste = el('div', 'row-opt', '<span style="flex:1">＋ Pine Script 붙여넣기<small>트레이딩뷰 오픈소스 스크립트 · 직접 작성</small></span><span style="color:var(--muted)">›</span>');
+    var paste = el('div', 'row-opt', '<span style="flex:1">＋ TradingView 스크립트 붙여넣기<small>공개(오픈소스) 스크립트의 "소스 코드"를 복사해 붙여 넣기 · 직접 작성</small></span><span style="color:var(--muted)">›</span>');
     paste.onclick = function () { openEditor(null); };
     rows.push(lib, paste);
     return rows;
 });
 
+function libRow(l) {
+    var has = scripts.filter(function (s) { return s.lib === l.id; })[0];
+    var b = el('div', 'row-opt', '<span style="flex:1">' + esc(l.name) + '<small>' + esc(l.desc) + '</small></span><span class="switch' + (has && has.on ? ' on' : '') + '"></span>');
+    b.setAttribute('role', 'button');
+    b.onclick = function () {
+        var cur = scripts.filter(function (s) { return s.lib === l.id; })[0];
+        if (!cur) addScript(null, l.id); else setOn(cur, !cur.on);
+        cur = scripts.filter(function (s) { return s.lib === l.id; })[0];
+        b.querySelector('.switch').classList.toggle('on', !!(cur && cur.on));
+    };
+    return b;
+}
+// the indicator sheet's search also finds library scripts (by name, description and short title, e.g. "KST", "TSI")
+CF.indicatorSearch(function (q, add) {
+    ensureLib().then(function () {
+        var hits = window.PINE_LIB.filter(function (l) {
+            var st = /shorttitle\s*=\s*"([^"]+)"/.exec(l.src || ''), hay = (l.name + ' ' + l.desc + ' ' + l.id + ' ' + (st ? st[1] : '') + ' ' + l.cat).toLowerCase();
+            return q.split(' ').every(function (t) { return hay.indexOf(t) >= 0; });
+        });
+        if (hits.length) add([CF.sectionTitle('지표 라이브러리')].concat(hits.slice(0, 30).map(libRow)));
+    }, function () { /* offline: the sheet's own rows still filter */ });
+});
 function openLibrary() {
     ensureLib().then(function () {
-        var rows = [], cats = {};
+        var rows = [CF.searchBox('라이브러리 검색 (예: TSI, 채널, 거래량)')], cats = {};
         window.PINE_LIB.forEach(function (l) { (cats[l.cat] || (cats[l.cat] = [])).push(l); });
         Object.keys(cats).forEach(function (c) {
             rows.push(CF.sectionTitle(c));
-            cats[c].forEach(function (l) {
-                var has = scripts.filter(function (s) { return s.lib === l.id; })[0];
-                var b = el('div', 'row-opt', '<span style="flex:1">' + esc(l.name) + '<small>' + esc(l.desc) + '</small></span><span class="switch' + (has && has.on ? ' on' : '') + '"></span>');
-                b.onclick = function () {
-                    var cur = scripts.filter(function (s) { return s.lib === l.id; })[0];
-                    if (!cur) addScript(null, l.id); else setOn(cur, !cur.on);
-                    cur = scripts.filter(function (s) { return s.lib === l.id; })[0];
-                    b.querySelector('.switch').classList.toggle('on', !!(cur && cur.on));
-                };
-                rows.push(b);
-            });
+            cats[c].forEach(function (l) { rows.push(libRow(l)); });
         });
         rows.push(CF.noteRow('표준 공식으로 작성한 Pine Script 지표입니다. 켠 뒤 지표 목록의 ⚙ 에서 기간 · 색 · 두께를 바꿀 수 있습니다. 최근 ' + MAX_FEED.toLocaleString() + '봉 기준으로 계산합니다.'));
         CF.openSheet('지표 라이브러리', rows);
@@ -753,7 +774,14 @@ function openEditor(s) {
         });
     };
     rows.push(box);
-    rows.push(CF.noteRow('트레이딩뷰에서 오픈소스 스크립트의 "소스 코드"를 복사해 붙여넣거나 직접 작성하세요. 보호 · 초대 전용 스크립트는 코드가 공개되지 않아 가져올 수 없어요. plot · hline · fill · bgcolor · plotshape · line · label · box 를 그립니다 (barcolor · table · strategy 결과는 표시하지 않음).'));
+    if (!s) {
+        // TradingView has no API for scripts, so they come over by copy and paste: the page to find them
+        var tv = el('div', 'row-opt', '<span style="flex:1">TradingView 커뮤니티 스크립트 열기<small>tradingview.com/scripts · 브라우저에서 열려요</small></span><span style="color:var(--muted)">↗</span>');
+        tv.setAttribute('role', 'button');
+        tv.onclick = function () { window.open('https://www.tradingview.com/scripts/', '_blank'); };
+        rows.push(tv);
+    }
+    rows.push(CF.noteRow('가져오는 방법: ① TradingView에서 스크립트를 열고 ② 자물쇠 없는 "오픈소스" 스크립트의 "소스 코드"를 전체 복사한 뒤 ③ 여기서 "클립보드에서 붙여넣기" → "적용". 보호 · 초대 전용 스크립트는 코드가 공개되지 않아 가져올 수 없고, 스크립트마다 작성자의 라이선스(대개 MPL 2.0)를 따라요. plot · hline · fill · bgcolor · plotshape · line · label · box 를 그립니다 (barcolor · table · strategy 결과는 표시하지 않음).'));
     CF.openSheet(s ? '코드 수정' : 'Pine Script 붙여넣기', rows);
     backBtn(s ? function () { openScriptSettings(s); } : CF.openIndicators);
 }
