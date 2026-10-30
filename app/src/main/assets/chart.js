@@ -2976,12 +2976,12 @@ function openSheet(title, rows, footer) {
     s.querySelector('.x').onclick = closeSheet;
     rows.forEach(function (r) { s.appendChild(r); });
     if (footer) s.appendChild(footer);
-    $('sheet_bg').classList.remove('live'); $('sheet_bg').classList.add('show');
+    $('sheet_bg').classList.remove('live', 'find'); $('sheet_bg').classList.add('show');
     backState();
 }
 var sheetOnClose = null;
 function closeSheet() {
-    $('sheet_bg').classList.remove('show', 'live'); settingsKey = null;
+    $('sheet_bg').classList.remove('show', 'live', 'find'); settingsKey = null;
     var cb = sheetOnClose; sheetOnClose = null; if (cb) cb();
     backState();
 }
@@ -3417,6 +3417,8 @@ function indSearchBox(placeholder, noHooks) {
     var w = document.createElement('div'); w.className = 'isearch';
     w.innerHTML = '<input type="search" placeholder="' + escHtml(placeholder || '지표 검색 (예: RSI, 볼린저, ichimoku, 거래량)') + '" autocomplete="off" spellcheck="false">';
     var inp = w.querySelector('input'), extra = document.createElement('div'), seq = 0;
+    // the phone's keyboard covers the lower half of the screen: with the box at the top, the results show between the two
+    inp.onfocus = function () { $('sheet_bg').classList.add('find'); $('sheet').scrollTop = 0; };
     inp.oninput = function () {
         var q = inp.value.trim().toLowerCase().replace(/\s+/g, ' '), my = ++seq, sheet = $('sheet');
         if (!extra.parentNode) w.parentNode.insertBefore(extra, w.nextSibling);
