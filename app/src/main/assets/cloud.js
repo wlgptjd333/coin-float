@@ -181,18 +181,22 @@ function firstSync() {
         chooseCopy(metas);
     }).catch(function (e) { busy = false; fail(e); });
 }
+var choosing = false;
 function chooseCopy(metas) {
+    choosing = true;
     var newest = metas.reduce(function (a, x) { return Math.max(a, x.meta ? x.meta.at : 0); }, 0);
     var when = newest ? new Date(newest).toLocaleString() : '';
     CF.openSheet('이 계정에 저장된 설정이 있어요', [
         CF.noteRow('클라우드 설정은 ' + esc(when) + '에 저장됐어요. 어느 쪽을 쓸까요? 고르지 않은 쪽은 덮어써져요.'),
         row('☁️  클라우드 설정 쓰기', '이 기기의 설정을 클라우드 내용으로 바꿔요', function () {
+            choosing = false;
             freshState();
             var p = Promise.resolve();
             metas.forEach(function (x) { p = p.then(function () { return x.meta ? readDoc(x.doc.name).then(function (f) { return applyCloud(x.doc, f); }) : upload(x.doc, x.doc.get(), hashOf(x.doc.get())); }); });
             p.then(function () { CF.closeSheet(); CF.toast('클라우드 설정으로 바꿨어요'); }, fail);
         }),
         row('📱  이 기기 설정 쓰기', '클라우드를 이 기기의 설정으로 덮어써요', function () {
+            choosing = false;
             freshState();
             var p = Promise.resolve();
             metas.forEach(function (x) { p = p.then(function () { var text = x.doc.get(); return upload(x.doc, text, hashOf(text)); }); });
@@ -241,7 +245,8 @@ function signedIn() {
     var then = afterSignIn; afterSignIn = null;
     if (then) { then(); return; }
     CF.toast((session.email ? esc(session.email) + ' · ' : '') + '로그인했어요');
-    syncAll().then(function () { if (document.querySelector('#sheet_bg.show') && !state) return; reopen(); });
+    // the sheet shows the signed-in rows whether or not the first sync worked (they show its error); only the choice of copy stays up
+    syncAll().then(function () { if (!choosing) reopen(); });
 }
 function signInFailed(e) {
     var m = e && e.message || '';
