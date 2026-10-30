@@ -963,6 +963,22 @@ function xcDelta(t0, t1, usd) {
     }
     return any ? d : null;
 }
+// a coin that is never opened again never reaches the clean-up in load() and xcOpen(): once per session, drop what is past the keep window for every coin
+function sweepOld(open) {
+    var cut = Math.floor(Date.now() / 1000) - KEEP_DB_H * 3600;
+    open().then(function (d) {
+        if (!d) return;
+        try {
+            var st = d.transaction('min', 'readwrite').objectStore('min');
+            st.openKeyCursor().onsuccess = function (e) {
+                var c = e.target.result; if (!c) return;
+                if (+String(c.key).split('|')[1] < cut) st.delete(c.primaryKey);
+                c.continue();
+            };
+        } catch (e) { /* the next session tries again */ }
+    });
+}
+setTimeout(function () { sweepOld(db); sweepOld(xdb); }, 30000);
 function xcChanged() { if (CF.ind.cvd) CF.scheduleRefresh(true); }
 CF.cvdExtra(xcDelta);
 CF.onData(function (kind) { if (kind === 'all') xSync(); });

@@ -51,9 +51,17 @@ TradingView의 오픈소스 차트 엔진([Lightweight Charts™](https://www.tr
 - 그리기 도구 (추세선·연장선·수평선·수직선·피보나치·사각형·측정) — 왼쪽 도구바는 화살표로 접을 수 있고, 종목별로 저장됩니다
 - 오더플로우: CVD·델타, 미결제약정(OI), 실시간 청산, 대량 체결(시간이 지나면 사라짐), 호가 벽·히트맵, Bid/Ask, 추정 청산맵(모델)
 - 하단 지표 창 합치기, 지표 이름/설정/닫기 태그, 캔들 마감 카운트다운
-- **Pine Script® 지표**: 지표 라이브러리 22종(일목균형표 · 스토캐스틱 RSI · DMI/ADX · 파라볼릭 SAR · 스퀴즈 모멘텀 등)과 트레이딩뷰 오픈소스 스크립트 붙여넣기. [PineTS](https://github.com/LuxAlgo/PineTS)로 기기에서 실행하며 `input()` 설정 · `request.security` 다른 시간대를 지원합니다.
-  - 데이터는 Binance 선물 공개 API/WebSocket이며, 켜 둔 동안·차트가 보이는 동안에만 수신합니다.
+- 다른 거래소 체결 합산: Bybit · OKX · Hyperliquid · Bitfinex 체결을 CVD · 풋프린트 · 호가 패널에 더함 (켜 둔 동안 받은 체결부터)
+- **Pine Script® 지표**: 지표 라이브러리 59종(일목균형표 · 스토캐스틱 RSI · DMI/ADX · 파라볼릭 SAR · 스퀴즈 모멘텀 등)과 트레이딩뷰 오픈소스 스크립트 붙여넣기. [PineTS](https://github.com/LuxAlgo/PineTS)로 기기에서 실행하며 `input()` 설정 · `request.security` 다른 시간대를 지원합니다.
+  - 데이터는 거래소 공개 API/WebSocket이며, 켜 둔 동안·차트가 보이는 동안에만 수신합니다.
   - 추정 청산맵은 OI 변화와 일반적인 레버리지 구간으로 계산한 **추정치**이며 거래소 실제 데이터가 아닙니다.
+
+---
+
+## 🌐 웹 버전 · 설정 동기화
+
+- **웹**: https://wlgptjd333.github.io/coin-float/ (앱과 같은 차트. 알람은 저장만 되고 울리는 건 앱에서만입니다)
+- **설정 옮기기**: 차트 설정 › 설정 백업 · 가져오기에서 파일이나 클립보드로 옮기거나, Google 로그인 후 내 드라이브의 앱 전용 숨김 폴더에 저장할 수 있습니다.
 
 ---
 
@@ -82,12 +90,12 @@ TradingView의 오픈소스 차트 엔진([Lightweight Charts™](https://www.tr
 ## 🔒 데이터 출처 및 보안 주의사항
 
 - **공개 시장 데이터(Public Market Data)만 사용**
-  - Binance Futures 공개 WebSocket 및 공개 REST (`/fapi/v1/exchangeInfo`)만 호출합니다.
+  - Binance 공개 WebSocket · REST를 기본으로, 합산 기능을 켜면 Bybit · OKX · Hyperliquid · Bitfinex 공개 데이터도 받습니다.
 - **불필요한 기능 일절 배제**:
-  - ❌ 로그인 / 회원가입 없음
+  - ❌ 회원가입 없음 (Google 로그인은 드라이브 동기화를 쓸 때만, 선택)
   - ❌ API Key / Secret Key 입력창 없음
   - ❌ 주문 / 거래 / 잔고 / 포지션 조회 기능 없음
-  - ❌ 외부 서버 / 데이터베이스 통신 없음
+  - ❌ 자체 서버 / 데이터베이스 없음
 
 ---
 

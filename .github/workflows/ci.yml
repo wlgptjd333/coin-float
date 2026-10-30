@@ -19,7 +19,7 @@ jobs:
 
       - name: Chart scripts parse
         run: |
-          for f in app/src/main/assets/chart.js app/src/main/assets/flow.js; do node --check "$f"; done
+          for f in app/src/main/assets/*.js web/*.js; do node --check "$f"; done
 
       - name: Unit tests
         run: |

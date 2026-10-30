@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.33.1] - 2026-10-30
+
+### Fixed
+- **Privacy policy** now matches the app: optional Google sign-in and Drive sync, the other exchanges' public data, and
+  the exact alarm and boot permissions (it still said there was no login and that settings never left the device).
+- **Indicator search on the phone**: the keyboard covered the results while typing. The sheet now moves up with the
+  search box at the top, so results show right below it.
+- Stored trade minutes of coins that are not opened again are removed after 48 hours; they were only cleaned up when
+  that coin was opened.
+- The cross-exchange notes no longer say the other exchanges have no past trades: OKX and Bitfinex do serve them, the
+  app just does not download them.
+
+### Changed
+- README describes the web version, sync and the cross-exchange data; CI checks the syntax of every chart and web script.
+
 ## [1.33.0] - 2026-10-29
 
 ### Added

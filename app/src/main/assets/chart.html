@@ -187,6 +187,8 @@ body.pane-max #legend { display: none; }
 #sheet_bg.live { background: transparent; }
 #sheet { width: 100%; max-width: 440px; max-height: 88%; overflow-y: auto; background: var(--panel); border-radius: 14px 14px 0 0; padding: 6px 0 12px; box-shadow: 0 -4px 18px rgba(0,0,0,.35); -webkit-overflow-scrolling: touch; }
 #sheet_bg.live #sheet { max-height: 52%; }
+#sheet_bg.find { align-items: flex-start; }
+#sheet_bg.find #sheet { max-height: none; height: 100%; border-radius: 0; animation: none; }
 #sheet { animation: sheet-up .2s ease-out; }
 #sheet::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px; background: #3A3F4B; margin: 4px auto 0; }
 @keyframes sheet-up { from { transform: translateY(28px); opacity: .5; } to { transform: none; opacity: 1; } }
