@@ -57,6 +57,7 @@ fun SettingsScreen(
     }
     val settings by viewModel.settings.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
+    val regionBlocked by viewModel.regionBlocked.collectAsState()
     val hasOverlayPermission by viewModel.hasOverlayPermission.collectAsState()
     val hasNotificationPermission by viewModel.hasNotificationPermission.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -183,6 +184,7 @@ fun SettingsScreen(
                             settings = settings,
                             isServiceActive = isServiceActive,
                             connectionState = connectionState,
+                            regionBlocked = regionBlocked,
                             hasOverlayPermission = hasOverlayPermission,
                             hasNotificationPermission = hasNotificationPermission,
                             prices = viewModel.marketPrices,

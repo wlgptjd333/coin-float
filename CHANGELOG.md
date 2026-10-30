@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.34.2] - 2026-10-30
+
+### Added
+- **The reason for empty prices where Binance is blocked**: Binance refuses some countries (the United States, for one)
+  with HTTP 451. The home screen now says so instead of "연결 중" forever, and a chart that cannot load explains itself
+  on the chart instead of staying blank after a short toast.
+
 ## [1.34.1] - 2026-10-30
 
 ### Fixed

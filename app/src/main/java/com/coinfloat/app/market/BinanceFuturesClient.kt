@@ -38,6 +38,9 @@ class BinanceFuturesClient(
         private val BACKOFF_DELAYS_MS = longArrayOf(1000L, 2000L, 4000L, 8000L, 16000L, 30000L)
         private const val WATCHDOG_CHECK_MS = 5_000L
         private const val SILENCE_LIMIT_MS = 15_000L
+
+        /** Binance answers 451 from the countries it does not serve (the United States, for one). */
+        fun isRegionBlock(code: Int?) = code == 451
     }
 
     private val httpClient = OkHttpClient.Builder()
@@ -57,6 +60,14 @@ class BinanceFuturesClient(
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+
+    // Binance refuses this network's location: no retry can help, and the empty prices need an explanation.
+    private val _regionBlocked = MutableStateFlow(false)
+    val regionBlocked: StateFlow<Boolean> = _regionBlocked.asStateFlow()
+
+    private fun noteHttp(code: Int) {
+        if (isRegionBlock(code)) _regionBlocked.value = true else if (code in 200..299) _regionBlocked.value = false
+    }
 
     private val _tradeEvents = MutableSharedFlow<AggTradeEvent>(
         replay = 0,
@@ -199,6 +210,7 @@ class BinanceFuturesClient(
                 if (!isCurrent()) return
                 Log.d(TAG, "WebSocket connected successfully")
                 _connectionState.value = ConnectionState.CONNECTED
+                _regionBlocked.value = false
                 reconnectAttempt = 0
                 lastMessageAt = System.currentTimeMillis()
                 startWatchdog(generation)
@@ -230,7 +242,10 @@ class BinanceFuturesClient(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WebSocket failure: ${t.message}")
-                if (isCurrent()) handleDisconnect()
+                if (isCurrent()) {
+                    if (isRegionBlock(response?.code)) _regionBlocked.value = true
+                    handleDisconnect()
+                }
             }
         })
     }
@@ -444,6 +459,7 @@ class BinanceFuturesClient(
             .build()
 
         httpClient.newCall(request).execute().use { response ->
+            noteHttp(response.code)
             if (!response.isSuccessful) {
                 throw Exception("Failed to fetch exchangeInfo: HTTP ${response.code}")
             }
@@ -537,6 +553,7 @@ class BinanceFuturesClient(
         val request = Request.Builder().url(url).get().build()
         try {
             httpClient.newCall(request).execute().use { response ->
+                noteHttp(response.code)
                 if (!response.isSuccessful) return@withContext null
                 val body = response.body?.string() ?: return@withContext null
                 parse24hTicker(body)
