@@ -136,7 +136,8 @@ function syncDoc(doc) {
             return null;
         }
         var cloudMoved = !!meta && meta.at !== st.rev, localMoved = hash !== st.hash;
-        if (!meta || (localMoved && !cloudMoved) || (localMoved && cloudMoved && (st.changed || 0) >= meta.at)) return upload(doc, text, hash);
+        // a change not seen by the poll yet was made just now
+        if (!meta || (localMoved && !cloudMoved) || (localMoved && cloudMoved && (st.changed || Date.now()) >= meta.at)) return upload(doc, text, hash);
         if (cloudMoved && meta.hash === hash) { state.docs[doc.name] = { rev: meta.at, hash: hash }; saveState(); return null; }
         if (cloudMoved) return readDoc(doc.name).then(function (full) { return applyCloud(doc, full); });
         lastDone = Date.now(); lastError = '';

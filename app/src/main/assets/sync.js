@@ -33,10 +33,13 @@ function collect() {
 
 // The automatic sync leaves out what belongs to this device or changes all the time, so that switching the interval on one
 // device neither reloads nor overwrites another; keys in a stable order, so "unchanged" compares equal.
+// "liq.<coin>" is not a setting at all but the recent liquidations, rewritten every few seconds: synced, it made the devices
+// overwrite each other non-stop.
 var DEVICE_KEYS = { interval: 1, barSpacing: 1, railCur: 1, rail: 1, legendOpen: 1, domTab: 1, domShut: 1, ofBin: 1, heatIdx: 1, 'web.last': 1 };
+function isDeviceKey(name) { return !!DEVICE_KEYS[name] || name.indexOf('liq.') === 0; }
 function collectSync() {
     var all = collect(), ls = {};
-    Object.keys(all.ls).sort().forEach(function (name) { if (!DEVICE_KEYS[name]) ls[name] = all.ls[name]; });
+    Object.keys(all.ls).sort().forEach(function (name) { if (!isDeviceKey(name)) ls[name] = all.ls[name]; });
     return { kind: KIND, v: VERSION, ls: ls, alerts: all.alerts };
 }
 
@@ -51,11 +54,14 @@ function apply(o, keepDeviceKeys) {
     for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i);
         if (!k || k.indexOf(PREFIX) !== 0 || k === PREFIX + 'alertsDev') continue;
-        if (keepDeviceKeys && DEVICE_KEYS[k.slice(PREFIX.length)]) continue;
+        if (keepDeviceKeys && isDeviceKey(k.slice(PREFIX.length))) continue;
         drop.push(k);
     }
     drop.forEach(function (k) { localStorage.removeItem(k); });
-    Object.keys(o.ls).forEach(function (name) { localStorage.setItem(PREFIX + name, JSON.stringify(o.ls[name])); });
+    Object.keys(o.ls).forEach(function (name) {
+        if (keepDeviceKeys && isDeviceKey(name)) return;
+        localStorage.setItem(PREFIX + name, JSON.stringify(o.ls[name]));
+    });
     var rules = Array.isArray(o.alerts) ? o.alerts : [];
     if (isApp) { try { B.alertsPut(JSON.stringify(rules)); } catch (e) { /* kept the chart settings at least */ } }
     else {
