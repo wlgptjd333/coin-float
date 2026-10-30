@@ -42,7 +42,7 @@ CoinFloat은 어떤 앱 위에든 작은 시세창을 띄워 두는 앱입니다
 **주의:** 스토어 이미지와 설명에 Binance, TradingView의 로고나 이름을 내세우지 않습니다. 매수 · 매도 "신호", "수익" 같은 표현도 쓰지 않습니다.
 
 - **카테고리:** 금융
-- **개인정보처리방침:** https://github.com/wlgptjd333/coin-float/blob/main/PRIVACY.md
+- **개인정보처리방침:** https://wlgptjd333.github.io/coin-float/privacy.txt
 - **계정 삭제 URL:** https://wlgptjd333.github.io/coin-float/delete-account.html
 
 ## 2. 권한 신고 문구
