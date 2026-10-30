@@ -14,7 +14,7 @@ Google로 로그인하면 아래 정보가 Google의 Firebase 서비스(Authenti
 CoinFloat이 Google API에서 받은 정보의 사용과 이전은 제한적 사용(Limited Use) 요건을 포함한 Google API 서비스 사용자 데이터 정책을 따릅니다.
 
 3. 계정 삭제
-앱의 설정 탭 > Google 계정 · 동기화 > 계정 삭제, 또는 https://wlgptjd333.github.io/coin-float/delete-account.html 에서 삭제할 수 있습니다. 로그인 정보와 클라우드에 저장된 설정이 바로 삭제되고 별도로 보관하지 않습니다.
+앱의 설정 탭 > Google 계정 · 동기화 > 계정 삭제, 또는 https://coinfloat.byhyesung.com/delete-account.html 에서 삭제할 수 있습니다. 로그인 정보와 클라우드에 저장된 설정이 바로 삭제되고 별도로 보관하지 않습니다.
 
 4. 기기에 저장되는 정보
 위 설정과 차트에 필요한 시장 데이터(체결 요약, 호가 히트맵)는 기기 안에도 저장됩니다. 앱을 삭제하면 함께 삭제됩니다.
@@ -42,4 +42,5 @@ CoinFloat이 Google API에서 받은 정보의 사용과 이전은 제한적 사
 표시되는 시세·지표·추정치는 정보 제공용이며 투자 권유나 자문이 아닙니다. 데이터는 지연되거나 틀릴 수 있습니다.
 
 9. 문의
+support@byhyesung.com
 https://github.com/wlgptjd333/coin-float/issues

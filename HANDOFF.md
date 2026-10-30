@@ -1,6 +1,6 @@
 # CoinFloat 인수인계서
 
-작성일: 2026-10-30 · 기준 버전: **v1.34.2**
+작성일: 2026-10-30 · 기준 버전: **v1.34.3**
 받는 쪽: Gemini Argon 4 (이후 버그 수정 · 기능 개선 담당)
 
 이 문서는 코드에서 바로 알 수 없는 것을 적었습니다. 내용이 코드와 다르면 코드가 맞습니다. 변경 이력은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
@@ -13,8 +13,9 @@
 |---|---|
 | 무엇 | 다른 앱 위에 코인 시세를 띄우는 Android 오버레이와, 앱 안의 고급 차트(같은 차트의 웹 버전 포함) |
 | 저장소 | https://github.com/wlgptjd333/coin-float (공개, AGPL-3.0) |
-| 웹 | https://wlgptjd333.github.io/coin-float/ |
+| 웹 | https://coinfloat.byhyesung.com/ |
 | 릴리즈 | https://github.com/wlgptjd333/coin-float/releases/latest |
+| 도메인 | byhyesung.com (Cloudflare Registrar). coinfloat 서브도메인은 GitHub Pages로 CNAME, 문의 메일 support@는 Cloudflare Email Routing으로 전달 |
 | 데이터 | Binance USDⓈ-M 선물 공개 API · WebSocket. 차트 합산 기능은 Bybit · OKX · Hyperliquid · Bitfinex 공개 스트림도 사용 |
 | 서버 | 자체 서버 없음. 로그인 · 설정 동기화는 Firebase(Authentication, Firestore, 프로젝트 `coin-float`)를 REST로 사용 |
 | 테스트 기기 | Galaxy S23+ (SM-S916N), Android 17 빌드 |
