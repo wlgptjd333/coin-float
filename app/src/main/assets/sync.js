@@ -10,8 +10,13 @@ var isApp = !!(B && typeof B.alertsGet === 'function');
 function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
 function stamp() { var d = new Date(); return d.getFullYear() + CF.pad2(d.getMonth() + 1) + CF.pad2(d.getDate()) + '-' + CF.pad2(d.getHours()) + CF.pad2(d.getMinutes()); }
 
+// read from where the rules are kept: the alert screen's copy is empty until that screen has loaded, and an empty list here
+// would erase the rules on the other side
 function alertRules() {
-    try { var a = window.__alerts && window.__alerts.data(); return a && Array.isArray(a.rules) ? a.rules : []; } catch (e) { return []; }
+    try {
+        var a = isApp ? JSON.parse(B.alertsGet('')) : CF.LS.get('alertsDev', null);
+        return a && Array.isArray(a.rules) ? a.rules : [];
+    } catch (e) { return []; }
 }
 
 function collect() {
@@ -26,15 +31,29 @@ function collect() {
     return { kind: KIND, v: VERSION, at: new Date().toISOString(), from: isApp ? 'app' : 'web', ls: ls, alerts: alertRules() };
 }
 
+// The automatic sync leaves out what belongs to this device or changes all the time, so that switching the interval on one
+// device neither reloads nor overwrites another; keys in a stable order, so "unchanged" compares equal.
+var DEVICE_KEYS = { interval: 1, barSpacing: 1, railCur: 1, rail: 1, legendOpen: 1, domTab: 1, domShut: 1, ofBin: 1, heatIdx: 1, 'web.last': 1 };
+function collectSync() {
+    var all = collect(), ls = {};
+    Object.keys(all.ls).sort().forEach(function (name) { if (!DEVICE_KEYS[name]) ls[name] = all.ls[name]; });
+    return { kind: KIND, v: VERSION, ls: ls, alerts: all.alerts };
+}
+
 function validate(o) {
     if (!o || o.kind !== KIND || typeof o.ls !== 'object' || !o.ls) throw new Error('CoinFloat 설정 파일이 아니에요');
     if (o.v > VERSION) throw new Error('더 새 버전에서 만든 파일이에요. 앱을 업데이트해 주세요');
     return o;
 }
 
-function apply(o) {
+function apply(o, keepDeviceKeys) {
     var drop = [];
-    for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf(PREFIX) === 0 && k !== PREFIX + 'alertsDev') drop.push(k); }
+    for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k || k.indexOf(PREFIX) !== 0 || k === PREFIX + 'alertsDev') continue;
+        if (keepDeviceKeys && DEVICE_KEYS[k.slice(PREFIX.length)]) continue;
+        drop.push(k);
+    }
     drop.forEach(function (k) { localStorage.removeItem(k); });
     Object.keys(o.ls).forEach(function (name) { localStorage.setItem(PREFIX + name, JSON.stringify(o.ls[name])); });
     var rules = Array.isArray(o.alerts) ? o.alerts : [];
@@ -94,33 +113,10 @@ function row(title, sub, fn) {
     b.onclick = fn; return b;
 }
 
-// In the app, Google Drive goes through Android's own Google sign-in (Google does not allow it inside a WebView); the
-// web version's web/cloud.js does the same with Google's browser sign-in. Both use the same file in the same folder.
-if (isApp && typeof B.driveSave === 'function' && !window.CF_CLOUD) {
-    var pending = {}, seq = 0;
-    window.__driveDone = function (id, ok, text) { var cb = pending[id]; delete pending[id]; if (cb) cb(ok, text); };
-    var drive = function (name, arg, cb) {
-        var id = 'd' + (++seq); pending[id] = cb;
-        try { B[name](id + '|' + (arg || '')); } catch (e) { delete pending[id]; cb(false, 'Google 드라이브에 연결하지 못했어요'); }
-    };
-    window.CF_CLOUD = {
-        rows: function (collect, importText) {
-            return [
-                CF.sectionTitle('Google 드라이브 동기화'),
-                row('☁️  드라이브에 저장', '내 Google 계정의 앱 전용 공간에 지금 설정 올리기 (웹과 같은 파일)', function () {
-                    CF.toast('Google 드라이브에 저장하는 중…');
-                    drive('driveSave', JSON.stringify(collect()), function (ok, t) { CF.toast(ok ? 'Google 드라이브에 저장했어요' : t); });
-                }),
-                row('☁️  드라이브에서 불러오기', '다른 기기 · 웹에서 올린 설정으로 바꾸기', function () {
-                    drive('driveLoad', '', function (ok, t) { if (ok) importText(t); else CF.toast(t); });
-                })
-            ];
-        }
-    };
-}
-
 CF.openSync = function (backFn) {
-    var rows = [
+    var cloud = window.CF_CLOUD ? window.CF_CLOUD.rows(function () { CF.openSync(backFn); }) : [];
+    var rows = cloud.concat([
+        CF.sectionTitle('파일로 옮기기'),
         CF.noteRow('지표 · 지표 프로필 · 작도 · 화면 배치 · Pine 스크립트 · 알람 규칙을 한 파일로 옮겨요. 앱과 웹(브라우저) 어디서 만든 파일이든 서로 가져올 수 있어요.'),
         CF.sectionTitle('내보내기'),
         row('📤  설정 파일로 저장', isApp ? '공유 창에서 내 파일 · 드라이브 · 카톡 등으로 보내기' : 'JSON 파일 다운로드', exportFile),
@@ -128,9 +124,8 @@ CF.openSync = function (backFn) {
         CF.sectionTitle('가져오기 (이 기기 설정을 덮어써요)'),
         row('📥  설정 파일 열기', '저장해 둔 coinfloat-settings 파일 선택', pickFile),
         row('📋  클립보드에서 가져오기', '복사해 둔 설정 붙여 넣기', pasteText)
-    ];
-    if (window.CF_CLOUD && typeof window.CF_CLOUD.rows === 'function') rows = rows.concat(window.CF_CLOUD.rows(collect, importText));
-    CF.openSheet('설정 백업 · 가져오기', rows);
+    ]);
+    CF.openSheet('계정 · 설정 동기화', rows);
     if (backFn) {
         var h = document.querySelector('#sheet h3');
         if (h && !h.querySelector('.back')) {
@@ -139,5 +134,5 @@ CF.openSync = function (backFn) {
         }
     }
 };
-CF.syncData = { collect: collect, importText: importText };
+CF.syncData = { collect: collect, importText: importText, collectSync: collectSync, applySync: function (o) { apply(validate(o), true); } };
 })();

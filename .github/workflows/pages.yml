@@ -35,7 +35,7 @@ jobs:
           cp app/src/main/assets/*.js app/src/main/assets/*.txt _site/
           cp web/* _site/
           # chart.html becomes index.html: web.js stands in for the app before chart.js runs, plus the install manifest
-          sed -e 's|<script src="chart.js"></script>|<script src="config.js"></script>\n<script src="web.js"></script>\n<script src="cloud.js"></script>\n<script src="chart.js"></script>|' \
+          sed -e 's|<script src="chart.js"></script>|<script src="web.js"></script>\n<script src="chart.js"></script>|' \
               -e 's|<title>CoinFloat Chart</title>|<title>CoinFloat</title>\n<link rel="manifest" href="manifest.webmanifest">\n<link rel="icon" href="icon.svg">\n<meta name="theme-color" content="#131722">|' \
               app/src/main/assets/chart.html > _site/index.html
           # every deploy gets new script addresses, so browsers never mix a cached old script with a new page

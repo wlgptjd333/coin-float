@@ -130,6 +130,28 @@ class SettingsRepository(
      */
     suspend fun awaitSettings(): OverlaySettings = settingsFlow.first { it !== INITIAL }
 
+    /** The settings that came with the signed-in account (see [SettingsSync]), written in one transaction. */
+    suspend fun applySynced(s: OverlaySettings) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_SELECTED_SYMBOLS] = s.selectedSymbols.joinToString(",")
+            preferences[KEY_SYMBOL_DISPLAY_MODE] = s.symbolDisplayMode.name
+            preferences[KEY_FONT_SIZE_SP] = s.fontSizeSp
+            preferences[KEY_TEXT_COLOR] = s.textColorHex
+            preferences[KEY_TEXT_OPACITY] = s.textOpacity
+            preferences[KEY_BACKGROUND_COLOR] = s.backgroundColorHex
+            preferences[KEY_BACKGROUND_OPACITY] = s.backgroundOpacity
+            preferences[KEY_PADDING_DP] = s.paddingDp
+            preferences[KEY_SHOW_24H_CHANGE] = s.show24hChange
+            preferences[KEY_CHART_ENABLED] = s.isChartEnabled
+            preferences[KEY_CHART_INTERVAL] = s.defaultChartInterval
+            preferences[KEY_CHART_SIZE_PROFILE] = s.chartSizeProfile.name
+            preferences[KEY_CUSTOM_CHART_WIDTH_DP] = s.customChartWidthDp
+            preferences[KEY_CUSTOM_CHART_HEIGHT_DP] = s.customChartHeightDp
+            preferences[KEY_REFRESH_RATE_PROFILE] = s.refreshRateProfile.name
+            preferences[KEY_UPDOWN_SCHEME] = s.upDownScheme.name
+        }
+    }
+
     suspend fun updateSelectedSymbols(symbols: List<String>) {
         editSymbols { it.clear(); it.addAll(symbols) }
     }

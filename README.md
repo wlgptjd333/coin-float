@@ -61,7 +61,7 @@ TradingView의 오픈소스 차트 엔진([Lightweight Charts™](https://www.tr
 ## 🌐 웹 버전 · 설정 동기화
 
 - **웹**: https://wlgptjd333.github.io/coin-float/ (앱과 같은 차트. 알람은 저장만 되고 울리는 건 앱에서만입니다)
-- **설정 옮기기**: 차트 설정 › 설정 백업 · 가져오기에서 파일이나 클립보드로 옮기거나, Google 로그인 후 내 드라이브의 앱 전용 숨김 폴더에 저장할 수 있습니다.
+- **Google 계정 동기화 (선택)**: 로그인하면 차트 설정 · 작도 · 알람 · 시세창 모양 · 관심 종목이 앱과 웹에서 자동으로 맞춰집니다. 앱의 설정 탭 › Google 계정 · 동기화. Firebase에 저장되며 [계정 삭제](https://wlgptjd333.github.io/coin-float/delete-account.html)도 여기서 합니다. 파일이나 클립보드로 옮기는 방법도 그대로 있습니다.
 
 ---
 
@@ -92,10 +92,10 @@ TradingView의 오픈소스 차트 엔진([Lightweight Charts™](https://www.tr
 - **공개 시장 데이터(Public Market Data)만 사용**
   - Binance 공개 WebSocket · REST를 기본으로, 합산 기능을 켜면 Bybit · OKX · Hyperliquid · Bitfinex 공개 데이터도 받습니다.
 - **불필요한 기능 일절 배제**:
-  - ❌ 회원가입 없음 (Google 로그인은 드라이브 동기화를 쓸 때만, 선택)
+  - ❌ 필수 로그인 없음 (Google 로그인은 동기화를 쓸 때만, 선택)
   - ❌ API Key / Secret Key 입력창 없음
   - ❌ 주문 / 거래 / 잔고 / 포지션 조회 기능 없음
-  - ❌ 자체 서버 / 데이터베이스 없음
+  - ❌ 자체 서버 없음 (동기화 데이터는 Firebase에 저장)
 
 ---
 

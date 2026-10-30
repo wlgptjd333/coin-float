@@ -75,6 +75,7 @@ fun SettingsContent(
     onOpenAppInfo: () -> Unit,
     onShowStabilityHelp: () -> Unit,
     onShowGuide: () -> Unit,
+    onOpenAccount: () -> Unit,
     onShowLicenses: () -> Unit,
     onShowPrivacy: () -> Unit
 ) {
@@ -196,6 +197,16 @@ fun SettingsContent(
             }
         }
         if (settings.isChartEnabled) Caption("미니 차트 오른쪽 아래 손잡이를 끌면 크기를, 위쪽을 끌면 위치를 바꿀 수 있어요.")
+
+        SectionLabel("계정")
+        Group {
+            ListRow(
+                title = "Google 계정 · 동기화",
+                subtitle = "로그인하면 관심 종목 · 시세창 · 차트 설정이 앱과 웹에서 자동으로 맞춰져요",
+                onClick = onOpenAccount,
+                trailing = { Chevron() }
+            )
+        }
 
         SectionLabel("차트 · 알람 도움말")
         Group {
