@@ -3,8 +3,6 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    // JVM screenshot rendering of the Compose screens (design review / visual regression), no device needed
-    id("app.cash.paparazzi")
 }
 
 // Release signing: keystore.properties (gitignored) or COINFLOAT_KEYSTORE_* environment variables (CI secrets).
