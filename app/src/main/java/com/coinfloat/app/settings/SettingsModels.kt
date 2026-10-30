@@ -33,12 +33,12 @@ data class SymbolConfig(
 
 data class OverlaySettings(
     val selectedSymbols: List<String> = listOf("BTCUSDT", "ETHUSDT"),
-    val symbolDisplayMode: SymbolDisplayMode = SymbolDisplayMode.SHORT,
-    val fontSizeSp: Float = 11f,
+    val symbolDisplayMode: SymbolDisplayMode = SymbolDisplayMode.HIDDEN,
+    val fontSizeSp: Float = 9f,
     val textColorHex: String = "#65D69A",
     val textOpacity: Float = 1.0f,
     val backgroundColorHex: String = "#1E2024",
-    val backgroundOpacity: Float = 0.85f,
+    val backgroundOpacity: Float = 0f,
     val paddingDp: Int = 2,
     val show24hChange: Boolean = false,
     val overlayX: Int = -1,
@@ -47,10 +47,10 @@ data class OverlaySettings(
     val isOverlayVisible: Boolean = true,
     val isChartEnabled: Boolean = true,
     val defaultChartInterval: String = "15m",
-    val chartSizeProfile: ChartSizeProfile = ChartSizeProfile.MEDIUM,
-    val customChartWidthDp: Int = 260,
-    val customChartHeightDp: Int = 170,
-    val refreshRateProfile: RefreshRateProfile = RefreshRateProfile.FPS_5,
+    val chartSizeProfile: ChartSizeProfile = ChartSizeProfile.CUSTOM,
+    val customChartWidthDp: Int = 274,
+    val customChartHeightDp: Int = 283,
+    val refreshRateProfile: RefreshRateProfile = RefreshRateProfile.FPS_2,
     val upDownScheme: UpDownScheme = UpDownScheme.GREEN_RED
 ) {
     fun getChartDimensionsDp(): Pair<Int, Int> = when (chartSizeProfile) {

@@ -236,10 +236,10 @@ fun SettingsContent(
             GroupDivider()
             ListRow(title = "오픈소스 라이선스", onClick = onShowLicenses, trailing = { Chevron() })
             GroupDivider()
-            ListRow(title = "개인정보 처리방침", subtitle = "개인정보를 수집하지 않아요", onClick = onShowPrivacy, trailing = { Chevron() })
+            ListRow(title = "개인정보 처리방침", subtitle = "로그인은 선택이고, 할 때만 계정 정보가 저장돼요", onClick = onShowPrivacy, trailing = { Chevron() })
         }
         Caption(
-            "Binance 선물 공개 시세를 사용하며 로그인·API 키·주문 기능이 없어요. 표시되는 시세·지표·추정치는 정보 제공용이며 " +
+            "거래소 공개 시세를 사용하며 API 키·주문 기능이 없어요. 표시되는 시세·지표·추정치는 정보 제공용이며 " +
                 "투자 권유가 아니에요. 데이터는 지연되거나 틀릴 수 있어요."
         )
         Spacer(Modifier.height(28.dp))
