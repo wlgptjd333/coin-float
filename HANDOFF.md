@@ -153,7 +153,7 @@ $env:PATH = "$env:LOCALAPPDATA\Programs\devtools\git\cmd;$env:LOCALAPPDATA\Progr
 
 ### 먼저
 
-1. **스토어 준비.** `targetSdk` 36과 AAB는 들어갔습니다. Paparazzi 스크린샷 테스트는 compileSdk 36에서 돌지 않아 제거했습니다(기준 이미지가 없어 잃은 검증은 없음. 다시 넣으려면 Kotlin 2 업그레이드 필요). Play 앱 서명은 **기존 키를 그대로 등록**해야 GitHub APK와 Play 빌드가 서로 업데이트되고 Android OAuth 클라이언트의 SHA-1도 유지됩니다. Google 키를 쓰면 그 SHA-1로 Android 클라이언트를 하나 더 만들어야 합니다. 수익화 전 법률 · 세무 확인도 필요합니다.
+1. **스토어 준비.** `targetSdk` 36과 AAB는 들어갔습니다. Paparazzi 스크린샷 테스트는 compileSdk 36에서 돌지 않아 제거했습니다(기준 이미지가 없어 잃은 검증은 없음. 다시 넣으려면 Kotlin 2 업그레이드 필요). Play 앱 서명은 **기존 키를 그대로 등록**해야 GitHub APK와 Play 빌드가 서로 업데이트되고 Android OAuth 클라이언트의 SHA-1도 유지됩니다. Google 키를 쓰면 그 SHA-1로 Android 클라이언트를 하나 더 만들어야 합니다. 수익화 전 법률 · 세무 확인도 필요합니다. 스토어 설명, 권한 신고 문구, 데이터 보안 답변, 테스터 모집 글은 `docs/store-launch.md`에 있습니다. Binance가 막히는 지역에서 빈 화면 대신 이유를 보여 주는 처리는 아직 없습니다.
 2. **동기화의 한계.** 앱의 동기화는 차트 페이지가 떠 있을 때 돕니다(앱에서 차트 탭을 열 때). 관심 종목만 바꾸고 차트 탭을 안 열면 다음에 열 때 올라갑니다. 양쪽을 모두 바꿨으면 나중 것이 이깁니다.
 3. **7번 항목을 폰에서 확인**하고 나오는 버그를 수정합니다.
 
