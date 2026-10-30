@@ -18,12 +18,12 @@ val releaseKeystore = signingValue("COINFLOAT_KEYSTORE_FILE", "storeFile")
 
 android {
     namespace = "com.coinfloat.app"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.coinfloat.app"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 65
         versionName = "1.33.1"
 
