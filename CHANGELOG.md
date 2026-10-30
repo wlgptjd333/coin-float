@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.34.1] - 2026-10-30
+
+### Fixed
+- **Sync no longer treats the recent-liquidations cache as a setting.** It is rewritten every few seconds, so with the
+  liquidation indicator on, devices kept uploading and overwriting each other, losing real changes and reloading pages.
+- A setting changed just before a sync wins over an older copy from another device.
+
 ## [1.34.0] - 2026-10-30
 
 ### Added
