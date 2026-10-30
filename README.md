@@ -60,8 +60,8 @@ TradingView의 오픈소스 차트 엔진([Lightweight Charts™](https://www.tr
 
 ## 🌐 웹 버전 · 설정 동기화
 
-- **웹**: https://wlgptjd333.github.io/coin-float/ (앱과 같은 차트. 알람은 저장만 되고 울리는 건 앱에서만입니다)
-- **Google 계정 동기화 (선택)**: 로그인하면 차트 설정 · 작도 · 알람 · 시세창 모양 · 관심 종목이 앱과 웹에서 자동으로 맞춰집니다. 앱의 설정 탭 › Google 계정 · 동기화. Firebase에 저장되며 [계정 삭제](https://wlgptjd333.github.io/coin-float/delete-account.html)도 여기서 합니다. 파일이나 클립보드로 옮기는 방법도 그대로 있습니다.
+- **웹**: https://coinfloat.byhyesung.com/ (앱과 같은 차트. 알람은 저장만 되고 울리는 건 앱에서만입니다)
+- **Google 계정 동기화 (선택)**: 로그인하면 차트 설정 · 작도 · 알람 · 시세창 모양 · 관심 종목이 앱과 웹에서 자동으로 맞춰집니다. 앱의 설정 탭 › Google 계정 · 동기화. Firebase에 저장되며 [계정 삭제](https://coinfloat.byhyesung.com/delete-account.html)도 여기서 합니다. 파일이나 클립보드로 옮기는 방법도 그대로 있습니다.
 
 ---
 

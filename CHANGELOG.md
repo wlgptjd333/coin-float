@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.34.3] - 2026-10-30
+
+### Changed
+- **The website moved to https://coinfloat.byhyesung.com/** (the old github.io address redirects). The privacy policy and
+  the account deletion page point to it, and support@byhyesung.com is the contact address. Web users sign in once more,
+  because a browser keeps its login per address.
+
 ## [1.34.2] - 2026-10-30
 
 ### Added

@@ -22,8 +22,8 @@ android {
         applicationId = "com.coinfloat.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 68
-        versionName = "1.34.2"
+        versionCode = 69
+        versionName = "1.34.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

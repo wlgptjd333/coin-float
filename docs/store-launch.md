@@ -42,8 +42,10 @@ CoinFloat은 어떤 앱 위에든 작은 시세창을 띄워 두는 앱입니다
 **주의:** 스토어 이미지와 설명에 Binance, TradingView의 로고나 이름을 내세우지 않습니다. 매수 · 매도 "신호", "수익" 같은 표현도 쓰지 않습니다.
 
 - **카테고리:** 금융
-- **개인정보처리방침:** https://wlgptjd333.github.io/coin-float/privacy.txt
-- **계정 삭제 URL:** https://wlgptjd333.github.io/coin-float/delete-account.html
+- **개인정보처리방침:** https://coinfloat.byhyesung.com/privacy.txt
+- **계정 삭제 URL:** https://coinfloat.byhyesung.com/delete-account.html
+- **웹사이트:** https://coinfloat.byhyesung.com/about.html
+- **개발자 이메일:** support@byhyesung.com
 
 ## 2. 권한 신고 문구
 
@@ -114,7 +116,7 @@ CVD, 호가 히트맵, 풋프린트, 합산 체결도 들어 있습니다.
 3. 플레이스토어에서 설치하고 2주만 지워지지 않게 두기
 
 불편한 점이나 원하는 기능을 알려 주시면 바로 반영할게요.
-웹으로 먼저 구경하기: https://wlgptjd333.github.io/coin-float/
+웹으로 먼저 구경하기: https://coinfloat.byhyesung.com/
 ```
 
 게시 전에 게시판의 홍보 규칙을 확인합니다.

@@ -1,6 +1,6 @@
 name: Web (GitHub Pages)
 
-# The chart page (app/src/main/assets) as a website: https://wlgptjd333.github.io/coin-float/
+# The chart page (app/src/main/assets) as a website: https://coinfloat.byhyesung.com/
 # web/ adds what the Android side does in the app (coin search, address bar state, install manifest).
 on:
   push:
