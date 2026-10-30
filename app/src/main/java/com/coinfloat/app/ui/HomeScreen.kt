@@ -65,6 +65,7 @@ fun HomeContent(
     settings: OverlaySettings,
     isServiceActive: Boolean,
     connectionState: ConnectionState,
+    regionBlocked: Boolean,
     hasOverlayPermission: Boolean,
     hasNotificationPermission: Boolean,
     prices: StateFlow<Map<String, MarketPrice>>,
@@ -96,12 +97,22 @@ fun HomeContent(
     Column {
         ScreenHeader(title = "CoinFloat", brand = true) {
             val (label, color) = when {
+                regionBlocked -> "접속 제한" to Cf.Warn
                 !isServiceActive -> "시세창 꺼짐" to Cf.TextMuted
                 connectionState == ConnectionState.CONNECTED -> "실시간" to Cf.Brand
                 connectionState == ConnectionState.DISCONNECTED -> "대기 중" to Cf.TextMuted
                 else -> "연결 중" to Cf.Warn
             }
             StatusPill(label, color)
+        }
+
+        if (regionBlocked) {
+            Spacer(Modifier.height(8.dp))
+            Notice(
+                icon = Icons.Outlined.Layers,
+                title = "이 지역에서는 시세를 받을 수 없어요",
+                body = "Binance가 일부 국가(미국 등)에서 접속을 막고 있어요. 앱 오류가 아니라 지역 제한이고, Binance를 이용할 수 있는 지역의 네트워크에서는 바로 작동해요."
+            )
         }
 
         if (!hasOverlayPermission) {

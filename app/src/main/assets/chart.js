@@ -3692,6 +3692,8 @@ function setPrecision(dec) {
     Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); });
 }
 function showLoading(on) { $('loading').className = on ? '' : 'hide'; }
+// stays on the empty chart (a toast would leave it blank with no reason); empty text hides it
+function showLoadError(text) { var e = $('load_err'); e.textContent = text || ''; e.className = text ? 'show' : ''; }
 
 function reload(symbolChanged) {
     var seq = ++loadSeq;
@@ -3703,6 +3705,7 @@ function reload(symbolChanged) {
         .then(function (raw) {
             if (seq !== loadSeq) return;
             if (!Array.isArray(raw) || !raw.length) throw new Error('empty');
+            showLoadError('');
             var res = parseRows(raw);
             candles = res.rows; setPrecision(res.dec);
             D = newD();
@@ -3721,9 +3724,11 @@ function reload(symbolChanged) {
             if (active) subscribeKline();
             syncFeatures();
         })
-        .catch(function () {
+        .catch(function (e) {
             if (seq !== loadSeq) return;
             showLoading(false);
+            // a blocked browser may not even see the status (no CORS headers on the refusal), so the plain failure mentions it too
+            showLoadError(/451/.test(e && e.message || '') ? '이 지역에서는 Binance 시세를 받을 수 없어요. Binance가 일부 국가(미국 등)에서 접속을 막고 있어요.' : '차트 데이터를 불러오지 못했어요. 인터넷 연결을 확인해 주세요. Binance가 접속을 막는 지역(미국 등)에서는 시세를 받을 수 없어요.');
             toast('차트 데이터를 불러오지 못했어요', '다시 시도', function () { reload(false); });
         });
 }

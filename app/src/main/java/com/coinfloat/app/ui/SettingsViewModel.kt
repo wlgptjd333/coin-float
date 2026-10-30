@@ -46,6 +46,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val isServiceActive: StateFlow<Boolean> = FloatingOverlayService.isServiceActive
 
     val connectionState: StateFlow<ConnectionState> = marketDataRepository.connectionState
+    val regionBlocked: StateFlow<Boolean> = marketDataRepository.regionBlocked
 
     private val _hasOverlayPermission = MutableStateFlow(checkOverlayPermission())
     val hasOverlayPermission: StateFlow<Boolean> = _hasOverlayPermission.asStateFlow()

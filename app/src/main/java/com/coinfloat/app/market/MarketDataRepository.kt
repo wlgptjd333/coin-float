@@ -34,6 +34,7 @@ class MarketDataRepository(
     private val binanceClient = BinanceFuturesClient(clientScope)
 
     val connectionState: StateFlow<ConnectionState> = binanceClient.connectionState
+    val regionBlocked: StateFlow<Boolean> = binanceClient.regionBlocked
 
     /** Live candles of the floating mini chart's symbol/interval (see [setMiniChartStream]). */
     val klineEvents = binanceClient.klineEvents

@@ -71,7 +71,7 @@ Market data comes from Binance's public API, which blocks some regions such as t
 empty, please test from a region where Binance is available (for example South Korea).
 ```
 
-**심사 위험:** Binance 선물 API는 미국 등 일부 지역에서 HTTP 451로 막힌다고 보고됩니다(개발자 포럼 기준). 심사 환경이 미국이면 시세가 비어 "작동하지 않는 앱"으로 거절될 수 있습니다. 대응: 출시 국가를 Binance 이용 가능 지역으로 제한하고, 위 안내를 적고, 451을 받으면 빈 화면 대신 이유를 보여 주는 처리를 앱에 넣습니다(아직 안 됨).
+**심사 위험:** Binance 선물 API는 미국 등 일부 지역에서 HTTP 451로 막힌다고 보고됩니다(개발자 포럼 기준). 심사 환경이 미국이면 시세가 비어 "작동하지 않는 앱"으로 거절될 수 있습니다. 대응: 출시 국가를 Binance 이용 가능 지역으로 제한하고, 위 안내를 적습니다. 앱은 451을 받으면 홈 화면과 차트에 이유를 보여 줍니다(1.34.2).
 
 ## 3. 데이터 보안 양식
 
