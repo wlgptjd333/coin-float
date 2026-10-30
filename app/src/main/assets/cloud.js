@@ -269,7 +269,8 @@ function signOut() {
 // ---- deleting the account: the documents, then the sign-in itself ---------------------------------------------------
 function deleteAccount() {
     var p = Promise.resolve();
-    ['app', 'chart'].forEach(function (n) { p = p.then(function () { return api(docUrl(n), { method: 'DELETE' }); }); });
+    // the sign-in goes last: without it nobody could reach documents that failed to delete
+    ['app', 'chart'].forEach(function (n) { p = p.then(function () { return api(docUrl(n), { method: 'DELETE' }).then(function (r) { if (!r.ok) throw new Error('DOC_DELETE ' + r.status); }); }); });
     return p.then(token).then(function (t) { return json(AUTH + 'delete?key=' + API_KEY, { idToken: t }); }).then(function () {
         forget();
         if (isApp && typeof B.googleSignOut === 'function') { try { B.googleSignOut(''); } catch (e) { /* gone anyway */ } }
