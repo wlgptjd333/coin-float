@@ -119,9 +119,46 @@ CVD, 호가 히트맵, 풋프린트, 합산 체결도 들어 있습니다.
 웹으로 먼저 구경하기: https://coinfloat.byhyesung.com/
 ```
 
-게시 전에 게시판의 홍보 규칙을 확인합니다.
+게시 전에 게시판의 홍보 규칙을 확인합니다. 참여 링크가 있어야 하므로 Play 개발자 계정과 비공개 테스트 트랙을 만든 뒤에 올립니다.
+
+**영어 모집 글 (r/TestersCommunity, r/AndroidClosedTesting 등):**
+
+```text
+[Android] Looking for closed test testers: floating crypto price window
+
+I built an app that keeps live crypto prices floating over other apps, with a full chart one tap away.
+It is free, has no ads or payments, needs no exchange account, and the source is public.
+
+I need testers for Google Play's 14-day closed test.
+1. Join: [closed test link]
+2. Install from Google Play and keep it installed for 14 days
+
+I am happy to test your app in return. Comment with your link.
+```
+
+**어디에 올리나:**
+
+| 순서 | 곳 | 메모 |
+|---|---|---|
+| 1 | 가족, 친구, 지인 | 가장 오래 남습니다. 먼저 3~5명 |
+| 2 | 코인 텔레그램, 오픈채팅, 코인판 등 커뮤니티 | 실제 쓸 사람이라 의견을 받을 수 있습니다. 규칙 확인 후 게시 |
+| 3 | r/TestersCommunity, r/AndroidClosedTesting | 서로 테스트해 주는 곳입니다. 상대 앱도 설치해 줘야 합니다 |
+
+유료 대행(크몽, Fiverr 등)도 있지만 Play 정책에 맞는지 확인되지 않아 권하지 않습니다. 정식 출시 신청서에 테스터를 어떻게 모았고 어떤 의견을 받았는지 묻는 항목이 있으니, 받은 의견을 관리표에 적어 둡니다.
 
 **관리표:** 이름 또는 닉네임 / Google 계정 이메일(비공개 테스트 명단용) / 참여일 / 의견
+
+## 이미지
+
+`docs/store/`에 있습니다. 실제 앱 화면이며 상태 표시줄의 알림 아이콘은 가렸습니다.
+
+| 파일 | 용도 |
+|---|---|
+| `icon-512.png` | 앱 아이콘 (512 x 512) |
+| `feature-1024x500.png` | 그래픽 이미지 (1024 x 500) |
+| `screenshot-1.png` ~ `screenshot-5.png` | 휴대전화 스크린샷 (1170 x 2340, 비율 2:1) |
+
+다른 앱 위에 시세창이 떠 있는 화면이 앱의 핵심이므로, 그런 캡처를 받으면 첫 번째 스크린샷으로 넣습니다.
 
 ## 6. 계정 유형
 
