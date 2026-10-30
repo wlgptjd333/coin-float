@@ -3,8 +3,6 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    // JVM screenshot rendering of the Compose screens (design review / visual regression), no device needed
-    id("app.cash.paparazzi")
 }
 
 // Release signing: keystore.properties (gitignored) or COINFLOAT_KEYSTORE_* environment variables (CI secrets).
@@ -18,14 +16,14 @@ val releaseKeystore = signingValue("COINFLOAT_KEYSTORE_FILE", "storeFile")
 
 android {
     namespace = "com.coinfloat.app"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.coinfloat.app"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 65
-        versionName = "1.33.1"
+        targetSdk = 36
+        versionCode = 66
+        versionName = "1.34.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -97,8 +95,10 @@ dependencies {
     // DataStore Preferences
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
-    // Google sign-in for the Drive settings sync (AuthorizationClient)
-    implementation("com.google.android.gms:play-services-auth:21.2.0")
+    // Google sign-in for the settings sync (Credential Manager; the Firebase calls are REST, in assets/cloud.js)
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // OkHttp (WebSocket & REST)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

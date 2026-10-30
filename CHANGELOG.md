@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.34.0] - 2026-10-30
+
+### Added
+- **Google account with automatic sync**: one sign-in, then indicators, drawings, layouts, Pine scripts and alert rules
+  follow the account between the app and the web, and in the app also the floating window's look and the watchlist.
+  Sign-in stays until signing out. The first sign-in on a device asks which copy to keep when both exist; after that the
+  newer change wins. Device things stay on the device (window position, interval, zoom). Sign-in is optional: Settings
+  tab › Google 계정 · 동기화, or the chart's settings. Built on Firebase Authentication and Firestore over REST (no SDK);
+  each user can only reach their own documents (`firestore.rules`).
+- **Account deletion** in the app and on the web, with a [public page](https://wlgptjd333.github.io/coin-float/delete-account.html).
+
+### Changed
+- **New defaults** for the floating window, from the owner's own setup: fully transparent background (0 %), prices only
+  (no symbol names), 9 sp text, 2 updates a second, mini chart 274 x 283 dp. The watchlist still starts with BTC and ETH.
+  Existing installs only change in a setting that was never touched.
+- The Google Drive sync is replaced: the manual save/load buttons and the Drive permission are gone. Settings saved to
+  Drive before stay in that hidden folder but are no longer used; sign in on the device that has the settings you want.
+- Builds for Android 16 (API 36, required by Google Play) with AGP 8.9.1, and releases also carry an app bundle (.aab).
+  The Paparazzi screenshot tests are removed: that version cannot render with API 36, and they kept no baselines.
+
 ## [1.33.1] - 2026-10-30
 
 ### Fixed

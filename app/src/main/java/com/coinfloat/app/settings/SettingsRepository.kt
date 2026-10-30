@@ -73,35 +73,35 @@ class SettingsRepository(
         .map { preferences ->
             val symbols = readSymbols(preferences)
 
-            val modeStr = preferences[KEY_SYMBOL_DISPLAY_MODE] ?: SymbolDisplayMode.SHORT.name
+            val modeStr = preferences[KEY_SYMBOL_DISPLAY_MODE] ?: SymbolDisplayMode.HIDDEN.name
             val mode = try {
                 SymbolDisplayMode.valueOf(modeStr)
             } catch (_: Exception) {
-                SymbolDisplayMode.SHORT
+                SymbolDisplayMode.HIDDEN
             }
 
-            val profileStr = preferences[KEY_CHART_SIZE_PROFILE] ?: ChartSizeProfile.MEDIUM.name
+            val profileStr = preferences[KEY_CHART_SIZE_PROFILE] ?: ChartSizeProfile.CUSTOM.name
             val profile = try {
                 ChartSizeProfile.valueOf(profileStr)
             } catch (_: Exception) {
-                ChartSizeProfile.MEDIUM
+                ChartSizeProfile.CUSTOM
             }
 
-            val rateStr = preferences[KEY_REFRESH_RATE_PROFILE] ?: RefreshRateProfile.FPS_5.name
+            val rateStr = preferences[KEY_REFRESH_RATE_PROFILE] ?: RefreshRateProfile.FPS_2.name
             val rate = try {
                 RefreshRateProfile.valueOf(rateStr)
             } catch (_: Exception) {
-                RefreshRateProfile.FPS_5
+                RefreshRateProfile.FPS_2
             }
 
             OverlaySettings(
                 selectedSymbols = symbols,
                 symbolDisplayMode = mode,
-                fontSizeSp = preferences[KEY_FONT_SIZE_SP] ?: 11f,
+                fontSizeSp = preferences[KEY_FONT_SIZE_SP] ?: 9f,
                 textColorHex = preferences[KEY_TEXT_COLOR] ?: "#65D69A",
                 textOpacity = preferences[KEY_TEXT_OPACITY] ?: 1.0f,
                 backgroundColorHex = preferences[KEY_BACKGROUND_COLOR] ?: "#1E2024",
-                backgroundOpacity = preferences[KEY_BACKGROUND_OPACITY] ?: 0.85f,
+                backgroundOpacity = preferences[KEY_BACKGROUND_OPACITY] ?: 0f,
                 paddingDp = preferences[KEY_PADDING_DP] ?: 2,
                 show24hChange = preferences[KEY_SHOW_24H_CHANGE] ?: false,
                 overlayX = preferences[KEY_OVERLAY_X] ?: -1,
@@ -111,8 +111,8 @@ class SettingsRepository(
                 isChartEnabled = preferences[KEY_CHART_ENABLED] ?: true,
                 defaultChartInterval = preferences[KEY_CHART_INTERVAL] ?: "15m",
                 chartSizeProfile = profile,
-                customChartWidthDp = preferences[KEY_CUSTOM_CHART_WIDTH_DP] ?: 260,
-                customChartHeightDp = preferences[KEY_CUSTOM_CHART_HEIGHT_DP] ?: 170,
+                customChartWidthDp = preferences[KEY_CUSTOM_CHART_WIDTH_DP] ?: 274,
+                customChartHeightDp = preferences[KEY_CUSTOM_CHART_HEIGHT_DP] ?: 283,
                 refreshRateProfile = rate,
                 upDownScheme = runCatching { UpDownScheme.valueOf(preferences[KEY_UPDOWN_SCHEME] ?: "") }.getOrDefault(UpDownScheme.GREEN_RED)
             )
@@ -129,6 +129,28 @@ class SettingsRepository(
      * overlay service) must not use those placeholders.
      */
     suspend fun awaitSettings(): OverlaySettings = settingsFlow.first { it !== INITIAL }
+
+    /** The settings that came with the signed-in account (see [SettingsSync]), written in one transaction. */
+    suspend fun applySynced(s: OverlaySettings) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_SELECTED_SYMBOLS] = s.selectedSymbols.joinToString(",")
+            preferences[KEY_SYMBOL_DISPLAY_MODE] = s.symbolDisplayMode.name
+            preferences[KEY_FONT_SIZE_SP] = s.fontSizeSp
+            preferences[KEY_TEXT_COLOR] = s.textColorHex
+            preferences[KEY_TEXT_OPACITY] = s.textOpacity
+            preferences[KEY_BACKGROUND_COLOR] = s.backgroundColorHex
+            preferences[KEY_BACKGROUND_OPACITY] = s.backgroundOpacity
+            preferences[KEY_PADDING_DP] = s.paddingDp
+            preferences[KEY_SHOW_24H_CHANGE] = s.show24hChange
+            preferences[KEY_CHART_ENABLED] = s.isChartEnabled
+            preferences[KEY_CHART_INTERVAL] = s.defaultChartInterval
+            preferences[KEY_CHART_SIZE_PROFILE] = s.chartSizeProfile.name
+            preferences[KEY_CUSTOM_CHART_WIDTH_DP] = s.customChartWidthDp
+            preferences[KEY_CUSTOM_CHART_HEIGHT_DP] = s.customChartHeightDp
+            preferences[KEY_REFRESH_RATE_PROFILE] = s.refreshRateProfile.name
+            preferences[KEY_UPDOWN_SCHEME] = s.upDownScheme.name
+        }
+    }
 
     suspend fun updateSelectedSymbols(symbols: List<String>) {
         editSymbols { it.clear(); it.addAll(symbols) }

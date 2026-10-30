@@ -172,6 +172,10 @@ fun SettingsScreen(
                             onOpenAppInfo = ::openAppInfo,
                             onShowStabilityHelp = { infoSheet = InfoSheet.STABILITY },
                             onShowGuide = { infoSheet = InfoSheet.GUIDE },
+                            onOpenAccount = {
+                                viewModel.selectTab(SettingsViewModel.TAB_CHART)
+                                chartWeb.openAccount()
+                            },
                             onShowLicenses = { infoSheet = InfoSheet.LICENSES },
                             onShowPrivacy = { infoSheet = InfoSheet.PRIVACY }
                         )

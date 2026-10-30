@@ -3202,7 +3202,7 @@ function openSettings(key, back) {
         ['📖  상황별 지표 · 알람 설명서', '5가지 지표 프로필 · 알람 3단계 대응법 · 백테스트 요약', function () { if (CF.openGuide) CF.openGuide(function () { openSettings('chart', back); }, 'profiles'); }],
         ['▶  바 리플레이', '고른 봉부터 한 봉씩 재생하며 매매 연습', replayPick],
         ['⤴  차트 이미지 공유', '코인 · 시간봉 · 시각이 들어간 이미지', shareChart],
-        ['💾  설정 백업 · 가져오기', '지표 · 프로필 · 작도 · 알람을 파일로 옮기기 (앱 ↔ 웹)', function () { if (CF.openSync) CF.openSync(function () { openSettings('chart', back); }); }]
+        ['☁️  계정 · 설정 동기화', 'Google 계정으로 자동 동기화, 파일로 옮기기 (앱 ↔ 웹)', function () { if (CF.openSync) CF.openSync(function () { openSettings('chart', back); }); }]
     ].forEach(function (a) {
         var b = document.createElement('button'); b.className = 'row-opt'; b.innerHTML = '<span>' + a[0] + '<small>' + a[1] + '</small></span><span style="color:var(--muted)">›</span>';
         b.onclick = a[2]; sheet.appendChild(b);

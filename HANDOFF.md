@@ -16,7 +16,7 @@
 | 웹 | https://wlgptjd333.github.io/coin-float/ |
 | 릴리즈 | https://github.com/wlgptjd333/coin-float/releases/latest |
 | 데이터 | Binance USDⓈ-M 선물 공개 API · WebSocket. 차트 합산 기능은 Bybit · OKX · Hyperliquid · Bitfinex 공개 스트림도 사용 |
-| 서버 | 없음. 설정 동기화는 사용자 본인의 Google Drive 숨김 폴더(`appDataFolder`) |
+| 서버 | 자체 서버 없음. 로그인 · 설정 동기화는 Firebase(Authentication, Firestore, 프로젝트 `coin-float`)를 REST로 사용 |
 | 테스트 기기 | Galaxy S23+ (SM-S916N), Android 17 빌드 |
 | 사용자 | 개발자가 아닙니다. 설명은 한국어로, 결과 위주로 해 주세요. |
 
@@ -48,7 +48,8 @@
 | `overlay/OverlayRestoreReceiver.kt` | 업데이트 · 재부팅 후 시세창 자동 복원 |
 | `ui/TradingViewChartScreen.kt` | 차트 WebView와 JS 브리지(`ChartBridge`, `@JavascriptInterface`) |
 | `alerts/` | 네이티브 알람 엔진. 앱이 꺼져 있어도 울림. CVD는 바이낸스 기준 |
-| `sync/DriveSync.kt` | 앱의 Google Drive 저장 · 불러오기 |
+| `sync/GoogleSignIn.kt` | Google 계정 시트(Credential Manager)로 ID 토큰 받기 |
+| `settings/SettingsSync.kt` | 계정을 따라다니는 앱 설정(관심 종목, 시세창 모양)의 JSON 변환과 값 검증 |
 | `market/` | Binance 클라이언트 |
 
 ### 차트 (빌드 단계 없는 순수 JS) — `app/src/main/assets/`
@@ -61,12 +62,13 @@
 | `flow.js` | 호가 벽, 히트맵, 청산, OI 등. 히트맵 저장도 여기 |
 | `orderflow.js` | 체결 엔진, 풋프린트, DOM, 다른 거래소 합산, 합산 CVD |
 | `pine.js`, `pine_lib.js`, `pinets_src.js` | Pine 실행기(Web Worker)와 지표 라이브러리 59개. `pinets_src.js`는 외부 코드 |
-| `alerts.js`, `help.js`, `guide.txt`, `sync.js` | 알람 화면, 도움말, 설명서, 설정 백업 |
+| `alerts.js`, `help.js`, `guide.txt`, `sync.js` | 알람 화면, 도움말, 설명서, 설정 파일 백업 |
+| `cloud.js` | 로그인과 자동 동기화. 앱과 웹이 같은 코드. 규칙은 루트의 `firestore.rules` (콘솔에 수동 게시) |
 | `lightweight-charts.js` | TradingView 차트 엔진 v5. 외부 코드, 수정 금지 |
 
 ### 웹 — `web/`
 
-`web.js`가 Android 브리지를 대신합니다(코인 검색, 주소 상태, 탭 제목 실시간 가격). `cloud.js`는 Google 로그인과 Drive, `config.js`는 공개용 OAuth 클라이언트 ID입니다. 사이트는 `.github/workflows/pages.yml`이 조립합니다.
+`web.js`가 Android 브리지를 대신합니다(코인 검색, 주소 상태, 탭 제목 실시간 가격). `delete-account.html`은 Play가 요구하는 계정 삭제 안내 페이지입니다. 사이트는 `.github/workflows/pages.yml`이 조립합니다.
 
 ### 기기 내 저장소
 
@@ -151,13 +153,13 @@ $env:PATH = "$env:LOCALAPPDATA\Programs\devtools\git\cmd;$env:LOCALAPPDATA\Progr
 
 ### 먼저
 
-1. **스토어 준비.** Google Play에 올리려면 `targetSdk`를 36으로 올려야 합니다(현재 34). AGP 8.9.1 이상, Gradle 8.11.1 이상이 필요하고, Paparazzi 호환 확인, edge-to-edge 화면 점검, AAB 빌드 추가가 따라옵니다. 수익화 전 법률 · 세무 확인도 필요합니다.
-2. **로그인 방식 결정.** 지금은 서버 없이 Drive 숨김 폴더에 수동 저장합니다. 스토어 앱처럼 자동 동기화하려면 Firebase 로그인으로 바꾸는 안이 있고, 이 경우 Play의 계정 삭제 요건과 개인정보처리방침 수정이 따라옵니다.
+1. **스토어 준비.** `targetSdk` 36과 AAB는 들어갔습니다. Paparazzi 스크린샷 테스트는 compileSdk 36에서 돌지 않아 제거했습니다(기준 이미지가 없어 잃은 검증은 없음. 다시 넣으려면 Kotlin 2 업그레이드 필요). Play 앱 서명은 **기존 키를 그대로 등록**해야 GitHub APK와 Play 빌드가 서로 업데이트되고 Android OAuth 클라이언트의 SHA-1도 유지됩니다. Google 키를 쓰면 그 SHA-1로 Android 클라이언트를 하나 더 만들어야 합니다. 수익화 전 법률 · 세무 확인도 필요합니다.
+2. **동기화의 한계.** 앱의 동기화는 차트 페이지가 떠 있을 때 돕니다(앱에서 차트 탭을 열 때). 관심 종목만 바꾸고 차트 탭을 안 열면 다음에 열 때 올라갑니다. 양쪽을 모두 바꿨으면 나중 것이 이깁니다.
 3. **7번 항목을 폰에서 확인**하고 나오는 버그를 수정합니다.
 
 ### 공개 배포를 원할 때
 
-4. **Google OAuth 동의 화면이 "테스트 중"입니다**(2026-10-29 기준). 등록된 테스트 사용자만 로그인됩니다. 프로젝트 `coin-float`, 범위 `drive.appdata`(비민감), 웹 · Android 클라이언트 생성 완료. 프로덕션 전환은 사용자가 Google Cloud에서 직접 합니다. Android 클라이언트는 패키지명과 현재 릴리즈 키의 SHA-1에 묶여 있습니다.
+4. **Google OAuth 동의 화면이 "테스트 중"입니다**(2026-10-29 기준). 등록된 테스트 사용자만 로그인됩니다. 프로젝트 `coin-float`, 웹 · Android 클라이언트 생성 완료. 동기화가 Firebase로 바뀌어 `drive.appdata` 범위는 더 쓰지 않으니 데이터 액세스에서 빼도 됩니다. 프로덕션 전환은 사용자가 Google Cloud에서 직접 합니다. Android 클라이언트는 패키지명과 현재 릴리즈 키의 SHA-1에 묶여 있습니다.
 
 ### 알려진 소소한 한계
 
