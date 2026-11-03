@@ -292,6 +292,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /** A favorite added from the chart: in the watchlist, but not on the floating window until its eye is turned on. */
+    fun addChartFavorite(symbol: String) {
+        viewModelScope.launch {
+            settingsRepository.addSymbol(symbol, onOverlay = false)
+        }
+    }
+
+    /** The eye on the home screen: whether a watchlist symbol also shows on the floating window. */
+    fun setOnOverlay(symbol: String, shown: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setOnOverlay(symbol, shown)
+        }
+    }
+
     fun removeSymbol(symbol: String) {
         viewModelScope.launch {
             settingsRepository.removeSymbol(symbol)

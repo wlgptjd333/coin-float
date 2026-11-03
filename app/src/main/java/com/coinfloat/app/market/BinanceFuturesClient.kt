@@ -29,7 +29,7 @@ import kotlin.random.Random
 
 class BinanceFuturesClient(
     private val scope: CoroutineScope
-) {
+) : PriceFeed {
     companion object {
         private const val TAG = "BinanceFuturesClient"
         private const val WS_URL = "wss://fstream.binance.com/market/stream"
@@ -41,6 +41,19 @@ class BinanceFuturesClient(
 
         /** Binance answers 451 from the countries it does not serve (the United States, for one). */
         fun isRegionBlock(code: Int?) = code == 451
+
+        /** Label for the traditional-finance contracts; plain coins have none. */
+        fun groupOf(contractType: String, underlyingType: String): String = when {
+            contractType != "TRADIFI_PERPETUAL" -> ""
+            underlyingType == "EQUITY" -> "주식"
+            underlyingType == "KR_EQUITY" -> "한국 주식"
+            underlyingType == "HK_EQUITY" -> "홍콩 주식"
+            underlyingType == "CN_EQUITY" -> "중국 주식"
+            underlyingType == "COMMODITY" -> "원자재"
+            underlyingType == "FX" -> "외환"
+            underlyingType == "PREMARKET" -> "상장 전"
+            else -> "전통자산"
+        }
     }
 
     private val httpClient = OkHttpClient.Builder()
@@ -59,7 +72,7 @@ class BinanceFuturesClient(
     private val socketGeneration = AtomicInteger(0)
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
-    val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+    override val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
     // Binance refuses this network's location: no retry can help, and the empty prices need an explanation.
     private val _regionBlocked = MutableStateFlow(false)
@@ -74,21 +87,21 @@ class BinanceFuturesClient(
         extraBufferCapacity = 64,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    val tradeEvents: SharedFlow<AggTradeEvent> = _tradeEvents.asSharedFlow()
+    override val tradeEvents: SharedFlow<AggTradeEvent> = _tradeEvents.asSharedFlow()
 
     private val _dayEvents = MutableSharedFlow<DayTickerEvent>(
         replay = 0,
         extraBufferCapacity = 32,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    val dayEvents: SharedFlow<DayTickerEvent> = _dayEvents.asSharedFlow()
+    override val dayEvents: SharedFlow<DayTickerEvent> = _dayEvents.asSharedFlow()
 
     private val _klineEvents = MutableSharedFlow<KlineEvent>(
         replay = 0,
         extraBufferCapacity = 16,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    val klineEvents: SharedFlow<KlineEvent> = _klineEvents.asSharedFlow()
+    override val klineEvents: SharedFlow<KlineEvent> = _klineEvents.asSharedFlow()
 
     // One extra stream on top of the per-symbol ones: the candle stream of the open mini chart (null when none).
     private var extraStream: String? = null
@@ -126,7 +139,7 @@ class BinanceFuturesClient(
 
     fun getActiveSymbols(): Set<String> = synchronized(lock) { activeSymbols.toSet() }
 
-    fun connect(symbols: List<String>) {
+    override fun connect(symbols: List<String>) {
         synchronized(lock) {
             isExplicitDisconnect = false
             isPaused = false
@@ -149,7 +162,7 @@ class BinanceFuturesClient(
         _connectionState.value = ConnectionState.DISCONNECTED
     }
 
-    fun pause() {
+    override fun pause() {
         synchronized(lock) {
             isPaused = true
         }
@@ -173,7 +186,7 @@ class BinanceFuturesClient(
         }
     }
 
-    fun updateSubscriptions(newSymbols: List<String>) {
+    override fun updateSubscriptions(newSymbols: List<String>) {
         val uppercaseNew = newSymbols.map { it.uppercase() }.toSet()
         val toSubscribe: List<String>
         val toUnsubscribe: List<String>
@@ -310,7 +323,7 @@ class BinanceFuturesClient(
     }
 
     /** Replaces the socket right away (keeps the subscriptions). Ignored while paused or disconnected on purpose. */
-    fun reconnectNow() {
+    override fun reconnectNow() {
         val allowed = synchronized(lock) { !isPaused && !isExplicitDisconnect && activeSymbols.isNotEmpty() }
         if (!allowed) return
         cancelReconnectJob()
@@ -479,8 +492,9 @@ class BinanceFuturesClient(
             val quoteAsset = symObj.optString("quoteAsset", "")
             val status = symObj.optString("status", "")
 
-            // Requirements: contractType == PERPETUAL && quoteAsset == USDT && status == TRADING
-            if (contractType == "PERPETUAL" && quoteAsset == "USDT" && status == "TRADING") {
+            // USDT perpetuals that trade. Stocks, ETFs and commodities (TSLAUSDT, SOXLUSDT, XAUUSDT) are perpetuals of
+            // their own contract type, TRADIFI_PERPETUAL.
+            if ((contractType == "PERPETUAL" || contractType == "TRADIFI_PERPETUAL") && quoteAsset == "USDT" && status == "TRADING") {
                 val symbol = symObj.getString("symbol")
                 val pair = symObj.optString("pair", symbol)
                 val baseAsset = symObj.optString("baseAsset", "")
@@ -505,7 +519,8 @@ class BinanceFuturesClient(
                         baseAsset = baseAsset,
                         quoteAsset = quoteAsset,
                         tickSize = tickSize,
-                        pricePrecision = pricePrecision
+                        pricePrecision = pricePrecision,
+                        group = groupOf(contractType, symObj.optString("underlyingType", ""))
                     )
                 )
             }

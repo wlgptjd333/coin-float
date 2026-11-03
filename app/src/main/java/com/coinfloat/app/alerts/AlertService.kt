@@ -133,6 +133,11 @@ object AlertRunner {
 
     /** Closed candles only (the forming one is dropped). */
     fun fetchBars(symbol: String, interval: String, now: Long): List<Bar> {
+        when (com.coinfloat.app.market.Exchange.of(symbol)) {
+            com.coinfloat.app.market.Exchange.HYPERLIQUID -> return fetchHyperliquidBars(symbol, interval, now)
+            com.coinfloat.app.market.Exchange.VARIATIONAL -> throw IllegalStateException("Variational publishes no candles")
+            else -> Unit
+        }
         val url = "https://fapi.binance.com/fapi/v1/klines?symbol=$symbol&interval=$interval&limit=${BARS + 1}"
         http.newCall(Request.Builder().url(url).get().build()).execute().use { r ->
             if (!r.isSuccessful) throw IllegalStateException("HTTP ${r.code}")
@@ -143,6 +148,17 @@ object AlertRunner {
                     it.getString(4).toDouble(), it.getString(5).toDouble(), it.getString(9).toDouble())
             }
         }
+    }
+
+    // Hyperliquid candles have no taker-buy volume: half of it, so CVD-based rules see no imbalance rather than a wrong one.
+    private fun fetchHyperliquidBars(symbol: String, interval: String, now: Long): List<Bar> {
+        val hl = com.coinfloat.app.market.HyperliquidClient
+        val coin = com.coinfloat.app.market.MarketDataRepository.getInstance().getSymbolInfo(symbol)?.pair ?: hl.guessCoin(symbol)
+        if (interval !in hl.INTERVALS) throw IllegalStateException("Hyperliquid has no $interval candles")
+        val iv = interval
+        val rows = hl.parseCandles(hl.post(hl.candleSnapshotBody(coin, iv, now - hl.intervalMs(iv) * (BARS + 1), now), http))
+        val cur = AlertTime.currentOpen(interval, now)
+        return rows.filter { it[0].toLong() < cur }.map { Bar(it[0].toLong(), it[1], it[2], it[3], it[4], it[5], it[5] / 2) }
     }
 
     /** Signals of one rule on the newest closed candle. */
@@ -220,7 +236,7 @@ object AlertNotifier {
 
     fun post(context: Context, e: AlertEvent) {
         ensureChannel(context)
-        val base = e.symbol.removeSuffix("USDT")
+        val base = com.coinfloat.app.market.Exchange.baseOf(e.symbol)
         val tap = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(MainActivity.EXTRA_TARGET_TAB, SettingsViewModel.TAB_CHART)

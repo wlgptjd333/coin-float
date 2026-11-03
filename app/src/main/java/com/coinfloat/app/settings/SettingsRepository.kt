@@ -51,6 +51,7 @@ class SettingsRepository(
         private val KEY_CUSTOM_CHART_HEIGHT_DP = intPreferencesKey("custom_chart_height_dp")
         private val KEY_REFRESH_RATE_PROFILE = stringPreferencesKey("refresh_rate_profile")
         private val KEY_UPDOWN_SCHEME = stringPreferencesKey("updown_scheme")
+        private val KEY_HIDDEN_OVERLAY = stringPreferencesKey("overlay_hidden_symbols")
 
         @Volatile
         private var instance: SettingsRepository? = null
@@ -114,7 +115,8 @@ class SettingsRepository(
                 customChartWidthDp = preferences[KEY_CUSTOM_CHART_WIDTH_DP] ?: 274,
                 customChartHeightDp = preferences[KEY_CUSTOM_CHART_HEIGHT_DP] ?: 283,
                 refreshRateProfile = rate,
-                upDownScheme = runCatching { UpDownScheme.valueOf(preferences[KEY_UPDOWN_SCHEME] ?: "") }.getOrDefault(UpDownScheme.GREEN_RED)
+                upDownScheme = runCatching { UpDownScheme.valueOf(preferences[KEY_UPDOWN_SCHEME] ?: "") }.getOrDefault(UpDownScheme.GREEN_RED),
+                hiddenOverlaySymbols = readHidden(preferences).intersect(symbols.toSet())
             )
         }
         .stateIn(
@@ -149,8 +151,24 @@ class SettingsRepository(
             preferences[KEY_CUSTOM_CHART_HEIGHT_DP] = s.customChartHeightDp
             preferences[KEY_REFRESH_RATE_PROFILE] = s.refreshRateProfile.name
             preferences[KEY_UPDOWN_SCHEME] = s.upDownScheme.name
+            preferences[KEY_HIDDEN_OVERLAY] = s.hiddenOverlaySymbols.joinToString(",")
         }
     }
+
+    /** Shows or hides a watchlist symbol on the floating window. The last one shown cannot be hidden. */
+    suspend fun setOnOverlay(symbol: String, shown: Boolean) {
+        val upper = symbol.trim().uppercase()
+        context.dataStore.edit { preferences ->
+            val symbols = readSymbols(preferences)
+            val hidden = readHidden(preferences).intersect(symbols.toSet()).toMutableSet()
+            if (shown) hidden.remove(upper)
+            else if (upper in symbols && symbols.count { it !in hidden && it != upper } > 0) hidden.add(upper)
+            preferences[KEY_HIDDEN_OVERLAY] = hidden.joinToString(",")
+        }
+    }
+
+    private fun readHidden(preferences: Preferences): Set<String> =
+        preferences[KEY_HIDDEN_OVERLAY].orEmpty().split(",").map { it.trim().uppercase() }.filter { it.isNotEmpty() }.toSet()
 
     suspend fun updateSelectedSymbols(symbols: List<String>) {
         editSymbols { it.clear(); it.addAll(symbols) }
@@ -168,10 +186,13 @@ class SettingsRepository(
         }
     }
 
-    suspend fun addSymbol(symbol: String) {
+    /** [onOverlay] false: a favorite for the chart only, kept off the floating window until its eye is turned on. */
+    suspend fun addSymbol(symbol: String, onOverlay: Boolean = true) {
         val upper = symbol.trim().uppercase()
         if (upper.isEmpty()) return
-        editSymbols { if (!it.contains(upper)) it.add(upper) }
+        var added = false
+        editSymbols { if (!it.contains(upper)) { it.add(upper); added = true } }
+        if (added && !onOverlay) setOnOverlay(upper, false)
     }
 
     suspend fun removeSymbol(symbol: String) {

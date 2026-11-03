@@ -4,11 +4,18 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -29,25 +36,53 @@ class MarketDataRepository(
                 instance ?: MarketDataRepository().also { instance = it }
             }
         }
+
+        /** Overall state of the feeds in use: live only when every one of them is. */
+        fun combinedState(states: List<ConnectionState>): ConnectionState = when {
+            states.isEmpty() -> ConnectionState.DISCONNECTED
+            states.all { it == ConnectionState.CONNECTED } -> ConnectionState.CONNECTED
+            states.any { it == ConnectionState.RECONNECTING } -> ConnectionState.RECONNECTING
+            states.any { it == ConnectionState.CONNECTING } -> ConnectionState.CONNECTING
+            else -> ConnectionState.DISCONNECTED
+        }
     }
 
     private val binanceClient = BinanceFuturesClient(clientScope)
+    private val hyperliquidClient = HyperliquidClient(clientScope).also { hl ->
+        hl.coinOf = { key -> _symbolInfoCache.value[key.uppercase()]?.pair }
+    }
+    private val variationalClient = VariationalClient(clientScope)
+    private val feeds: Map<Exchange, PriceFeed> = mapOf(
+        Exchange.BINANCE to binanceClient,
+        Exchange.HYPERLIQUID to hyperliquidClient,
+        Exchange.VARIATIONAL to variationalClient
+    )
 
-    val connectionState: StateFlow<ConnectionState> = binanceClient.connectionState
+    // Venues that have symbols subscribed right now; only those count for the connection state.
+    private val activeFeeds = MutableStateFlow<Set<Exchange>>(emptySet())
+
+    val connectionState: StateFlow<ConnectionState> = combine(
+        binanceClient.connectionState, hyperliquidClient.connectionState, variationalClient.connectionState, activeFeeds
+    ) { b, h, v, active ->
+        combinedState(active.map { when (it) { Exchange.BINANCE -> b; Exchange.HYPERLIQUID -> h; Exchange.VARIATIONAL -> v } })
+    }.stateIn(clientScope, SharingStarted.Eagerly, ConnectionState.DISCONNECTED)
+
     val regionBlocked: StateFlow<Boolean> = binanceClient.regionBlocked
 
     /** Live candles of the floating mini chart's symbol/interval (see [setMiniChartStream]). */
-    val klineEvents = binanceClient.klineEvents
+    val klineEvents: Flow<KlineEvent> = merge(binanceClient.klineEvents, hyperliquidClient.klineEvents)
 
     /** true: every trade (fastest, most messages); false: latest price every 250 ms (default, far fewer messages). */
     fun setFastTrades(fast: Boolean) = binanceClient.setFastTrades(fast)
 
-    /** Drops the current socket and connects again right away (network changed). No-op while paused/stopped. */
-    fun reconnectNow() = binanceClient.reconnectNow()
+    /** Drops the current sockets and connects again right away (network changed). No-op while paused/stopped. */
+    fun reconnectNow() = feeds.values.forEach { it.reconnectNow() }
 
     /** The mini chart that is open (or null): its candle stream is subscribed only while it is on screen. */
     fun setMiniChartStream(symbol: String?, interval: String?) {
-        binanceClient.setExtraStream(if (symbol != null && interval != null) "${symbol.lowercase()}@kline_$interval" else null)
+        val exchange = symbol?.let { Exchange.of(it) }
+        binanceClient.setExtraStream(if (symbol != null && exchange == Exchange.BINANCE && interval != null) "${symbol.lowercase()}@kline_$interval" else null)
+        hyperliquidClient.setCandleStream(if (exchange == Exchange.HYPERLIQUID) symbol else null, interval)
     }
 
     private val priceCache = java.util.concurrent.ConcurrentHashMap<String, MarketPrice>()
@@ -83,7 +118,7 @@ class MarketDataRepository(
         clientScope.launch {
             val publishPending = Channel<Unit>(Channel.CONFLATED)
             launch {
-                binanceClient.tradeEvents.collect { event ->
+                merge(binanceClient.tradeEvents, hyperliquidClient.tradeEvents, variationalClient.tradeEvents).collect { event ->
                     val bdPrice = try {
                         BigDecimal(event.price)
                     } catch (_: Exception) {
@@ -101,7 +136,7 @@ class MarketDataRepository(
                 }
             }
             launch {
-                binanceClient.dayEvents.collect { event ->
+                merge(binanceClient.dayEvents, hyperliquidClient.dayEvents).collect { event ->
                     val open = event.open.toBigDecimalOrNull() ?: return@collect
                     if (dayOpenCache.put(event.symbol, open) == open) return@collect     // unchanged: nothing to redraw
                     val current = priceCache[event.symbol]
@@ -123,7 +158,6 @@ class MarketDataRepository(
 
     private fun reconcileSubscriptions() {
         val neededSymbols: List<String>
-        val shouldBeConnected: Boolean
 
         synchronized(lock) {
             val set = mutableSetOf<String>()
@@ -135,24 +169,31 @@ class MarketDataRepository(
                 set.addAll(appSymbols)
             }
             neededSymbols = set.toList()
-            shouldBeConnected = neededSymbols.isNotEmpty()
         }
 
-        if (!shouldBeConnected) {
-            Log.d(TAG, "No active consumers; pausing WebSocket to conserve 100% battery")
-            binanceClient.pause()
-        } else {
-            for (sym in neededSymbols) {
-                priceCache.putIfAbsent(sym, MarketPrice(symbol = sym, price = null))
-            }
-            _marketPrices.value = priceCache.toMap()
+        if (neededSymbols.isEmpty()) {
+            Log.d(TAG, "No active consumers; pausing every feed to conserve battery")
+            activeFeeds.value = emptySet()
+            feeds.values.forEach { it.pause() }
+            return
+        }
 
-            if (binanceClient.connectionState.value == ConnectionState.DISCONNECTED) {
-                Log.d(TAG, "Connecting WebSocket for symbols: $neededSymbols")
-                binanceClient.connect(neededSymbols)
-            } else {
-                Log.d(TAG, "Updating WebSocket subscriptions for symbols: $neededSymbols")
-                binanceClient.updateSubscriptions(neededSymbols)
+        for (sym in neededSymbols) {
+            priceCache.putIfAbsent(sym, MarketPrice(symbol = sym, price = null))
+        }
+        _marketPrices.value = priceCache.toMap()
+
+        val byExchange = neededSymbols.groupBy { Exchange.of(it) }
+        activeFeeds.value = byExchange.keys
+        for ((exchange, feed) in feeds) {
+            val symbols = byExchange[exchange].orEmpty()
+            when {
+                symbols.isEmpty() -> feed.pause()
+                feed.connectionState.value == ConnectionState.DISCONNECTED -> {
+                    Log.d(TAG, "Connecting ${exchange.label} for symbols: $symbols")
+                    feed.connect(symbols)
+                }
+                else -> feed.updateSubscriptions(symbols)
             }
         }
     }
@@ -225,12 +266,19 @@ class MarketDataRepository(
         updateOverlaySymbols(symbols)
     }
 
-    suspend fun fetchKlines(symbol: String, interval: String = "15m", limit: Int = 30): List<KlineItem> {
-        return binanceClient.fetchKlines(symbol, interval, limit)
+    /** Candles for the mini chart. Variational publishes none: an empty list. */
+    suspend fun fetchKlines(symbol: String, interval: String = "15m", limit: Int = 30): List<KlineItem> = when (Exchange.of(symbol)) {
+        Exchange.BINANCE -> binanceClient.fetchKlines(symbol, interval, limit)
+        Exchange.HYPERLIQUID -> hyperliquidClient.fetchKlines(symbol, interval, limit)
+        Exchange.VARIATIONAL -> emptyList()
     }
 
     suspend fun load24hTicker(symbol: String): Ticker24h? {
-        val ticker = binanceClient.fetch24hTicker(symbol)
+        val ticker = when (Exchange.of(symbol)) {
+            Exchange.BINANCE -> binanceClient.fetch24hTicker(symbol)
+            Exchange.HYPERLIQUID -> hyperliquidClient.fetch24hTicker(symbol)
+            Exchange.VARIATIONAL -> null
+        }
         if (ticker != null) {
             val current = _ticker24hMap.value.toMutableMap()
             current[symbol.uppercase()] = ticker
@@ -240,7 +288,11 @@ class MarketDataRepository(
     }
 
     suspend fun loadFundingInfo(symbol: String): FundingInfo? {
-        val info = binanceClient.fetchFundingInfo(symbol)
+        val info = when (Exchange.of(symbol)) {
+            Exchange.BINANCE -> binanceClient.fetchFundingInfo(symbol)
+            Exchange.HYPERLIQUID -> hyperliquidClient.fetchFundingInfo(symbol)
+            Exchange.VARIATIONAL -> null
+        }
         if (info != null) {
             val current = _fundingInfoMap.value.toMutableMap()
             current[symbol.uppercase()] = info
@@ -249,55 +301,108 @@ class MarketDataRepository(
         return info
     }
 
-    /** Where the compact symbol list is kept between app starts (set by the Application). */
+    /** Where the compact Binance symbol list is kept between app starts (set by the Application); the other venues'
+     *  lists sit next to it. */
     @Volatile
     var symbolCacheFile: java.io.File? = null
+
+    private fun cacheFileFor(exchange: Exchange): java.io.File? {
+        val f = symbolCacheFile ?: return null
+        return if (exchange == Exchange.BINANCE) f else java.io.File(f.parentFile, f.nameWithoutExtension + "-" + exchange.name.lowercase() + ".tsv")
+    }
 
     // App, service and screens all ask for the symbol list at start-up; without the lock each of them downloaded and
     // parsed the full 1.1 MB exchangeInfo at the same time.
     private val exchangeInfoMutex = kotlinx.coroutines.sync.Mutex()
+    private val loadedVenues = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Exchange, Boolean>())
 
+    /** Loads every venue's symbol list (disk copy first, then the network once a day). True when Binance's is there. */
     suspend fun loadExchangeInfoIfNeeded(): Boolean = exchangeInfoMutex.withLock {
-        if (_symbolInfoCache.value.isNotEmpty()) return@withLock true
+        if (loadedVenues.size == Exchange.entries.size) return@withLock true
+        val missing = Exchange.entries.filter { it !in loadedVenues }
+        if (_symbolInfoCache.value.isEmpty()) _isLoadingSymbols.value = true
+        try {
+            coroutineScope {
+                missing.map { exchange -> async { exchange to loadVenue(exchange) } }.forEach { job ->
+                    val (exchange, ok) = job.await()
+                    if (ok) loadedVenues.add(exchange)
+                }
+            }
+        } finally {
+            _isLoadingSymbols.value = false
+        }
+        Exchange.BINANCE in loadedVenues
+    }
 
+    private suspend fun loadVenue(exchange: Exchange): Boolean {
         // 1) the copy saved on disk (fresh for a day)
-        val file = symbolCacheFile
+        val file = cacheFileFor(exchange)
         val cached = file?.let { f ->
             withContext(Dispatchers.IO) { runCatching { if (f.exists()) SymbolInfoCache.decode(f.readText()) else null }.getOrNull() }
         }
         if (cached != null) {
-            _symbolInfoCache.value = cached.symbols.associateBy { it.symbol }
-            if (System.currentTimeMillis() - cached.savedAt < SymbolInfoCache.MAX_AGE_MS) return@withLock true
+            publishVenue(exchange, cached.symbols)
+            if (System.currentTimeMillis() - cached.savedAt < SymbolInfoCache.MAX_AGE_MS) return true
         }
 
         // 2) download (also refreshes a day-old copy; on failure the old copy keeps working)
-        if (cached == null) _isLoadingSymbols.value = true
-        try {
-            val list = binanceClient.fetchExchangeInfo()
-            _symbolInfoCache.value = list.associateBy { it.symbol }
-            Log.d(TAG, "Loaded ${list.size} USDT perpetual symbols")
+        return try {
+            val list = when (exchange) {
+                Exchange.BINANCE -> binanceClient.fetchExchangeInfo()
+                Exchange.HYPERLIQUID -> hyperliquidClient.fetchUniverse()
+                Exchange.VARIATIONAL -> variationalClient.fetchUniverse()
+            }
+            if (list.isEmpty()) return cached != null
+            publishVenue(exchange, list)
+            Log.d(TAG, "Loaded ${list.size} ${exchange.label} symbols")
             if (file != null) withContext(Dispatchers.IO) {
                 runCatching { file.writeText(SymbolInfoCache.encode(list, System.currentTimeMillis())) }
             }
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load exchange info: ${e.message}")
+            Log.e(TAG, "Failed to load ${exchange.label} symbols: ${e.message}")
             cached != null
-        } finally {
-            _isLoadingSymbols.value = false
         }
     }
 
-    fun searchSymbols(query: String): List<SymbolInfo> {
-        val q = query.trim().uppercase()
-        if (q.isEmpty()) return emptyList()
-
-        return _symbolInfoCache.value.values
-            .filter { it.symbol.contains(q) || it.baseAsset.uppercase().contains(q) }
-            .take(50)
+    private fun publishVenue(exchange: Exchange, list: List<SymbolInfo>) {
+        synchronized(lock) {
+            _symbolInfoCache.value = _symbolInfoCache.value.filterValues { it.exchange != exchange } + list.associateBy { it.symbol }
+        }
+        // Hyperliquid subscriptions made before the list was in may have guessed a coin's name wrongly ("kPEPE")
+        if (exchange == Exchange.HYPERLIQUID) hyperliquidClient.reconnectNow()
     }
+
+    /**
+     * Symbols matching [query], best matches first: exact name, then names starting with it, then the rest; Binance
+     * before Hyperliquid before Variational within each rank. Matches names too ("gold", "strategy").
+     */
+    fun searchSymbols(query: String): List<SymbolInfo> = rankSymbols(_symbolInfoCache.value.values, query)
 
     fun getSymbolInfo(symbol: String): SymbolInfo? {
         return _symbolInfoCache.value[symbol.uppercase()]
     }
+}
+
+fun rankSymbols(all: Collection<SymbolInfo>, query: String, limit: Int = 80): List<SymbolInfo> {
+    val q = query.trim().uppercase()
+    if (q.isEmpty()) return emptyList()
+    val qKey = q.filter { it in 'A'..'Z' || it in '0'..'9' }
+    fun rank(s: SymbolInfo): Int {
+        val base = s.baseAsset.uppercase()
+        return when {
+            base == q || s.symbol == q -> 0
+            base.startsWith(q) || s.symbol.startsWith(q) -> 1
+            qKey.isNotEmpty() && (base.contains(qKey) || s.symbol.contains(qKey)) -> 2
+            s.name.uppercase().contains(q) || s.group.uppercase().contains(q) -> 3
+            else -> -1
+        }
+    }
+    return all.asSequence()
+        .map { it to rank(it) }
+        .filter { it.second >= 0 }
+        .sortedWith(compareBy<Pair<SymbolInfo, Int>>({ it.second }, { it.first.exchange.ordinal }, { it.first.symbol.length }, { it.first.symbol }))
+        .take(limit)
+        .map { it.first }
+        .toList()
 }

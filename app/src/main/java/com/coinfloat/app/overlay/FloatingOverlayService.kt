@@ -220,11 +220,11 @@ class FloatingOverlayService : Service() {
             val state = marketDataRepository.connectionState.value
             val initialNotification = CoinFloatNotification.buildNotification(
                 context = this,
-                symbols = currentSettings.selectedSymbols,
+                symbols = currentSettings.overlaySymbols,
                 connectionState = state,
                 isOverlayVisible = currentSettings.isOverlayVisible,
                 content = CoinFloatNotification.content(
-                    currentSettings.selectedSymbols, state, currentSettings.isOverlayVisible,
+                    currentSettings.overlaySymbols, state, currentSettings.isOverlayVisible,
                     marketDataRepository.marketPrices.value, marketDataRepository.symbolInfoCache.value
                 )
             )
@@ -263,8 +263,8 @@ class FloatingOverlayService : Service() {
             marketDataRepository.setFastTrades(currentSettings.refreshRateProfile == com.coinfloat.app.settings.RefreshRateProfile.FPS_10)
 
             updateNotification(marketDataRepository.connectionState.value)
-            marketDataRepository.start(currentSettings.selectedSymbols)
-            lastSubscribedSymbols = currentSettings.selectedSymbols
+            marketDataRepository.start(currentSettings.overlaySymbols)
+            lastSubscribedSymbols = currentSettings.overlaySymbols
             feedRunning = true
             syncFeed()
             showOverlay(currentSettings)
@@ -337,7 +337,7 @@ class FloatingOverlayService : Service() {
 
     private fun showOverlay(settings: OverlaySettings) {
         overlayController.show(
-            settings = settings,
+            settings = settings.forOverlay(),
             symbolInfoMap = marketDataRepository.symbolInfoCache.value,
             prices = marketDataRepository.marketPrices.value,
             onPositionChanged = { newX, newY ->
@@ -353,9 +353,9 @@ class FloatingOverlayService : Service() {
         marketDataRepository.setFastTrades(settings.refreshRateProfile == com.coinfloat.app.settings.RefreshRateProfile.FPS_10)
 
         // Update WebSocket subscriptions only when the symbol list changes (not on every style tweak / slider tick)
-        if (settings.selectedSymbols != lastSubscribedSymbols) {
-            lastSubscribedSymbols = settings.selectedSymbols
-            marketDataRepository.updateSymbols(settings.selectedSymbols)
+        if (settings.overlaySymbols != lastSubscribedSymbols) {
+            lastSubscribedSymbols = settings.overlaySymbols
+            marketDataRepository.updateSymbols(settings.overlaySymbols)
         }
 
         // Update overlay view with new styling/symbols
@@ -364,7 +364,7 @@ class FloatingOverlayService : Service() {
                 showOverlay(settings)
             } else {
                 overlayController.updateSettings(
-                    settings = settings,
+                    settings = settings.forOverlay(),
                     symbolInfoMap = marketDataRepository.symbolInfoCache.value
                 )
             }
@@ -418,10 +418,10 @@ class FloatingOverlayService : Service() {
         if (!isServiceRunning) return
         val settings = settingsRepository.settingsFlow.value
         val content = CoinFloatNotification.content(
-            settings.selectedSymbols, state, settings.isOverlayVisible,
+            settings.overlaySymbols, state, settings.isOverlayVisible,
             marketDataRepository.marketPrices.value, marketDataRepository.symbolInfoCache.value
         )
-        val key = NotificationKey(settings.selectedSymbols, state, settings.isOverlayVisible, content)
+        val key = NotificationKey(settings.overlaySymbols, state, settings.isOverlayVisible, content)
         if (key == lastNotificationKey) return
         if (priceOnly) {
             val every = when {
@@ -446,7 +446,7 @@ class FloatingOverlayService : Service() {
         lastNotifyAt = System.currentTimeMillis()
         val notification = CoinFloatNotification.buildNotification(
             context = this,
-            symbols = settings.selectedSymbols,
+            symbols = settings.overlaySymbols,
             connectionState = state,
             isOverlayVisible = settings.isOverlayVisible,
             content = content
@@ -500,6 +500,9 @@ class FloatingOverlayService : Service() {
 
     private fun isKeyguardLocked(): Boolean =
         (getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager)?.isKeyguardLocked == true
+
+    // The window only knows "its" list: the watchlist without the symbols hidden from it.
+    private fun OverlaySettings.forOverlay() = copy(selectedSymbols = overlaySymbols, hiddenOverlaySymbols = emptySet())
 
     override fun onBind(intent: Intent?): IBinder? = null
 }

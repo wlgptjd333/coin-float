@@ -26,8 +26,10 @@ object SettingsSync {
         .put("chartH", s.customChartHeightDp)
         .put("refresh", s.refreshRateProfile.name)
         .put("upDown", s.upDownScheme.name)
+        .put("hidden", JSONArray(s.hiddenOverlaySymbols.toList()))
 
-    private val SYMBOL = Regex("^[A-Z0-9]{2,30}$")
+    // Binance contracts ("BTCUSDT") and the other venues' prefixed keys ("HL-XYZ-TSLA", "VAR-SOXL")
+    private val SYMBOL = Regex("^[A-Z0-9][A-Z0-9-]{1,39}$")
     private val COLOR = Regex("^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$")
 
     fun merge(base: OverlaySettings, o: JSONObject): OverlaySettings {
@@ -49,7 +51,10 @@ object SettingsSync {
             customChartWidthDp = number(o, "chartW", 160.0, 420.0)?.toInt() ?: base.customChartWidthDp,
             customChartHeightDp = number(o, "chartH", 110.0, 360.0)?.toInt() ?: base.customChartHeightDp,
             refreshRateProfile = enumOr(o, "refresh", base.refreshRateProfile),
-            upDownScheme = enumOr(o, "upDown", base.upDownScheme)
+            upDownScheme = enumOr(o, "upDown", base.upDownScheme),
+            // older app versions send no "hidden": keep what this device has
+            hiddenOverlaySymbols = o.optJSONArray("hidden")?.let { a -> (0 until a.length()).map { a.optString(it).trim().uppercase() } }
+                ?.filter { SYMBOL.matches(it) && it in symbols }?.toSet() ?: base.hiddenOverlaySymbols.intersect(symbols.toSet())
         )
     }
 

@@ -51,8 +51,16 @@ data class OverlaySettings(
     val customChartWidthDp: Int = 274,
     val customChartHeightDp: Int = 283,
     val refreshRateProfile: RefreshRateProfile = RefreshRateProfile.FPS_2,
-    val upDownScheme: UpDownScheme = UpDownScheme.GREEN_RED
+    val upDownScheme: UpDownScheme = UpDownScheme.GREEN_RED,
+    /** Watchlist symbols kept off the floating window (the eye on the home screen); they stay in the watchlist. */
+    val hiddenOverlaySymbols: Set<String> = emptySet()
 ) {
+    /** What the floating window shows: the watchlist without the hidden ones (never nothing at all). */
+    val overlaySymbols: List<String>
+        get() = selectedSymbols.filter { it !in hiddenOverlaySymbols }.ifEmpty { selectedSymbols.take(1) }
+
+    fun isOnOverlay(symbol: String): Boolean = symbol in overlaySymbols
+
     fun getChartDimensionsDp(): Pair<Int, Int> = when (chartSizeProfile) {
         ChartSizeProfile.SMALL -> Pair(ChartSizeProfile.SMALL.widthDp, ChartSizeProfile.SMALL.heightDp)
         ChartSizeProfile.MEDIUM -> Pair(ChartSizeProfile.MEDIUM.widthDp, ChartSizeProfile.MEDIUM.heightDp)

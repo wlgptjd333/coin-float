@@ -115,19 +115,42 @@ class JsonParserTest {
                   "baseAsset": "DOGE",
                   "quoteAsset": "USDT",
                   "filters": []
+                },
+                {
+                  "symbol": "SOXLUSDT",
+                  "pair": "SOXLUSDT",
+                  "contractType": "TRADIFI_PERPETUAL",
+                  "underlyingType": "EQUITY",
+                  "status": "TRADING",
+                  "baseAsset": "SOXL",
+                  "quoteAsset": "USDT",
+                  "filters": [ { "filterType": "PRICE_FILTER", "tickSize": "0.01" } ]
+                },
+                {
+                  "symbol": "XAUUSDT",
+                  "pair": "XAUUSDT",
+                  "contractType": "TRADIFI_PERPETUAL",
+                  "underlyingType": "COMMODITY",
+                  "status": "TRADING",
+                  "baseAsset": "XAU",
+                  "quoteAsset": "USDT",
+                  "filters": []
                 }
               ]
             }
         """.trimIndent()
 
         val parsed = client.parseExchangeInfo(exchangeJson)
-        // Only BTCUSDT should match (PERPETUAL + USDT + TRADING)
-        assertEquals(1, parsed.size)
+        // USDT perpetuals that trade, the stock and commodity ones (TRADIFI_PERPETUAL) included
+        assertEquals(listOf("BTCUSDT", "SOXLUSDT", "XAUUSDT"), parsed.map { it.symbol })
         val btc = parsed[0]
         assertEquals("BTCUSDT", btc.symbol)
         assertEquals("BTC", btc.baseAsset)
         assertEquals("USDT", btc.quoteAsset)
         assertEquals("0.10", btc.tickSize)
+        assertEquals("", btc.group)
+        assertEquals("주식", parsed[1].group)
+        assertEquals("원자재", parsed[2].group)
     }
 
     @Test
