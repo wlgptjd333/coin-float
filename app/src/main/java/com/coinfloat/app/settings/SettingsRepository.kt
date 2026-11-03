@@ -181,8 +181,10 @@ class SettingsRepository(
         context.dataStore.edit { preferences ->
             val list = readSymbols(preferences).toMutableList()
             transform(list)
-            val cleaned = list.map { it.trim().uppercase() }.filter { it.isNotEmpty() }.distinct()
-            preferences[KEY_SELECTED_SYMBOLS] = cleaned.ifEmpty { listOf("BTCUSDT") }.joinToString(",")
+            val cleaned = list.map { it.trim().uppercase() }.filter { it.isNotEmpty() }.distinct().ifEmpty { listOf("BTCUSDT") }
+            preferences[KEY_SELECTED_SYMBOLS] = cleaned.joinToString(",")
+            // a removed symbol leaves the hidden set too, or adding it again later would bring it back hidden
+            preferences[KEY_HIDDEN_OVERLAY] = readHidden(preferences).intersect(cleaned.toSet()).joinToString(",")
         }
     }
 
@@ -192,7 +194,7 @@ class SettingsRepository(
         if (upper.isEmpty()) return
         var added = false
         editSymbols { if (!it.contains(upper)) { it.add(upper); added = true } }
-        if (added && !onOverlay) setOnOverlay(upper, false)
+        if (added) setOnOverlay(upper, onOverlay)
     }
 
     suspend fun removeSymbol(symbol: String) {

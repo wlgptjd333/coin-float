@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -198,7 +199,7 @@ private fun Watchlist(
     val symbols = settings.selectedSymbols
     val shownCount = settings.overlaySymbols.size
     Group {
-        symbols.forEachIndexed { i, sym ->
+        symbols.forEachIndexed { i, sym -> key(sym) {
             val upper = sym.uppercase()
             val info = symbolInfo[upper]
             val base = info?.baseAsset ?: Exchange.baseOf(upper)
@@ -241,7 +242,7 @@ private fun Watchlist(
                 }
             )
             if (i < symbols.size - 1) GroupDivider(startInset = 64)
-        }
+        } }
     }
 }
 

@@ -399,7 +399,7 @@ class MarketDataRepository(
             _symbolInfoCache.value = _symbolInfoCache.value.filterValues { it.exchange != exchange } + list.associateBy { it.symbol }
         }
         // Hyperliquid subscriptions made before the list was in may have guessed a coin's name wrongly ("kPEPE")
-        if (exchange == Exchange.HYPERLIQUID) hyperliquidClient.reconnectNow()
+        if (exchange == Exchange.HYPERLIQUID) hyperliquidClient.listingLoaded()
     }
 
     /**

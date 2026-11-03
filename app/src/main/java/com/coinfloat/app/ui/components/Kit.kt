@@ -345,7 +345,10 @@ private val COIN_FALLBACK = listOf(
 fun CoinAvatar(base: String, size: Int = 36) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val preview = androidx.compose.ui.platform.LocalInspectionMode.current
+    // The state outlives a change of [base] (a reordered list reuses the row), so the producer always sets this coin's
+    // logo: checking "nothing loaded yet" kept the previous coin's logo on the row until the screen was rebuilt.
     val logo by androidx.compose.runtime.produceState(CoinIcons.cached(base), base) {
+        value = CoinIcons.cached(base)
         if (value == null && !preview) value = CoinIcons.load(context, base)
     }
     val img = logo
