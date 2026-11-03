@@ -114,6 +114,31 @@ class HyperliquidClient(
             return out
         }
 
+        /** metaAndAssetCtxs of one market group as market-list rows (delisted coins left out). */
+        fun parseAssetCtxs(json: String): List<MarketTicker> {
+            val arr = JSONArray(json)
+            val universe = arr.optJSONObject(0)?.optJSONArray("universe") ?: return emptyList()
+            val ctxs = arr.optJSONArray(1) ?: return emptyList()
+            val out = ArrayList<MarketTicker>()
+            for (i in 0 until minOf(universe.length(), ctxs.length())) {
+                val u = universe.optJSONObject(i) ?: continue
+                if (u.optBoolean("isDelisted", false)) continue
+                val c = ctxs.optJSONObject(i) ?: continue
+                fun d(key: String) = if (c.isNull(key)) null else c.optString(key).toDoubleOrNull()
+                val price = d("midPx") ?: d("markPx") ?: continue
+                val prev = d("prevDayPx")
+                out.add(
+                    MarketTicker(
+                        symbol = Exchange.hyperliquidKey(u.optString("name")),
+                        price = price,
+                        changePercent = if (prev != null && prev > 0.0) (price - prev) / prev * 100.0 else null,
+                        quoteVolume = d("dayNtlVlm") ?: 0.0
+                    )
+                )
+            }
+            return out
+        }
+
         /** candleSnapshot rows as [open time, open, high, low, close, volume]. */
         fun parseCandles(json: String): List<DoubleArray> {
             val a = JSONArray(json)
@@ -393,6 +418,22 @@ class HyperliquidClient(
             }.awaitAll().flatten()
         }
         main + others
+    }
+
+    /** 24 h change and turnover of every market (main and HIP-3) for the market list. A group that fails is left out. */
+    suspend fun fetchAllTickers(): List<MarketTicker> = withContext(Dispatchers.IO) {
+        val dexes = runCatching { JSONArray(post("{\"type\":\"perpDexs\"}", httpClient)) }.getOrNull()
+        val names = listOf("") + (0 until (dexes?.length() ?: 0)).mapNotNull { dexes?.optJSONObject(it)?.optString("name")?.takeIf { n -> n.isNotEmpty() } }
+        coroutineScope {
+            names.map { dex ->
+                async {
+                    runCatching {
+                        val body = JSONObject().put("type", "metaAndAssetCtxs").apply { if (dex.isNotEmpty()) put("dex", dex) }.toString()
+                        parseAssetCtxs(post(body, httpClient))
+                    }.getOrElse { emptyList() }
+                }
+            }.awaitAll().flatten()
+        }
     }
 
     suspend fun fetchKlines(symbol: String, interval: String, limit: Int): List<KlineItem> = withContext(Dispatchers.IO) {

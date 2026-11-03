@@ -579,6 +579,30 @@ class BinanceFuturesClient(
         }
     }
 
+    /** Every contract's 24 h price change and turnover in one request (the market list). */
+    suspend fun fetchAllTickers(): List<MarketTicker> = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url("https://fapi.binance.com/fapi/v1/ticker/24hr").get().build()
+        httpClient.newCall(request).execute().use { response ->
+            noteHttp(response.code)
+            if (!response.isSuccessful) throw Exception("Failed to fetch tickers: HTTP ${response.code}")
+            parseAllTickers(response.body?.string() ?: throw Exception("Empty body"))
+        }
+    }
+
+    fun parseAllTickers(jsonStr: String): List<MarketTicker> {
+        val arr = JSONArray(jsonStr)
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val price = o.optString("lastPrice").toDoubleOrNull() ?: return@mapNotNull null
+            MarketTicker(
+                symbol = o.optString("symbol"),
+                price = price,
+                changePercent = o.optString("priceChangePercent").toDoubleOrNull(),
+                quoteVolume = o.optString("quoteVolume").toDoubleOrNull() ?: 0.0
+            )
+        }
+    }
+
     fun parse24hTicker(jsonStr: String): Ticker24h? {
         return try {
             val obj = JSONObject(jsonStr)

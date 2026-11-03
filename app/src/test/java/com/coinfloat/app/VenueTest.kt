@@ -4,6 +4,9 @@ import com.coinfloat.app.market.ConnectionState
 import com.coinfloat.app.market.Exchange
 import com.coinfloat.app.market.HyperliquidClient
 import com.coinfloat.app.market.MarketDataRepository
+import com.coinfloat.app.market.MarketSort
+import com.coinfloat.app.market.MarketTicker
+import com.coinfloat.app.market.rankMarket
 import com.coinfloat.app.market.SymbolInfo
 import com.coinfloat.app.market.VariationalClient
 import com.coinfloat.app.market.displaySymbol
@@ -81,6 +84,31 @@ class VenueTest {
         assertEquals(listOf("TSLAUSDT", "HL-XYZ-TSLA", "VAR-TSLA", "TSLAXUSDT"), rankSymbols(all, "tsla").map { it.symbol })
         assertEquals(listOf("VAR-XAU"), rankSymbols(all, "gold").map { it.symbol })
         assertTrue(rankSymbols(all, "  ").isEmpty())
+    }
+
+    @Test
+    fun marketRankings() {
+        val t = listOf(
+            MarketTicker("BTCUSDT", 77000.0, -1.0, 9e9),
+            MarketTicker("SOXLUSDT", 72.0, -10.5, 5e7),
+            MarketTicker("HL-XYZ-TSLA", 401.0, 2.0, 5e7),
+            MarketTicker("HL-TINY", 1.0, 80.0, 500.0),           // barely trades: no place among the risers
+            MarketTicker("VAR-MSTR", 131.0, null, 1e6)
+        )
+        assertEquals(listOf("BTCUSDT", "SOXLUSDT", "HL-XYZ-TSLA", "VAR-MSTR", "HL-TINY"), rankMarket(t, MarketSort.VOLUME).map { it.symbol })
+        assertEquals(listOf("HL-XYZ-TSLA", "BTCUSDT", "SOXLUSDT"), rankMarket(t, MarketSort.GAINERS).map { it.symbol })
+        assertEquals("SOXLUSDT", rankMarket(t, MarketSort.LOSERS).first().symbol)
+        assertEquals(listOf("HL-XYZ-TSLA", "HL-TINY"), rankMarket(t, MarketSort.VOLUME, Exchange.HYPERLIQUID).map { it.symbol })
+        assertTrue(rankMarket(t, MarketSort.GAINERS, Exchange.VARIATIONAL).isEmpty())
+
+        val hl = HyperliquidClient.parseAssetCtxs(
+            """[{"universe":[{"name":"xyz:TSLA","szDecimals":3},{"name":"xyz:OLD","szDecimals":2,"isDelisted":true}]},
+               [{"midPx":"404.0","markPx":"404.1","prevDayPx":"400.0","dayNtlVlm":"5000000"},{"midPx":"1","prevDayPx":"1","dayNtlVlm":"0"}]]"""
+        )
+        assertEquals(1, hl.size)
+        assertEquals("HL-XYZ-TSLA", hl[0].symbol)
+        assertEquals(1.0, hl[0].changePercent!!, 1e-9)
+        assertEquals(5_000_000.0, hl[0].quoteVolume, 0.0)
     }
 
     @Test

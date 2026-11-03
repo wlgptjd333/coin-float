@@ -292,6 +292,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    val marketTickers = marketDataRepository.marketTickers
+
+    /** The chart tab's market list is open: refresh its 24 h snapshot (at most every 20 s). */
+    fun refreshMarketTickers() {
+        viewModelScope.launch { marketDataRepository.loadMarketTickers() }
+    }
+
     /** A favorite added from the chart: in the watchlist, but not on the floating window until its eye is turned on. */
     fun addChartFavorite(symbol: String) {
         viewModelScope.launch {

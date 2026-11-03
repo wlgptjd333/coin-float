@@ -301,6 +301,35 @@ class MarketDataRepository(
         return info
     }
 
+    // ---- the market list (chart tab): a 24 h snapshot of every venue, fetched only while the list is open ----------
+
+    private val _marketTickers = MutableStateFlow<Map<String, MarketTicker>>(emptyMap())
+    val marketTickers: StateFlow<Map<String, MarketTicker>> = _marketTickers.asStateFlow()
+    private val marketMutex = kotlinx.coroutines.sync.Mutex()
+    @Volatile
+    private var marketLoadedAt = 0L
+
+    /** Refreshes the snapshot unless it is younger than [maxAgeMs]. Each venue that fails keeps its previous rows. */
+    suspend fun loadMarketTickers(maxAgeMs: Long = 20_000L) = marketMutex.withLock {
+        if (System.currentTimeMillis() - marketLoadedAt < maxAgeMs) return@withLock
+        val parts = coroutineScope {
+            val b = async { runCatching { binanceClient.fetchAllTickers() }.getOrNull() }
+            val h = async { runCatching { hyperliquidClient.fetchAllTickers() }.getOrNull() }
+            val v = async { runCatching { variationalClient.fetchAllTickers() }.getOrNull() }
+            mapOf(Exchange.BINANCE to b.await(), Exchange.HYPERLIQUID to h.await(), Exchange.VARIATIONAL to v.await())
+        }
+        val known = _symbolInfoCache.value
+        val next = _marketTickers.value.toMutableMap()
+        for ((exchange, rows) in parts) {
+            rows ?: continue
+            next.keys.removeAll { Exchange.of(it) == exchange }
+            // only what the app lists: Binance also reports settling, quarterly and USDC contracts
+            rows.filter { known.isEmpty() || it.symbol in known }.forEach { next[it.symbol] = it }
+        }
+        _marketTickers.value = next
+        if (parts.values.any { it != null }) marketLoadedAt = System.currentTimeMillis()
+    }
+
     /** Where the compact Binance symbol list is kept between app starts (set by the Application); the other venues'
      *  lists sit next to it. */
     @Volatile

@@ -35,6 +35,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import com.coinfloat.app.market.Exchange
+import com.coinfloat.app.market.MarketSort
+import com.coinfloat.app.market.MarketTicker
+import com.coinfloat.app.market.rankMarket
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -136,6 +143,9 @@ fun TradingViewChartScreen(
     defaultInterval: String = "15m",
     onSearchSymbols: (String) -> List<SymbolInfo> = { emptyList() },
     onAddSymbolToWatchlist: (String) -> Unit = {},
+    onRemoveFromWatchlist: (String) -> Unit = {},
+    marketTickers: StateFlow<Map<String, MarketTicker>> = MutableStateFlow(emptyMap()),
+    onRefreshMarket: () -> Unit = {},
     onRefreshTicker: (String) -> Unit = {},
     onRefreshFunding: (String) -> Unit = {},
     isFullscreen: Boolean = false,
@@ -214,6 +224,9 @@ fun TradingViewChartScreen(
     }
 
     var showSearchSheet by remember { mutableStateOf(false) }
+    // the picker opens where it was left (favorites or a ranking, and the venue)
+    var pickerTab by rememberSaveable { mutableStateOf(PICKER_FAVORITES) }
+    var pickerVenue by rememberSaveable { mutableStateOf("") }
 
     fun toggleOrientation() {
         val activity = context as? Activity ?: return
@@ -283,8 +296,15 @@ fun TradingViewChartScreen(
             selectedSymbols = selectedSymbols,
             currentSymbol = currentSymbol,
             symbolInfoMap = symbolInfoMap,
+            marketTickers = marketTickers,
+            onRefreshMarket = onRefreshMarket,
+            tab = pickerTab,
+            onTab = { pickerTab = it },
+            venue = pickerVenue,
+            onVenue = { pickerVenue = it },
             onSearchSymbols = onSearchSymbols,
             onAddSymbolToWatchlist = onAddSymbolToWatchlist,
+            onRemoveFromWatchlist = onRemoveFromWatchlist,
             onSelect = {
                 onSymbolSelected(it)
                 showSearchSheet = false
@@ -622,24 +642,55 @@ private fun FundingStat(info: FundingInfo) {
 // Symbol search
 // ---------------------------------------------------------------------------------------------------
 
+private const val PICKER_FAVORITES = "FAV"
+
+/**
+ * The symbol picker, laid out like an exchange app's market screen: favorites, or a ranking (most traded, risers,
+ * fallers) over every venue or one of them, with a search on top. The ranking is a 24 h snapshot refreshed every 30 s
+ * while the sheet is open.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SymbolSearchSheet(
     selectedSymbols: List<String>,
     currentSymbol: String,
     symbolInfoMap: Map<String, SymbolInfo>,
+    marketTickers: StateFlow<Map<String, MarketTicker>>,
+    onRefreshMarket: () -> Unit,
+    tab: String,
+    onTab: (String) -> Unit,
+    venue: String,
+    onVenue: (String) -> Unit,
     onSearchSymbols: (String) -> List<SymbolInfo>,
     onAddSymbolToWatchlist: (String) -> Unit,
+    onRemoveFromWatchlist: (String) -> Unit,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SymbolInfo>>(emptyList()) }
     val symbolInfoCount = symbolInfoMap.size
+    val tickers by marketTickers.collectAsState()
 
     // symbolInfoCount re-runs the search once the exchange info finishes loading.
     LaunchedEffect(query, symbolInfoCount) {
         results = if (query.isNotBlank()) onSearchSymbols(query) else emptyList()
+    }
+    val refresh by rememberUpdatedState(onRefreshMarket)
+    LaunchedEffect(Unit) {
+        while (true) {
+            refresh()
+            delay(30_000L)
+        }
+    }
+
+    val venueFilter = Exchange.entries.firstOrNull { it.name == venue }
+    val sort = MarketSort.entries.firstOrNull { it.name == tab }
+    val searching = query.isNotBlank()
+    val rows: List<String> = when {
+        searching -> results.filter { venueFilter == null || it.exchange == venueFilter }.map { it.symbol }
+        sort == null -> selectedSymbols
+        else -> rankMarket(tickers.values, sort, venueFilter).map { it.symbol }
     }
 
     ModalBottomSheet(
@@ -674,84 +725,162 @@ private fun SymbolSearchSheet(
             )
             Spacer(Modifier.height(10.dp))
 
-            if (query.isBlank()) {
-                Text("즐겨찾기", fontSize = 12.sp, color = MutedText, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(6.dp))
-                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
-                    items(selectedSymbols) { sym ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(sym) }
-                                .padding(vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = com.coinfloat.app.market.displaySymbol(sym, symbolInfoMap[sym]),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (sym.equals(currentSymbol, true)) AccentColor else Color.White
-                                )
-                                Text(com.coinfloat.app.market.subtitleOf(sym, symbolInfoMap[sym]), fontSize = 11.sp, color = MutedText)
-                            }
-                            Text("차트 열기", fontSize = 12.sp, color = AccentColor)
-                        }
-                        HorizontalDivider(color = LineColor)
-                    }
+            if (!searching) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PickerChip("★ 즐겨찾기", tab == PICKER_FAVORITES) { onTab(PICKER_FAVORITES) }
+                    MarketSort.entries.forEach { s -> PickerChip(s.label, tab == s.name) { onTab(s.name) } }
                 }
-            } else if (results.isEmpty()) {
+                Spacer(Modifier.height(6.dp))
+            }
+            if (searching || sort != null) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PickerChip("전체", venue.isEmpty(), small = true) { onVenue("") }
+                    Exchange.entries.forEach { e -> PickerChip(e.label, venue == e.name, small = true) { onVenue(e.name) } }
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            if (!searching && sort != null) {
+                val note = buildString {
+                    append("24시간 기준 · 30초마다 갱신")
+                    if (sort != MarketSort.VOLUME) append(" · 거래대금 10만 달러 이상")
+                    if (sort != MarketSort.VOLUME && venueFilter == Exchange.VARIATIONAL) append(" · Variational은 변동률을 공개하지 않아요")
+                }
+                Text(note, fontSize = 10.5.sp, color = MutedText)
+                Spacer(Modifier.height(4.dp))
+            }
+
+            if (rows.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (symbolInfoCount == 0) "종목 목록을 불러오는 중..." else "검색 결과가 없습니다.",
+                        text = when {
+                            searching && symbolInfoCount == 0 -> "종목 목록을 불러오는 중..."
+                            searching -> "검색 결과가 없습니다."
+                            tickers.isEmpty() -> "시세를 불러오는 중..."
+                            else -> "표시할 종목이 없습니다."
+                        },
                         color = MutedText,
                         fontSize = 13.sp
                     )
                 }
             } else {
-                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                    items(results) { item ->
-                        val added = selectedSymbols.contains(item.symbol)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(item.symbol) }
-                                .padding(vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(com.coinfloat.app.market.displaySymbol(item.symbol, item), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                Text(
-                                    text = item.subtitle(),
-                                    fontSize = 11.sp,
-                                    color = MutedText
-                                )
-                            }
-                            if (added) {
-                                Text("즐겨찾기됨", fontSize = 11.sp, color = UpColor, fontWeight = FontWeight.Medium)
-                            } else {
-                                Button(
-                                    onClick = { onAddSymbolToWatchlist(item.symbol) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = AccentColor),
-                                    contentPadding = ButtonDefaults.TextButtonContentPadding,
-                                    modifier = Modifier.height(30.dp)
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Spacer(Modifier.width(2.dp))
-                                    Text("즐겨찾기", fontSize = 11.sp)
-                                }
-                            }
-                        }
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 460.dp)) {
+                    itemsIndexed(rows, key = { _, s -> s }) { i, sym ->
+                        val favorite = sym in selectedSymbols
+                        MarketRow(
+                            rank = if (!searching && sort != null) i + 1 else null,
+                            symbol = sym,
+                            info = symbolInfoMap[sym],
+                            ticker = tickers[sym],
+                            showVolume = !searching && sort == MarketSort.VOLUME,
+                            isFavorite = favorite,
+                            isCurrent = sym.equals(currentSymbol, true),
+                            onClick = { onSelect(sym) },
+                            onToggleFavorite = { if (favorite) onRemoveFromWatchlist(sym) else onAddSymbolToWatchlist(sym) }
+                        )
                         HorizontalDivider(color = LineColor)
                     }
                 }
             }
             Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun PickerChip(label: String, selected: Boolean, small: Boolean = false, onClick: () -> Unit) {
+    Text(
+        text = label,
+        fontSize = if (small) 11.5.sp else 13.sp,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+        color = if (selected) Color.White else MutedText,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) (if (small) LineColor else AccentColor) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = if (small) 10.dp else 12.dp, vertical = if (small) 4.dp else 6.dp)
+    )
+}
+
+/** One market: rank, name and venue, 24 h price and change (turnover where no change is published), and the star. */
+@Composable
+private fun MarketRow(
+    rank: Int?,
+    symbol: String,
+    info: SymbolInfo?,
+    ticker: MarketTicker?,
+    showVolume: Boolean,
+    isFavorite: Boolean,
+    isCurrent: Boolean,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit
+) {
+    val updown = com.coinfloat.app.ui.theme.LocalUpDown.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (rank != null) {
+            Text("$rank", color = MutedText, fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(28.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = info?.baseAsset ?: Exchange.baseOf(symbol),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isCurrent) AccentColor else Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            val volume = if (showVolume && ticker != null) " · " + PriceFormatter.formatCompactVolume(ticker.quoteVolume.toFloat()) else ""
+            Text(
+                text = com.coinfloat.app.market.subtitleOf(symbol, info) + volume,
+                fontSize = 11.sp,
+                color = MutedText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = ticker?.let { PriceFormatter.formatPrice(java.math.BigDecimal.valueOf(it.price), info?.tickSize) } ?: "—",
+                color = MainText,
+                fontSize = 13.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1
+            )
+            val change = ticker?.changePercent
+            Text(
+                text = when {
+                    change != null -> String.format(Locale.US, "%+.2f%%", change)
+                    ticker != null -> PriceFormatter.formatCompactVolume(ticker.quoteVolume.toFloat())
+                    else -> ""
+                },
+                color = when {
+                    change == null -> MutedText
+                    change >= 0.0 -> updown.up
+                    else -> updown.down
+                },
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1
+            )
+        }
+        IconButton(onClick = onToggleFavorite, modifier = Modifier.size(38.dp)) {
+            Icon(
+                if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                contentDescription = if (isFavorite) "즐겨찾기에서 빼기" else "즐겨찾기",
+                tint = if (isFavorite) Color(0xFFF0B90B) else MutedText,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
