@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -269,7 +271,20 @@ class HyperliquidClient(
         next?.let { send("subscribe", candleSubscription(it)) }
     }
 
-    private fun ctxSubscription(key: String) = JSONObject().put("type", "activeAssetCtx").put("coin", coin(key))
+    // The coin name each key was last subscribed under, to tell whether a guessed name has to be corrected.
+    private val sentCoins = ConcurrentHashMap<String, String>()
+
+    private fun ctxSubscription(key: String): JSONObject {
+        val c = coin(key)
+        sentCoins[key] = c
+        return JSONObject().put("type", "activeAssetCtx").put("coin", c)
+    }
+
+    /** The listing arrived: reconnect only if a subscription went out under a guessed name that was wrong ("kPEPE"). */
+    fun listingLoaded() {
+        val wrong = synchronized(lock) { activeSymbols.any { k -> coinOf(k)?.let { it != sentCoins[k] } == true } }
+        if (wrong) reconnectNow()
+    }
     private fun candleSubscription(s: CandleStream) = JSONObject().put("type", "candle").put("coin", coin(s.key)).put("interval", s.hlInterval)
 
     private fun send(method: String, subscription: JSONObject) {
@@ -446,13 +461,19 @@ class HyperliquidClient(
     }
 
     // Asset contexts of one market group, shared for a few seconds (the chart asks for 24 h stats and funding together).
+    // Several coins of one group asked at once (the home screen refreshes every row together) share one download.
     private val ctxCache = ConcurrentHashMap<String, Pair<Long, Map<String, JSONObject>>>()
+    private val ctxLocks = ConcurrentHashMap<String, Mutex>()
 
     private suspend fun assetCtx(symbol: String): JSONObject? = withContext(Dispatchers.IO) {
         val c = coin(symbol)
         val dex = dexOf(c)
+        ctxLocks.getOrPut(dex) { Mutex() }.withLock { groupCtx(dex) }[c]
+    }
+
+    private fun groupCtx(dex: String): Map<String, JSONObject> {
         val cached = ctxCache[dex]
-        if (cached != null && System.currentTimeMillis() - cached.first < CTX_MAX_AGE_MS) return@withContext cached.second[c]
+        if (cached != null && System.currentTimeMillis() - cached.first < CTX_MAX_AGE_MS) return cached.second
         val body = JSONObject().put("type", "metaAndAssetCtxs").apply { if (dex.isNotEmpty()) put("dex", dex) }.toString()
         val arr = JSONArray(post(body, httpClient))
         val universe = arr.getJSONObject(0).getJSONArray("universe")
@@ -463,7 +484,7 @@ class HyperliquidClient(
             ctxs.optJSONObject(i)?.let { map[name] = it }
         }
         ctxCache[dex] = System.currentTimeMillis() to map
-        map[c]
+        return map
     }
 
     suspend fun fetch24hTicker(symbol: String): Ticker24h? = runCatching {

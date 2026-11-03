@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.36.1] - 2026-11-03
+
+### Fixed
+- **Coin logos stayed on the wrong rows** after moving a coin up or down (and in search results while typing) until the
+  screen was rebuilt: a row that switched coins kept the previous coin's logo.
+- A coin hidden from the floating window, removed and later added again came back hidden.
+
+### Changed
+- The Hyperliquid socket no longer reconnects every time the symbol list loads, only when a coin had been subscribed
+  under a wrongly guessed name.
+- Hyperliquid 24 h stats for several coins of one market group share one download.
+- The market list is ranked once per snapshot instead of on every redraw.
 ## [1.36.0] - 2026-11-03
 
 ### Added

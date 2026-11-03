@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -115,7 +116,7 @@ fun SymbolsContent(
         } else {
             SectionLabel("내 종목 ${selectedSymbols.size}")
             Group {
-                selectedSymbols.forEachIndexed { index, symbol ->
+                selectedSymbols.forEachIndexed { index, symbol -> key(symbol) {
                     val info = symbolInfo[symbol.uppercase()]
                     val base = info?.baseAsset ?: Exchange.baseOf(symbol)
                     ListRow(
@@ -129,7 +130,7 @@ fun SymbolsContent(
                         }
                     )
                     if (index < selectedSymbols.size - 1) GroupDivider(startInset = 64)
-                }
+                } }
             }
             Caption("시세창에 이 순서대로 표시돼요(홈에서 눈 아이콘을 끈 종목은 빼고). 최소 1개는 남겨 두어야 해요. Variational은 공개 시세가 30초마다 갱신되고 차트 데이터가 없어요.")
         }

@@ -687,10 +687,13 @@ private fun SymbolSearchSheet(
     val venueFilter = Exchange.entries.firstOrNull { it.name == venue }
     val sort = MarketSort.entries.firstOrNull { it.name == tab }
     val searching = query.isNotBlank()
-    val rows: List<String> = when {
-        searching -> results.filter { venueFilter == null || it.exchange == venueFilter }.map { it.symbol }
-        sort == null -> selectedSymbols
-        else -> rankMarket(tickers.values, sort, venueFilter).map { it.symbol }
+    // ranked once per snapshot / tab / venue, not on every redraw of the sheet
+    val rows: List<String> = remember(searching, results, selectedSymbols, tickers, sort, venueFilter) {
+        when {
+            searching -> results.filter { venueFilter == null || it.exchange == venueFilter }.map { it.symbol }
+            sort == null -> selectedSymbols
+            else -> rankMarket(tickers.values, sort, venueFilter).map { it.symbol }
+        }
     }
 
     ModalBottomSheet(
