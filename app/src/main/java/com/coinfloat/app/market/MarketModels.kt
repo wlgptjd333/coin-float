@@ -110,7 +110,7 @@ data class MarketTicker(val symbol: String, val price: Double, val changePercent
 enum class MarketSort(val label: String) { VOLUME("거래대금"), GAINERS("상승"), LOSERS("하락") }
 
 /**
- * The top of a ranking, optionally on one venue. Risers and fallers leave out markets that barely trade ([minVolume] of
+ * A ranking, optionally on one venue: every market by default (the list only draws the rows on screen). Risers and fallers leave out markets that barely trade ([minVolume] of
  * 24 h turnover): a thinly traded listing can move 50 % on one order and would fill the list with noise.
  */
 fun rankMarket(
@@ -118,7 +118,7 @@ fun rankMarket(
     sort: MarketSort,
     venue: Exchange? = null,
     minVolume: Double = 100_000.0,
-    limit: Int = 100
+    limit: Int = Int.MAX_VALUE
 ): List<MarketTicker> {
     val pool = tickers.asSequence().filter { venue == null || Exchange.of(it.symbol) == venue }.filter { it.price > 0.0 }
     return when (sort) {

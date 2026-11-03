@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.36.2] - 2026-11-04
+
+### Changed
+- **The market list shows every market**, not just the top 100 (the list draws only the rows on screen, so the length
+  costs nothing).
+
 ## [1.36.1] - 2026-11-03
 
 ### Fixed
