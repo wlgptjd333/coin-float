@@ -272,7 +272,7 @@ class OverlayController(private val context: Context) {
                 val info = symbolInfoMap[currentChartSymbol] ?: symbolInfoMap[currentChartSymbol.uppercase()]
                 val formattedPrice = PriceFormatter.formatPrice(marketPrice?.price, info?.tickSize)
                 val livePrice = marketPrice?.price?.toFloat()
-                miniChartView?.updateHeader(currentChartSymbol, formattedPrice, livePrice, marketPrice?.dayChangePercent())
+                miniChartView?.updateHeader(com.coinfloat.app.market.displaySymbol(currentChartSymbol, info), formattedPrice, livePrice, marketPrice?.dayChangePercent())
 
                 if (livePrice != null && livePrice > 0f) {
                     miniChartView?.updateLivePrice(livePrice)
@@ -588,7 +588,7 @@ class OverlayController(private val context: Context) {
         val info = latestSymbolInfoMap[currentChartSymbol] ?: latestSymbolInfoMap[currentChartSymbol.uppercase()]
         val formattedPrice = PriceFormatter.formatPrice(marketPrice?.price, info?.tickSize)
         val livePrice = marketPrice?.price?.toFloat()
-        chart.updateHeader(currentChartSymbol, formattedPrice, livePrice, marketPrice?.dayChangePercent())
+        chart.updateHeader(com.coinfloat.app.market.displaySymbol(currentChartSymbol, info), formattedPrice, livePrice, marketPrice?.dayChangePercent())
         chart.setActiveInterval(currentChartInterval)
         chart.setChartLoading()
 

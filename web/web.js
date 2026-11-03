@@ -7,7 +7,8 @@ var LAST = 'cf.web.last', TICKERS = 'https://fapi.binance.com/fapi/v1/ticker/24h
 
 function readLast() { try { return JSON.parse(localStorage.getItem(LAST)) || {}; } catch (e) { return {}; } }
 function saveLast(s, i) { try { localStorage.setItem(LAST, JSON.stringify({ s: s, i: i })); } catch (e) { /* private mode */ } }
-function clean(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function clean(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9-]/g, ''); }
+function shortName(s) { return /^HL-/.test(s) ? (hlNames[s] || hlGuess(s)) : /^VAR-/.test(s) ? s.slice(4) : s.replace(/USDT$/, ''); }
 
 // coin and interval live in the address (?s=ETHUSDT&i=1h), so a link opens the same chart
 function syncUrl() {
@@ -23,32 +24,41 @@ function syncUrl() {
 // The chart closes its sockets while the tab is hidden, so the title has its own feed: the coin's 24h mini ticker, one
 // small message a second, kept open in the background too (browsers keep delivering socket messages to hidden tabs).
 var WS_URL = 'wss://fstream.binance.com/market/stream';
-var tf = { sym: null, ws: null, delay: 1000, timer: 0, shown: '' };
+var tf = { sym: null, ws: null, delay: 1000, timer: 0, ping: 0, shown: '' };
 function setTitle(text) { if (text !== tf.shown) { tf.shown = text; document.title = text; } }
 function titleFeed(sym) {
     if (sym === tf.sym && tf.ws) return;
     tf.sym = sym;
     if (tf.ws) { tf.ws.onclose = null; try { tf.ws.close(); } catch (e) { /* closing */ } tf.ws = null; }
+    clearInterval(tf.ping);
     clearTimeout(tf.timer);
-    setTitle(sym.replace(/USDT$/, '') + ' · CoinFloat');
+    setTitle(shortName(sym) + ' · CoinFloat');
+    if (/^VAR-/.test(sym)) return;                       // Variational: no public stream
     connectTitle();
 }
 function connectTitle() {
-    var sym = tf.sym, name = sym.toLowerCase() + '@miniTicker', ws;
-    try { ws = new WebSocket(WS_URL); } catch (e) { retryTitle(); return; }
+    var sym = tf.sym, hl = /^HL-/.test(sym), name = sym.toLowerCase() + '@miniTicker', coin = hlNames[sym] || hlGuess(sym), ws;
+    try { ws = new WebSocket(hl ? HL_WS : WS_URL); } catch (e) { retryTitle(); return; }
     tf.ws = ws;
-    ws.onopen = function () { tf.delay = 1000; ws.send(JSON.stringify({ method: 'SUBSCRIBE', params: [name], id: 1 })); };
+    ws.onopen = function () {
+        tf.delay = 1000;
+        if (hl) {
+            ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'activeAssetCtx', coin: coin } }));
+            tf.ping = setInterval(function () { try { ws.send('{"method":"ping"}'); } catch (e) { /* closing */ } }, 30000);
+        } else ws.send(JSON.stringify({ method: 'SUBSCRIBE', params: [name], id: 1 }));
+    };
     ws.onmessage = function (e) {
         var m; try { m = JSON.parse(e.data); } catch (err) { return; }
-        var d = m && m.stream === name && m.data;
+        var d = hl ? m && m.channel === 'activeAssetCtx' && m.data && m.data.coin === coin && m.data.ctx && { c: +m.data.ctx.midPx || +m.data.ctx.markPx, o: +m.data.ctx.prevDayPx }
+            : m && m.stream === name && m.data;
         if (!d || sym !== tf.sym) return;
         var close = +d.c, open = +d.o;
         if (!(close > 0)) return;
         var price = window.CF && window.CF.symbol() === sym ? window.CF.fmtPrice(close) : String(close);
         var pct = open > 0 ? (close - open) / open * 100 : null;
-        setTitle(sym.replace(/USDT$/, '') + ' ' + price + (pct == null ? '' : ' ' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'));
+        setTitle(shortName(sym) + ' ' + price + (pct == null ? '' : ' ' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'));
     };
-    ws.onclose = function () { if (tf.ws === ws) { tf.ws = null; retryTitle(); } };
+    ws.onclose = function () { clearInterval(tf.ping); if (tf.ws === ws) { tf.ws = null; retryTitle(); } };
 }
 function retryTitle() {
     clearTimeout(tf.timer);
@@ -56,13 +66,40 @@ function retryTitle() {
     tf.delay = Math.min(tf.delay * 2, 30000);
 }
 
-// ---- coin search: all USDT perpetuals by 24h volume, from one public request ------------------------------------
+// ---- coin search: Binance USDT perpetuals (coins, stocks, commodities) and Hyperliquid's markets, by 24h volume ---
+var HL_INFO = 'https://api.hyperliquid.xyz/info', HL_WS = 'wss://api.hyperliquid.xyz/ws', hlNames = {};
+function hlKey(coin) { return 'HL-' + String(coin).split(':').map(function (p) { return p.toUpperCase().replace(/[^A-Z0-9]/g, ''); }).join('-'); }
+function hlGuess(key) { var p = key.slice(3).split('-'); return p.length > 1 ? p[0].toLowerCase() + ':' + p.slice(1).join('-') : p[0]; }
+function hlPost(body) { return fetch(HL_INFO, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) { return r.json(); }); }
+// one market group (the main market, or a HIP-3 deployer such as XYZ with stocks and commodities) as search rows
+function hlRows(dex, label) {
+    return hlPost(dex ? { type: 'metaAndAssetCtxs', dex: dex } : { type: 'metaAndAssetCtxs' }).then(function (a) {
+        var uni = a && a[0] && a[0].universe || [], ctx = a && a[1] || [];
+        return uni.map(function (u, i) {
+            var c = ctx[i] || {}, key = hlKey(u.name);
+            hlNames[key] = u.name;
+            if (u.isDelisted || !(+c.dayNtlVlm > 0)) return null;
+            var last = +c.midPx || +c.markPx, prev = +c.prevDayPx;
+            return { symbol: key, name: u.name, venue: 'Hyperliquid' + (label ? ' · ' + label : ''), lastPrice: last, quoteVolume: +c.dayNtlVlm, priceChangePercent: prev > 0 ? (last - prev) / prev * 100 : 0 };
+        }).filter(Boolean);
+    }, function () { return []; });
+}
+function loadHl() {
+    return hlPost({ type: 'perpDexs' }).then(function (d) {
+        var dexes = (Array.isArray(d) ? d : []).filter(function (x) { return x && x.name; });
+        return Promise.all([hlRows('', '')].concat(dexes.map(function (x) { return hlRows(x.name, x.fullName || x.name); })));
+    }, function () { return Promise.all([hlRows('', '')]); }).then(function (parts) { return [].concat.apply([], parts); });
+}
 var tickers = null, tickersAt = 0;
 function loadTickers() {
     if (tickers && Date.now() - tickersAt < 60000) return Promise.resolve(tickers);
-    return fetch(TICKERS).then(function (r) { return r.json(); }).then(function (a) {
-        tickers = (Array.isArray(a) ? a : []).filter(function (t) { return /USDT$/.test(t.symbol) && +t.quoteVolume > 0; })
-            .sort(function (x, y) { return +y.quoteVolume - +x.quoteVolume; });
+    var bn = fetch(TICKERS).then(function (r) { return r.json(); }).then(function (a) {
+        return (Array.isArray(a) ? a : []).filter(function (t) { return /USDT$/.test(t.symbol) && +t.quoteVolume > 0; })
+            .map(function (t) { return { symbol: t.symbol, name: t.symbol.replace(/USDT$/, ''), venue: 'Binance', lastPrice: +t.lastPrice, quoteVolume: +t.quoteVolume, priceChangePercent: +t.priceChangePercent }; });
+    }, function () { return []; });
+    return Promise.all([bn, loadHl()]).then(function (r) {
+        var byVol = function (x, y) { return y.quoteVolume - x.quoteVolume; };
+        tickers = r[0].sort(byVol).concat(r[1].sort(byVol));
         tickersAt = Date.now();
         return tickers;
     });
@@ -73,7 +110,7 @@ function openSearch() {
     var CF = window.CF; if (!CF) return;
     var box = document.createElement('div');
     var inp = document.createElement('input');
-    inp.type = 'search'; inp.placeholder = '코인 검색 (예: BTC, SOL)'; inp.autocomplete = 'off';
+    inp.type = 'search'; inp.placeholder = '종목 검색 (예: BTC, TSLA, GOLD)'; inp.autocomplete = 'off';
     inp.style.cssText = 'width:100%;padding:10px 12px;margin:4px 0 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:15px;user-select:text;-webkit-user-select:text';
     var list = document.createElement('div');
     box.appendChild(inp); box.appendChild(list);
@@ -81,21 +118,21 @@ function openSearch() {
         var q = clean(inp.value), cur = CF.symbol(), n = 0;
         list.innerHTML = '';
         (tickers || []).some(function (t) {
-            if (q && t.symbol.indexOf(q) < 0) return false;
+            if (q && t.symbol.indexOf(q) < 0 && t.name.toUpperCase().indexOf(q) < 0) return false;
             var chg = +t.priceChangePercent, b = document.createElement('button');
             b.className = 'row-opt';
-            b.innerHTML = '<span><b>' + t.symbol.replace(/USDT$/, '') + '</b><small>' + t.symbol + ' · 거래대금 ' + fmtVol(t.quoteVolume) + '</small></span>' +
+            b.innerHTML = '<span><b>' + t.name + '</b><small>' + t.venue + ' · 거래대금 ' + fmtVol(t.quoteVolume) + '</small></span>' +
                 '<span style="text-align:right">' + (+t.lastPrice) + '<small style="color:' + (chg >= 0 ? 'var(--up)' : 'var(--down)') + '">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</small></span>' +
                 (t.symbol === cur ? '<span class="check">✓</span>' : '');
             b.onclick = function () { CF.closeSheet(); window.loadSymbol(t.symbol); setTimeout(syncUrl, 0); };
             list.appendChild(b);
             return ++n >= 80;
         });
-        if (!n) list.appendChild(CF.noteRow(tickers ? '찾는 코인이 없어요' : '불러오는 중…'));
+        if (!n) list.appendChild(CF.noteRow(tickers ? '찾는 종목이 없어요' : '불러오는 중…'));
     }
     inp.oninput = render;
     inp.onkeydown = function (e) { if (e.key === 'Enter') { var b = list.querySelector('button'); if (b) b.click(); } };
-    CF.openSheet('코인 선택', [box]);
+    CF.openSheet('종목 선택', [box]);
     render();
     loadTickers().then(render, function () { list.innerHTML = ''; list.appendChild(CF.noteRow('목록을 불러오지 못했어요')); });
     setTimeout(function () { inp.focus(); }, 50);

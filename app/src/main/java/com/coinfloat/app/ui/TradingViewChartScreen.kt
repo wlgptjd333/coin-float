@@ -242,6 +242,7 @@ fun TradingViewChartScreen(
         if (!immersive) {
             LiveChartHeader(
                 symbol = currentSymbol,
+                title = com.coinfloat.app.market.displaySymbol(currentSymbol, symbolInfoMap[currentSymbol]),
                 marketPrices = marketPrices,
                 ticker24h = ticker24h,
                 fundingInfo = fundingInfo,
@@ -281,7 +282,7 @@ fun TradingViewChartScreen(
         SymbolSearchSheet(
             selectedSymbols = selectedSymbols,
             currentSymbol = currentSymbol,
-            symbolInfoCount = symbolInfoMap.size,
+            symbolInfoMap = symbolInfoMap,
             onSearchSymbols = onSearchSymbols,
             onAddSymbolToWatchlist = onAddSymbolToWatchlist,
             onSelect = {
@@ -297,6 +298,7 @@ fun TradingViewChartScreen(
 @Composable
 private fun LiveChartHeader(
     symbol: String,
+    title: String,
     marketPrices: StateFlow<Map<String, MarketPrice>>,
     ticker24h: Ticker24h?,
     fundingInfo: FundingInfo?,
@@ -329,7 +331,7 @@ private fun LiveChartHeader(
     // The color switches at once, like the floating window. A fade here ran ~14 animation frames a second (the price
     // flips direction several times a second), and every one of them redrew the whole window, the chart WebView included.
     ChartHeader(
-        symbol = symbol,
+        symbol = title,
         formattedPrice = formattedPrice,
         priceColor = priceColor,
         changePercent = liveChange,
@@ -545,10 +547,12 @@ private fun StatsRow(ticker24h: Ticker24h?, fundingInfo: FundingInfo?, tickSize:
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (ticker24h != null) {
-            Stat("24h 고가", PriceFormatter.formatPrice(ticker24h.highPrice.toBigDecimal(), tickSize))
-            Stat("24h 저가", PriceFormatter.formatPrice(ticker24h.lowPrice.toBigDecimal(), tickSize))
+            // Hyperliquid reports no 24 h high / low
+            if (ticker24h.highPrice > 0f) Stat("24h 고가", PriceFormatter.formatPrice(ticker24h.highPrice.toBigDecimal(), tickSize))
+            if (ticker24h.lowPrice > 0f) Stat("24h 저가", PriceFormatter.formatPrice(ticker24h.lowPrice.toBigDecimal(), tickSize))
             if (ticker24h.quoteVolume > 0f) {
-                Stat("거래대금", PriceFormatter.formatCompactVolume(ticker24h.quoteVolume) + " USDT")
+                val unit = if (com.coinfloat.app.market.Exchange.of(ticker24h.symbol) == com.coinfloat.app.market.Exchange.BINANCE) " USDT" else " USD"
+                Stat("거래대금", PriceFormatter.formatCompactVolume(ticker24h.quoteVolume) + unit)
             }
         }
         if (fundingInfo != null) {
@@ -623,7 +627,7 @@ private fun FundingStat(info: FundingInfo) {
 private fun SymbolSearchSheet(
     selectedSymbols: List<String>,
     currentSymbol: String,
-    symbolInfoCount: Int,
+    symbolInfoMap: Map<String, SymbolInfo>,
     onSearchSymbols: (String) -> List<SymbolInfo>,
     onAddSymbolToWatchlist: (String) -> Unit,
     onSelect: (String) -> Unit,
@@ -631,6 +635,7 @@ private fun SymbolSearchSheet(
 ) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SymbolInfo>>(emptyList()) }
+    val symbolInfoCount = symbolInfoMap.size
 
     // symbolInfoCount re-runs the search once the exchange info finishes loading.
     LaunchedEffect(query, symbolInfoCount) {
@@ -649,13 +654,13 @@ private fun SymbolSearchSheet(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Text("종목 선택", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Text("Binance USDT 무기한 선물", fontSize = 11.sp, color = MutedText)
+            Text("Binance · Hyperliquid · Variational 무기한 (코인, 주식, 원자재)", fontSize = 11.sp, color = MutedText)
             Spacer(Modifier.height(10.dp))
 
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("종목 검색 (예: SOL, XRP, DOGE)", color = MutedText) },
+                placeholder = { Text("종목 검색 (예: SOL, TSLA, GOLD)", color = MutedText) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MutedText) },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
@@ -670,7 +675,7 @@ private fun SymbolSearchSheet(
             Spacer(Modifier.height(10.dp))
 
             if (query.isBlank()) {
-                Text("관심 종목", fontSize = 12.sp, color = MutedText, fontWeight = FontWeight.Bold)
+                Text("즐겨찾기", fontSize = 12.sp, color = MutedText, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                     items(selectedSymbols) { sym ->
@@ -682,12 +687,15 @@ private fun SymbolSearchSheet(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = sym,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (sym.equals(currentSymbol, true)) AccentColor else Color.White
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = com.coinfloat.app.market.displaySymbol(sym, symbolInfoMap[sym]),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (sym.equals(currentSymbol, true)) AccentColor else Color.White
+                                )
+                                Text(com.coinfloat.app.market.subtitleOf(sym, symbolInfoMap[sym]), fontSize = 11.sp, color = MutedText)
+                            }
                             Text("차트 열기", fontSize = 12.sp, color = AccentColor)
                         }
                         HorizontalDivider(color = LineColor)
@@ -717,15 +725,15 @@ private fun SymbolSearchSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(item.symbol, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text(com.coinfloat.app.market.displaySymbol(item.symbol, item), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                 Text(
-                                    text = "${item.baseAsset} / ${item.quoteAsset} · tick ${item.tickSize}",
+                                    text = item.subtitle(),
                                     fontSize = 11.sp,
                                     color = MutedText
                                 )
                             }
                             if (added) {
-                                Text("관심종목", fontSize = 11.sp, color = UpColor, fontWeight = FontWeight.Medium)
+                                Text("즐겨찾기됨", fontSize = 11.sp, color = UpColor, fontWeight = FontWeight.Medium)
                             } else {
                                 Button(
                                     onClick = { onAddSymbolToWatchlist(item.symbol) },
@@ -735,7 +743,7 @@ private fun SymbolSearchSheet(
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(2.dp))
-                                    Text("관심 추가", fontSize = 11.sp)
+                                    Text("즐겨찾기", fontSize = 11.sp)
                                 }
                             }
                         }

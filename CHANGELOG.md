@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.35.0] - 2026-11-03
+
+### Added
+- **Stocks, ETFs and commodities on Binance**: SOXL, TSLA, NVDA, QQQ, XAU (gold), XAG and the other 230-odd
+  "TradFi" perpetuals now show up in search. Binance lists them as their own contract type (TRADIFI_PERPETUAL), which
+  the symbol list used to skip. Search results say what they are (주식, 원자재, 한국 주식 ...).
+- **Hyperliquid**: every perpetual of the main market and of the builder-deployed (HIP-3) markets, where stocks,
+  indices and commodities trade (xyz:TSLA, xyz:GOLD, xyz:SP500 ...). Live prices on the floating window, home and
+  chart; the chart page loads Hyperliquid candles and streams them live (in the app and on the website). Hyperliquid
+  has no 6-hour candles, and the order-flow features (order book, liquidations, OI ...) stay Binance-only.
+- **Variational**: every listing's price on the floating window and home screen. Its public data is one statistics
+  document cached for 30 s, so prices update every 30 s and there is no chart (the chart page says so).
+- **Search across venues**, best matches first (exact name, then prefix, Binance before Hyperliquid before Variational),
+  by full name too ("gold", "strategy"), with a venue filter on the symbols tab.
+
+### Changed
+- **Favorites and the floating window are separate**: an eye on each home-screen row turns that symbol on or off on the
+  floating window; it stays in the watchlist either way. Favorites added from the chart's search start off the window.
+  The choice follows the account like the watchlist.
 ## [1.34.3] - 2026-10-30
 
 ### Changed

@@ -54,7 +54,7 @@ object CoinFloatNotification {
     ): Content {
         fun line(symbol: String): String {
             val upper = symbol.uppercase()
-            val base = info[upper]?.baseAsset ?: upper.removeSuffix("USDT")
+            val base = info[upper]?.baseAsset ?: com.coinfloat.app.market.Exchange.baseOf(upper)
             val p = prices[upper] ?: return "$base —"
             val price = PriceFormatter.formatPrice(p.price, info[upper]?.tickSize)
             val change = p.dayChangePercent()?.let { String.format(Locale.US, "  %+.2f%%", it) } ?: ""

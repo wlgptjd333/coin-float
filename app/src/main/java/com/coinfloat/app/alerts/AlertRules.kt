@@ -53,7 +53,7 @@ data class AlertRule(
         val KINDS = setOf("vol", "div", "brk", "line", "ind")
         val CONDS = setOf("rsi", "pma", "mama", "macd", "macd0", "bb")
         val SOURCES = setOf("rsi", "macd", "cvd", "vol")
-        private val SYMBOL = Regex("^[A-Z0-9]{2,30}$")
+        private val SYMBOL = Regex("^[A-Z0-9][A-Z0-9-]{1,39}$")
 
         /** Rules come from the chart page: anything malformed is dropped, numbers are clamped. */
         fun fromJson(o: JSONObject): AlertRule? {

@@ -39,7 +39,7 @@ object ChartInterval {
         }
     }
 
-    /** Keeps only characters that are safe to embed in a JavaScript string literal for a symbol. */
+    /** Keeps only characters that are safe to embed in a JavaScript string literal for a symbol (dash: "HL-BTC"). */
     fun sanitizeSymbol(symbol: String): String =
-        symbol.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }
+        symbol.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' || it == '-' }
 }

@@ -13,6 +13,11 @@ var INTERVALS = [
 var SEC = {}; INTERVALS.forEach(function (i) { SEC[i[0]] = i[2]; });
 var REST = 'https://fapi.binance.com/fapi/v1/klines';
 var WS_URL = 'wss://fstream.binance.com/market/stream';
+// Other venues. Their symbols carry a prefix: "HL-BTC", "HL-XYZ-TSLA" (Hyperliquid, incl. its stock and commodity
+// markets), "VAR-SOXL" (Variational, which publishes prices but no candles). The order-flow features read Binance only.
+var HL_INFO = 'https://api.hyperliquid.xyz/info', HL_WS = 'wss://api.hyperliquid.xyz/ws';
+var HL_IV = { '1m': 1, '3m': 1, '5m': 1, '15m': 1, '30m': 1, '1h': 1, '2h': 1, '4h': 1, '8h': 1, '12h': 1, '1d': 1, '3d': 1, '1w': 1, '1M': 1 };
+function venueOf(sym) { return /^HL-/.test(sym) ? 'hl' : /^VAR-/.test(sym) ? 'var' : 'bn'; }
 var MAX_BARS = 20000;                // history kept in memory: zooming out keeps loading older pages up to this
 var PAGE = 1500;                     // candles per history request (the exchange maximum)
 // candle width limits in px. 0.08 is ~5,000 candles per phone screen; beyond that every frame gets slow (measured),
@@ -1033,9 +1038,14 @@ var CVDSPOT = {
 // ---- features: self-contained data feeds/overlays (order book, liquidations ...) -----------------------------------
 var features = { cvdspot: CVDSPOT }; CVDSPOT.running = false;
 var FEATURE_IND = { cvdspot: function () { return ind.cvd && spotOn(); } };
+var featureNote = '';
 function syncFeatures() {
+    // the order-flow features (order book, liquidations, OI, funding ...) read Binance's own data only
+    var binance = venueOf(symbol) === 'bn';
     Object.keys(features).forEach(function (key) {
-        var f = features[key], want = !!(FEATURE_IND[key] ? FEATURE_IND[key]() : ind[key]) && active && candles.length > 0 && !(RP && !RP.picking);
+        var f = features[key], on = !!(FEATURE_IND[key] ? FEATURE_IND[key]() : ind[key]);
+        if (on && !binance && active && candles.length && featureNote !== symbol) { featureNote = symbol; toast('호가·청산·미결제약정 같은 오더플로우 지표는 Binance 종목에서만 나와요'); }
+        var want = on && binance && active && candles.length > 0 && !(RP && !RP.picking);
         if (want && !f.running) { f.running = true; try { f.start(); } catch (e) { console.error(e); } }
         else if (!want && f.running) { f.running = false; try { f.stop(); } catch (e) { console.error(e); } }
     });
@@ -3626,7 +3636,8 @@ function checkConn() {
     // Only the live socket decides. navigator.onLine is a hint for the wording: an Android WebView can report
     // "offline" long after the network is back (it misses the change while the app is in the background), which kept
     // the banner up although prices were streaming.
-    var down = active && started && candles.length > 0 && !streams.market.open;
+    var venue = venueOf(symbol), live = venue === 'hl' ? hl.open : venue === 'var' || streams.market.open;   // Variational has no stream
+    var down = active && started && candles.length > 0 && !live;
     if (!down) { connLostAt = 0; pill.className = ''; return; }
     if (!connLostAt) connLostAt = Date.now();
     if (Date.now() - connLostAt < 3500) return;                      // short blips are not worth a banner
@@ -3691,6 +3702,89 @@ function setPrecision(dec) {
     [candleSeries, lineSeries, areaSeries, barSeries, baseSeries].forEach(function (s) { s.applyOptions({ priceFormat: pf }); });
     Object.keys(subLive).forEach(function (key) { if (SUBS[key].style) SUBS[key].style(subLive[key]); });
 }
+// ---- Hyperliquid: exact coin names ("kPEPE", "xyz:TSLA") behind the upper-case keys, candles, one socket ----------
+var hlCoins = {};
+function hlKey(coin) { return 'HL-' + String(coin).split(':').map(function (p) { return p.toUpperCase().replace(/[^A-Z0-9]/g, ''); }).join('-'); }
+function hlGuess(key) { var p = key.slice(3).split('-'); return p.length > 1 ? p[0].toLowerCase() + ':' + p.slice(1).join('-') : p[0]; }
+function hlPost(body) {
+    return fetch(HL_INFO, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+}
+function hlCoin(key) {
+    if (hlCoins[key]) return Promise.resolve(hlCoins[key]);
+    var guess = hlGuess(key), dex = guess.indexOf(':') > 0 ? guess.split(':')[0] : '';
+    return hlPost(dex ? { type: 'meta', dex: dex } : { type: 'meta' }).then(function (m) {
+        ((m && m.universe) || []).forEach(function (a) { if (a && a.name) hlCoins[hlKey(a.name)] = a.name; });
+        return hlCoins[key] || guess;
+    }, function () { return guess; });
+}
+function symLabel(sym) {
+    var v = venueOf(sym);
+    return v === 'hl' ? (hlCoins[sym] || hlGuess(sym)) + ' · HL' : v === 'var' ? sym.slice(4) + ' · VAR' : sym;
+}
+// Candles of any venue, as Binance-shaped rows (parseRows reads them all the same). q: { limit, endTime, startTime }.
+// Hyperliquid has no taker-buy volume: half the volume, so delta and CVD read flat rather than wrong.
+function getKlines(sym, iv, q) {
+    var v = venueOf(sym);
+    if (v === 'bn') {
+        return fetch(REST + '?symbol=' + encodeURIComponent(sym) + '&interval=' + iv + '&limit=' + q.limit + (q.endTime ? '&endTime=' + q.endTime : '') + (q.startTime ? '&startTime=' + q.startTime : ''))
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+    }
+    if (v === 'var') return Promise.reject(new Error('novenue'));
+    if (!HL_IV[iv]) return Promise.reject(new Error('nointerval'));
+    var end = q.endTime || Date.now(), start = q.startTime || end - q.limit * SEC[iv] * 1000;
+    return hlCoin(sym).then(function (coin) {
+        return hlPost({ type: 'candleSnapshot', req: { coin: coin, interval: iv, startTime: start, endTime: end } });
+    }).then(function (a) {
+        return (Array.isArray(a) ? a : []).map(function (c) { var vol = +c.v, qv = vol * +c.c; return [c.t, c.o, c.h, c.l, c.c, c.v, c.T, qv, c.n, vol / 2, qv / 2]; }).slice(-q.limit);
+    });
+}
+var hl = { ws: null, subs: {}, gen: 0, delay: 1000, timer: 0, ping: 0, open: false, opened: false };
+function hlSend(method, s) { try { hl.ws.send(JSON.stringify({ method: method, subscription: s })); } catch (e) { /* socket gone */ } }
+function hlSub(s, handler) {
+    var k = JSON.stringify(s); hl.subs[k] = { s: s, h: handler };
+    if (hl.open) hlSend('subscribe', s); else hlConnect();
+}
+function hlUnsub(s) {
+    var k = JSON.stringify(s); if (!hl.subs[k]) return;
+    delete hl.subs[k];
+    if (hl.open) hlSend('unsubscribe', s);
+    if (!Object.keys(hl.subs).length) hlShutdown(true);
+}
+function hlConnect() {
+    if (hl.ws || !active || !Object.keys(hl.subs).length) return;
+    var gen = ++hl.gen, sock;
+    try { sock = new WebSocket(HL_WS); } catch (e) { hlRetry(); return; }
+    hl.ws = sock;
+    sock.onopen = function () {
+        if (gen !== hl.gen) return;
+        hl.open = true; hl.delay = 1000;
+        Object.keys(hl.subs).forEach(function (k) { hlSend('subscribe', hl.subs[k].s); });
+        clearInterval(hl.ping);
+        hl.ping = setInterval(function () { try { sock.send('{"method":"ping"}'); } catch (e) { /* closing */ } }, 30000);   // idle sockets are dropped after a minute
+        if (hl.opened) resync();                                      // re-opened: fill in what was missed
+        hl.opened = true;
+    };
+    sock.onmessage = function (e) {
+        if (gen !== hl.gen) return;
+        var m; try { m = JSON.parse(e.data); } catch (err) { return; }
+        if (!m || !m.data) return;
+        Object.keys(hl.subs).forEach(function (k) { var x = hl.subs[k]; if (x && x.s.type === m.channel) { try { x.h(m.data); } catch (err2) { console.error(err2); } } });
+    };
+    sock.onclose = function () { if (gen !== hl.gen) return; hl.ws = null; hl.open = false; clearInterval(hl.ping); hlRetry(); };
+    sock.onerror = function () { /* onclose follows */ };
+}
+function hlRetry() {
+    clearTimeout(hl.timer);
+    if (!active || !Object.keys(hl.subs).length) return;
+    hl.timer = setTimeout(hlConnect, hl.delay);
+    hl.delay = Math.min(hl.delay * 2, 15000);
+}
+function hlShutdown(reset) {
+    hl.gen++; clearTimeout(hl.timer); clearInterval(hl.ping); hl.open = false; if (reset) hl.opened = false;
+    if (hl.ws) { try { hl.ws.close(); } catch (e) { /* ignore */ } hl.ws = null; }
+}
+
 function showLoading(on) { $('loading').className = on ? '' : 'hide'; }
 // stays on the empty chart (a toast would leave it blank with no reason); empty text hides it
 function showLoadError(text) { var e = $('load_err'); e.textContent = text || ''; e.className = text ? 'show' : ''; }
@@ -3700,8 +3794,7 @@ function reload(symbolChanged) {
     unsubKline(); stopFeatures(symbolChanged !== false); noMoreOlder = false; loadingOlder = false;
     showLoading(true); crossTime = null; pinch = null;
     if (closeReported) { closeReported = ''; bridge('candleClose', ''); }     // the header hides it until the data is in
-    fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=' + PAGE)
-        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    getKlines(symbol, interval, { limit: PAGE })
         .then(function (raw) {
             if (seq !== loadSeq) return;
             if (!Array.isArray(raw) || !raw.length) throw new Error('empty');
@@ -3727,6 +3820,15 @@ function reload(symbolChanged) {
         .catch(function (e) {
             if (seq !== loadSeq) return;
             showLoading(false);
+            var why = e && e.message || '';
+            if (why === 'novenue' || why === 'nointerval') {
+                // nothing to draw: clear the previous coin's chart rather than show it under this name
+                try { candles = []; D = newD(); computeAllInd(); setAllData(); DR.redraw(); } catch (err) { console.error(err); }
+                showLoadError(why === 'novenue' ? 'Variational은 공개 차트 데이터(캔들)를 제공하지 않아요. 가격은 홈 화면과 시세창에서 볼 수 있어요.'
+                    : 'Hyperliquid는 ' + interval + ' 봉을 제공하지 않아요. 다른 시간 단위를 골라 주세요.');
+                return;
+            }
+            if (venueOf(symbol) === 'hl') { showLoadError('Hyperliquid 차트 데이터를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'); toast('차트 데이터를 불러오지 못했어요', '다시 시도', function () { reload(false); }); return; }
             // a blocked browser may not even see the status (no CORS headers on the refusal), so the plain failure mentions it too
             showLoadError(/451/.test(e && e.message || '') ? '이 지역에서는 Binance 시세를 받을 수 없어요. Binance가 일부 국가(미국 등)에서 접속을 막고 있어요.' : '차트 데이터를 불러오지 못했어요. 인터넷 연결을 확인해 주세요. Binance가 접속을 막는 지역(미국 등)에서는 시세를 받을 수 없어요.');
             toast('차트 데이터를 불러오지 못했어요', '다시 시도', function () { reload(false); });
@@ -3744,9 +3846,7 @@ function loadOlder() {
     var pages = interval === '1M' ? 1 : Math.max(1, Math.min(4, Math.ceil(want / PAGE), Math.ceil((MAX_BARS - candles.length) / PAGE)));
     var seq = loadSeq, end = candles[0].time * 1000 - 1, span = PAGE * curSec() * 1000, reqs = [];
     for (var i = 0; i < pages; i++) {
-        var q = '&endTime=' + (end - i * span) + (pages > 1 ? '&startTime=' + (end - (i + 1) * span + 1) : '');
-        reqs.push(fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=' + PAGE + q)
-            .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); }));
+        reqs.push(getKlines(symbol, interval, { limit: PAGE, endTime: end - i * span, startTime: pages > 1 ? end - (i + 1) * span + 1 : 0 }));
     }
     loadingOlder = true;
     var more = false;
@@ -3836,19 +3936,36 @@ window.addEventListener('online', function () {
     [streams.market, streams.pub].forEach(function (st) {
         if (!st.ws && st.names().length) { clearTimeout(st.timer); st.delay = 1000; st.connect(); }
     });
+    if (!hl.ws && Object.keys(hl.subs).length) { clearTimeout(hl.timer); hl.delay = 1000; hlConnect(); }
     if (candles.length) resync();
 });
 streams.market.hooks.push(function () { resync(); });
 
-var klineName = null;
+var klineName = null, klineHl = null, klineSeq = 0;
 function unsubKline() {
-    clearTimeout(klineTimer); klineTimer = 0; klinePending = null;
+    clearTimeout(klineTimer); klineTimer = 0; klinePending = null; klineSeq++;
     if (klineName) { streams.market.unsub(klineName); klineName = null; }
+    if (klineHl) { hlUnsub(klineHl); klineHl = null; }
 }
 function subscribeKline() {
     unsubKline();
+    var sym = symbol, intv = interval, venue = venueOf(sym);
+    if (venue === 'var') return;                                     // no live candles there
+    if (venue === 'hl') {
+        var my = klineSeq;
+        hlCoin(sym).then(function (coin) {
+            if (my !== klineSeq) return;
+            klineHl = { type: 'candle', coin: coin, interval: intv };
+            // shaped like Binance's kline so onKline needs no second path
+            hlSub(klineHl, function (c) {
+                if (c.s !== coin || c.i !== intv) return;
+                var vol = +c.v, qv = vol * +c.c;
+                onKline({ t: c.t, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v, V: vol / 2, q: qv, Q: qv / 2, x: false, s: sym, i: intv });
+            });
+        });
+        return;
+    }
     klineName = symbol.toLowerCase() + '@kline_' + interval;
-    var sym = symbol, intv = interval;
     streams.market.sub(klineName, function (d) { var k = d && d.k; if (k && k.s === sym && k.i === intv) onKline(k); });
 }
 
@@ -3861,8 +3978,8 @@ function resync() {
     var seq = loadSeq, missed = Math.ceil((Date.now() / 1000 - candles[candles.length - 1].time) / curSec());
     if (missed > 990) { reload(false); return; }
     var limit = Math.max(60, missed + 5);
-    return fetch(REST + '?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=' + limit)
-        .then(function (r) { return r.ok ? r.json() : []; })
+    return getKlines(symbol, interval, { limit: limit })
+        .catch(function () { return []; })
         .then(function (raw) {
             if (seq !== loadSeq || !Array.isArray(raw) || !raw.length || !candles.length) return;
             var rows = parseRows(raw).rows, firstNew = rows[0].time, cut = candles.length;
@@ -3918,7 +4035,7 @@ function applyKline(k) {
 // Native API
 // =====================================================================================================
 window.loadSymbol = function (sym, defaultInterval, force) {
-    var next = String(sym || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    var next = String(sym || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
     if (!next) return;
     if (force && SEC[force] && force !== interval) {                    // opened from an alert: show its interval
         interval = force; LS.set('interval', force); markInterval();
@@ -3928,7 +4045,8 @@ window.loadSymbol = function (sym, defaultInterval, force) {
     if (started && next === symbol && candles.length) return;
     started = true;
     if (RP) replayEnd(true);
-    symbol = next; $('sym_name').textContent = next; syncDayTicker();
+    symbol = next; $('sym_name').textContent = symLabel(next); syncDayTicker();
+    if (venueOf(next) === 'hl') hlCoin(next).then(function () { if (symbol === next) $('sym_name').textContent = symLabel(next); });
     DR.load(); reload(true);
 };
 window.setActive = function (on) {
@@ -3936,23 +4054,36 @@ window.setActive = function (on) {
     active = !!on;
     if (active) {
         startTimers();
-        if (candles.length) { resync(); streams.market.connect(); streams.pub.connect(); syncFeatures(); }
+        if (candles.length) { resync(); streams.market.connect(); streams.pub.connect(); hlConnect(); syncFeatures(); }
     } else {
-        stopTimers(); streams.market.shutdown(false); streams.pub.shutdown(false); syncFeatures();
+        stopTimers(); streams.market.shutdown(false); streams.pub.shutdown(false); hlShutdown(false); syncFeatures();
     }
     syncDayTicker();
 };
 // 24h change next to the price in the full-screen / landscape bar (otherwise the app's header shows it). The 24h
 // ticker stream (one message a second) is only subscribed while that bar is on screen.
-var dayName = null;
+var dayName = null, dayHl = null;
 function syncDayTicker() {
-    var want = immersive && active && started ? symbol.toLowerCase() + '@miniTicker' : null;
+    var want = immersive && active && started ? symbol : null;
     if (want === dayName) return;
-    if (dayName) streams.market.unsub(dayName);
+    if (dayHl) { hlUnsub(dayHl); dayHl = null; }
+    else if (dayName && venueOf(dayName) === 'bn') streams.market.unsub(dayName.toLowerCase() + '@miniTicker');
     dayName = want; setDayChange(null);
     if (!want) return;
-    var sym = symbol;
-    streams.market.sub(want, function (d) { if (d && d.s === sym && +d.o > 0) setDayChange((+d.c - +d.o) / +d.o * 100); });
+    var sym = symbol, venue = venueOf(sym);
+    if (venue === 'var') return;                                     // Variational publishes no 24h figures
+    if (venue === 'hl') {
+        hlCoin(sym).then(function (coin) {
+            if (dayName !== sym || dayHl) return;
+            dayHl = { type: 'activeAssetCtx', coin: coin };
+            hlSub(dayHl, function (d) {
+                var c = d && d.ctx, prev = c && +c.prevDayPx, now = c && (+c.midPx || +c.markPx);
+                if (d.coin === coin && prev > 0 && now > 0) setDayChange((now - prev) / prev * 100);
+            });
+        });
+        return;
+    }
+    streams.market.sub(sym.toLowerCase() + '@miniTicker', function (d) { if (d && d.s === sym && +d.o > 0) setDayChange((+d.c - +d.o) / +d.o * 100); });
 }
 function setDayChange(pct) {
     var el = $('top_chg'); if (!el) return;

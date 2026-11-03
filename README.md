@@ -14,7 +14,7 @@
 
 ## 🚀 주요 기능
 
-- **Binance USDⓈ-M Futures 실시간 현재가 표시**:
+- **Binance USDⓈ-M Futures(코인 · 주식 · 원자재), Hyperliquid(HIP-3 주식 · 원자재 시장 포함), Variational 시세 표시**:
   - 공개 Aggregate Trade Stream (`wss://fstream.binance.com/market/stream`, 100ms 체결 갱신)
   - 단일(1개) WebSocket 커넥션으로 배터리 및 네트워크 리소스 최소화
 - **초소형 플로팅 오버레이 (WindowManager TYPE_APPLICATION_OVERLAY)**:
@@ -90,7 +90,7 @@ TradingView의 오픈소스 차트 엔진([Lightweight Charts™](https://www.tr
 ## 🔒 데이터 출처 및 보안 주의사항
 
 - **공개 시장 데이터(Public Market Data)만 사용**
-  - Binance 공개 WebSocket · REST를 기본으로, 합산 기능을 켜면 Bybit · OKX · Hyperliquid · Bitfinex 공개 데이터도 받습니다.
+  - Binance 공개 WebSocket · REST를 기본으로, Hyperliquid · Variational 종목을 고르면 그 거래소의 공개 API를 쓰고, 합산 기능을 켜면 Bybit · OKX · Hyperliquid · Bitfinex 공개 데이터도 받습니다.
 - **불필요한 기능 일절 배제**:
   - ❌ 필수 로그인 없음 (Google 로그인은 동기화를 쓸 때만, 선택)
   - ❌ API Key / Secret Key 입력창 없음

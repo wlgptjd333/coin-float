@@ -2,6 +2,18 @@ package com.coinfloat.app.market
 
 import java.math.BigDecimal
 
+/** One venue's live price feed: what [MarketDataRepository] needs from each exchange client. */
+interface PriceFeed {
+    val connectionState: kotlinx.coroutines.flow.StateFlow<ConnectionState>
+    val tradeEvents: kotlinx.coroutines.flow.SharedFlow<AggTradeEvent>
+    val dayEvents: kotlinx.coroutines.flow.SharedFlow<DayTickerEvent>
+    val klineEvents: kotlinx.coroutines.flow.SharedFlow<KlineEvent>
+    fun connect(symbols: List<String>)
+    fun updateSubscriptions(newSymbols: List<String>)
+    fun pause()
+    fun reconnectNow()
+}
+
 enum class ConnectionState {
     DISCONNECTED,
     CONNECTING,
@@ -32,14 +44,74 @@ data class KlineEvent(val symbol: String, val interval: String, val item: KlineI
 /** Mini-ticker (1/s per symbol): only what the app uses. */
 data class DayTickerEvent(val symbol: String, val open: String)
 
+/**
+ * Where a symbol's prices come from. Binance keys are the plain contract ("BTCUSDT"); the others carry a prefix
+ * ("HL-BTC", "HL-XYZ-TSLA", "VAR-TSLA"), so every key stays upper-case letters, digits and dashes, which the settings,
+ * the sync and the chart page all accept.
+ */
+enum class Exchange(val prefix: String, val label: String) {
+    BINANCE("", "Binance"),
+    HYPERLIQUID("HL-", "Hyperliquid"),
+    VARIATIONAL("VAR-", "Variational");
+
+    companion object {
+        fun of(symbol: String): Exchange = when {
+            symbol.startsWith(HYPERLIQUID.prefix, ignoreCase = true) -> HYPERLIQUID
+            symbol.startsWith(VARIATIONAL.prefix, ignoreCase = true) -> VARIATIONAL
+            else -> BINANCE
+        }
+
+        private fun keyPart(s: String) = s.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }
+
+        /** "BTC" -> "HL-BTC", "xyz:TSLA" -> "HL-XYZ-TSLA" (Hyperliquid's coin names are case-sensitive: "kPEPE"). */
+        fun hyperliquidKey(coin: String): String =
+            HYPERLIQUID.prefix + coin.split(':').joinToString("-") { keyPart(it) }
+
+        fun variationalKey(ticker: String): String = VARIATIONAL.prefix + keyPart(ticker)
+
+        /** The coin's short name without the venue prefix or quote ("BTCUSDT" -> "BTC", "HL-XYZ-TSLA" -> "TSLA"). */
+        fun baseOf(symbol: String): String {
+            val s = symbol.uppercase()
+            return when (of(s)) {
+                BINANCE -> if (s.endsWith("USDT") && s.length > 4) s.removeSuffix("USDT") else s
+                else -> s.substringAfterLast('-')
+            }
+        }
+    }
+}
+
 data class SymbolInfo(
     val symbol: String,
+    /** Binance: the pair; Hyperliquid: the exact coin name ("kPEPE", "xyz:TSLA"); Variational: the ticker. */
     val pair: String,
     val baseAsset: String,
     val quoteAsset: String,
     val tickSize: String,
-    val pricePrecision: Int = 2
-)
+    val pricePrecision: Int = 2,
+    val exchange: Exchange = Exchange.BINANCE,
+    /** What kind of market beyond plain coins ("주식", "원자재") or the venue's market group ("XYZ"); empty for coins. */
+    val group: String = "",
+    /** Full name when the venue gives one ("Strategy Inc"). */
+    val name: String = ""
+) {
+    /** One line under the symbol in lists: "Binance · 주식", "Hyperliquid · XYZ", "Variational · Strategy Inc". */
+    fun subtitle(): String = buildList {
+        add(exchange.label)
+        if (group.isNotEmpty()) add(group)
+        if (name.isNotEmpty() && !name.equals(baseAsset, ignoreCase = true)) add(name)
+        if (exchange == Exchange.BINANCE && group.isEmpty()) add("$quoteAsset 무기한")
+    }.joinToString(" · ")
+}
+
+/** Short name for headers: "BTCUSDT", "xyz:TSLA (HL)", "SOXL (VAR)". */
+fun displaySymbol(symbol: String, info: SymbolInfo?): String = when (Exchange.of(symbol)) {
+    Exchange.BINANCE -> symbol
+    Exchange.HYPERLIQUID -> "${info?.pair ?: HyperliquidClient.guessCoin(symbol)} (HL)"
+    Exchange.VARIATIONAL -> "${info?.pair ?: Exchange.baseOf(symbol)} (VAR)"
+}
+
+/** Subtitle for a key whose details are not loaded yet. */
+fun subtitleOf(symbol: String, info: SymbolInfo?): String = info?.subtitle() ?: Exchange.of(symbol).label
 
 data class AggTradeEvent(
     val eventType: String,

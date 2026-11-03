@@ -127,7 +127,7 @@ fun SettingsScreen(
                     fundingInfoMap = fundingInfoMap,
                     defaultInterval = settings.defaultChartInterval,
                     onSearchSymbols = viewModel::searchSymbols,
-                    onAddSymbolToWatchlist = viewModel::addSymbol,
+                    onAddSymbolToWatchlist = viewModel::addChartFavorite,
                     onRefreshTicker = viewModel::load24hTicker,
                     onRefreshFunding = viewModel::loadFundingInfo,
                     isFullscreen = isChartFullscreen,
@@ -201,7 +201,8 @@ fun SettingsScreen(
                             onRequestNotificationPermission = onRequestNotificationPermission,
                             onOpenChart = viewModel::openChart,
                             onEditSymbols = { viewModel.selectTab(SettingsViewModel.TAB_SYMBOLS) },
-                            onRefreshTickers = viewModel::refreshWatchlistTickers
+                            onRefreshTickers = viewModel::refreshWatchlistTickers,
+                            onToggleOverlay = viewModel::setOnOverlay
                         )
                     }
                 } }

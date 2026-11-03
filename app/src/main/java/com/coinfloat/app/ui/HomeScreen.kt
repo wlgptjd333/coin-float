@@ -10,10 +10,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.Icon
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -43,6 +47,8 @@ import com.coinfloat.app.market.MarketPrice
 import com.coinfloat.app.market.PriceFormatter
 import com.coinfloat.app.market.SymbolInfo
 import com.coinfloat.app.market.Ticker24h
+import com.coinfloat.app.market.Exchange
+import com.coinfloat.app.market.subtitleOf
 import com.coinfloat.app.settings.OverlaySettings
 import com.coinfloat.app.settings.SymbolDisplayMode
 import com.coinfloat.app.ui.components.Caption
@@ -80,7 +86,8 @@ fun HomeContent(
     onRequestNotificationPermission: () -> Unit,
     onOpenChart: (String) -> Unit,
     onEditSymbols: () -> Unit,
-    onRefreshTickers: () -> Unit
+    onRefreshTickers: () -> Unit,
+    onToggleOverlay: (String, Boolean) -> Unit = { _, _ -> }
 ) {
     // 24h change for the watchlist: a REST snapshot seeds it; the live stream keeps it current afterwards.
     val refresh by rememberUpdatedState(onRefreshTickers)
@@ -168,8 +175,8 @@ fun HomeContent(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             )
         }
-        Watchlist(settings.selectedSymbols, prices, tickers, symbolInfo, onOpenChart)
-        Caption("종목을 누르면 차트가 열려요.")
+        Watchlist(settings, prices, tickers, symbolInfo, onOpenChart, onToggleOverlay)
+        Caption("종목을 누르면 차트가 열려요. 눈 아이콘으로 시세창에 띄울 종목만 고를 수 있어요.")
 
         SectionLabel("시세창 미리보기")
         Group { OverlayPreview(settings, Modifier.padding(12.dp)) }
@@ -179,24 +186,28 @@ fun HomeContent(
 
 @Composable
 private fun Watchlist(
-    symbols: List<String>,
+    settings: OverlaySettings,
     pricesFlow: StateFlow<Map<String, MarketPrice>>,
     tickers: Map<String, Ticker24h>,
     symbolInfo: Map<String, SymbolInfo>,
-    onOpenChart: (String) -> Unit
+    onOpenChart: (String) -> Unit,
+    onToggleOverlay: (String, Boolean) -> Unit
 ) {
     // Collected here so a price tick recomposes only the list.
     val prices by pricesFlow.collectAsState()
+    val symbols = settings.selectedSymbols
+    val shownCount = settings.overlaySymbols.size
     Group {
         symbols.forEachIndexed { i, sym ->
             val upper = sym.uppercase()
             val info = symbolInfo[upper]
-            val base = info?.baseAsset ?: upper.removeSuffix("USDT")
+            val base = info?.baseAsset ?: Exchange.baseOf(upper)
             val price = prices[upper]?.price
             val change = prices[upper]?.dayChangePercent() ?: tickers[upper]?.priceChangePercent
+            val onOverlay = settings.isOnOverlay(upper)
             ListRow(
                 title = base,
-                subtitle = "${info?.quoteAsset ?: "USDT"} 무기한",
+                subtitle = subtitleOf(upper, info),
                 onClick = { onOpenChart(upper) },
                 leading = { CoinAvatar(base) },
                 trailing = {
@@ -209,6 +220,23 @@ private fun Watchlist(
                         )
                         Spacer(Modifier.height(3.dp))
                         ChangeTag(change)
+                    }
+                    // on the floating window or not; the last one shown stays (the window never goes empty)
+                    val canHide = !onOverlay || shownCount > 1
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 6.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(enabled = canHide, onClickLabel = if (onOverlay) "시세창에서 숨기기" else "시세창에 표시") { onToggleOverlay(upper, !onOverlay) }
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            if (onOverlay) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+                            contentDescription = if (onOverlay) "시세창에 표시 중" else "시세창에서 숨김",
+                            tint = if (onOverlay) Cf.Accent else Cf.TextFaint,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             )

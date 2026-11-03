@@ -26,13 +26,20 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import com.coinfloat.app.market.Exchange
 import com.coinfloat.app.market.SymbolInfo
+import com.coinfloat.app.market.subtitleOf
+import com.coinfloat.app.ui.components.Segmented
 import com.coinfloat.app.ui.components.Caption
 import com.coinfloat.app.ui.components.CoinAvatar
 import com.coinfloat.app.ui.components.Group
@@ -60,7 +67,17 @@ fun SymbolsContent(
         SearchField(searchQuery, onSearchQueryChange)
 
         if (searchQuery.isNotBlank()) {
-            SectionLabel(if (searchResults.isEmpty()) "검색 결과" else "검색 결과 ${searchResults.size}")
+            // the same ticker often trades on several venues: narrow the list to one
+            var venue by rememberSaveable { mutableStateOf("") }
+            Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Segmented(
+                    options = listOf("" to "전체") + Exchange.entries.map { it.name to it.label },
+                    selected = venue,
+                    onSelect = { venue = it }
+                )
+            }
+            val shown = if (venue.isEmpty()) searchResults else searchResults.filter { it.exchange.name == venue }
+            SectionLabel(if (shown.isEmpty()) "검색 결과" else "검색 결과 ${shown.size}")
             when {
                 isLoadingSymbols -> Group {
                     Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -69,13 +86,13 @@ fun SymbolsContent(
                         Text("거래소 종목 정보를 불러오는 중…", style = MaterialTheme.typography.bodyMedium, color = Cf.TextMuted)
                     }
                 }
-                searchResults.isEmpty() -> Caption("'$searchQuery'와 일치하는 Binance 선물 종목이 없어요.")
+                shown.isEmpty() -> Caption("'$searchQuery'와 일치하는 종목이 없어요.")
                 else -> Group {
-                    searchResults.take(30).forEachIndexed { i, info ->
+                    shown.take(40).forEachIndexed { i, info ->
                         val added = selectedSymbols.contains(info.symbol)
                         ListRow(
                             title = info.baseAsset,
-                            subtitle = "${info.symbol} · 무기한",
+                            subtitle = info.subtitle(),
                             onClick = if (added) null else ({ onAddSymbol(info.symbol) }),
                             leading = { CoinAvatar(info.baseAsset) },
                             trailing = {
@@ -91,7 +108,7 @@ fun SymbolsContent(
                                 }
                             }
                         )
-                        if (i < minOf(searchResults.size, 30) - 1) GroupDivider(startInset = 64)
+                        if (i < minOf(shown.size, 40) - 1) GroupDivider(startInset = 64)
                     }
                 }
             }
@@ -100,10 +117,10 @@ fun SymbolsContent(
             Group {
                 selectedSymbols.forEachIndexed { index, symbol ->
                     val info = symbolInfo[symbol.uppercase()]
-                    val base = info?.baseAsset ?: symbol.removeSuffix("USDT")
+                    val base = info?.baseAsset ?: Exchange.baseOf(symbol)
                     ListRow(
                         title = base,
-                        subtitle = symbol,
+                        subtitle = subtitleOf(symbol, info),
                         leading = { CoinAvatar(base) },
                         trailing = {
                             SmallIcon(Icons.Default.KeyboardArrowUp, "위로", index > 0) { onMoveUp(symbol) }
@@ -114,7 +131,7 @@ fun SymbolsContent(
                     if (index < selectedSymbols.size - 1) GroupDivider(startInset = 64)
                 }
             }
-            Caption("시세창에 이 순서대로 표시돼요. 최소 1개는 남겨 두어야 해요.")
+            Caption("시세창에 이 순서대로 표시돼요(홈에서 눈 아이콘을 끈 종목은 빼고). 최소 1개는 남겨 두어야 해요. Variational은 공개 시세가 30초마다 갱신되고 차트 데이터가 없어요.")
         }
         Spacer(Modifier.height(24.dp))
     }
@@ -143,7 +160,7 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
         Spacer(Modifier.width(8.dp))
         Box(Modifier.weight(1f)) {
             if (query.isEmpty()) {
-                Text("종목 검색 (예: SOL, XRP)", style = MaterialTheme.typography.bodyLarge, color = Cf.TextFaint)
+                Text("종목 검색 (예: SOL, TSLA, GOLD)", style = MaterialTheme.typography.bodyLarge, color = Cf.TextFaint)
             }
             BasicTextField(
                 value = query,
