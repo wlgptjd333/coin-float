@@ -1,6 +1,6 @@
 # CoinFloat 인수인계서
 
-작성일: 2026-10-30 · 기준 버전: **v1.34.3**
+작성일: 2026-10-30 (2026-11-03 갱신) · 기준 버전: **v1.35.0**
 받는 쪽: Gemini Argon 4 (이후 버그 수정 · 기능 개선 담당)
 
 이 문서는 코드에서 바로 알 수 없는 것을 적었습니다. 내용이 코드와 다르면 코드가 맞습니다. 변경 이력은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
@@ -16,7 +16,7 @@
 | 웹 | https://coinfloat.byhyesung.com/ |
 | 릴리즈 | https://github.com/wlgptjd333/coin-float/releases/latest |
 | 도메인 | byhyesung.com (Cloudflare Registrar). coinfloat 서브도메인은 GitHub Pages로 CNAME, 문의 메일 support@는 Cloudflare Email Routing으로 전달 |
-| 데이터 | Binance USDⓈ-M 선물 공개 API · WebSocket. 차트 합산 기능은 Bybit · OKX · Hyperliquid · Bitfinex 공개 스트림도 사용 |
+| 데이터 | Binance USDⓈ-M 선물(TRADIFI_PERPETUAL 주식 · 원자재 포함), Hyperliquid(주 시장 + HIP-3 시장), Variational(30초 폴링, 캔들 없음) 공개 API. 차트 합산 기능은 Bybit · OKX · Hyperliquid · Bitfinex 공개 스트림도 사용 |
 | 서버 | 자체 서버 없음. 로그인 · 설정 동기화는 Firebase(Authentication, Firestore, 프로젝트 `coin-float`)를 REST로 사용 |
 | 테스트 기기 | Galaxy S23+ (SM-S916N), Android 17 빌드 |
 | 사용자 | 개발자가 아닙니다. 설명은 한국어로, 결과 위주로 해 주세요. |
@@ -51,7 +51,7 @@
 | `alerts/` | 네이티브 알람 엔진. 앱이 꺼져 있어도 울림. CVD는 바이낸스 기준 |
 | `sync/GoogleSignIn.kt` | Google 계정 시트(Credential Manager)로 ID 토큰 받기 |
 | `settings/SettingsSync.kt` | 계정을 따라다니는 앱 설정(관심 종목, 시세창 모양)의 JSON 변환과 값 검증 |
-| `market/` | Binance 클라이언트 |
+| `market/` | 거래소 클라이언트(`PriceFeed`): Binance, Hyperliquid, Variational. 종목 키는 Binance `BTCUSDT`, `HL-XYZ-TSLA`(실제 코인명은 `SymbolInfo.pair`, 예 `xyz:TSLA`, `kPEPE`), `VAR-SOXL`. 오더플로우 기능은 Binance 종목에서만 동작 |
 
 ### 차트 (빌드 단계 없는 순수 JS) — `app/src/main/assets/`
 
