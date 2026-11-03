@@ -36,14 +36,14 @@ class VariationalClient(
         const val POLL_MS = 30_000L
         private val RETRY_MS = longArrayOf(5_000L, 10_000L, 30_000L)
 
-        data class Listing(val ticker: String, val name: String, val markPrice: String)
+        data class Listing(val ticker: String, val name: String, val markPrice: String, val volume24h: Double = 0.0)
 
         fun parseStats(json: String): List<Listing> {
             val arr = JSONObject(json).optJSONArray("listings") ?: return emptyList()
             return (0 until arr.length()).mapNotNull { i ->
                 val o = arr.optJSONObject(i) ?: return@mapNotNull null
                 val ticker = o.optString("ticker").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-                Listing(ticker, o.optString("name"), o.optString("mark_price"))
+                Listing(ticker, o.optString("name"), o.optString("mark_price"), o.optString("volume_24h").toDoubleOrNull() ?: 0.0)
             }
         }
 
@@ -163,4 +163,10 @@ class VariationalClient(
     }
 
     suspend fun fetchUniverse(): List<SymbolInfo> = fetchListings().map { toSymbolInfo(it) }
+
+    /** Market-list rows: price and turnover; Variational publishes no 24 h change. */
+    suspend fun fetchAllTickers(): List<MarketTicker> = fetchListings().mapNotNull { l ->
+        val price = l.markPrice.toDoubleOrNull() ?: return@mapNotNull null
+        MarketTicker(Exchange.variationalKey(l.ticker), price, null, l.volume24h)
+    }
 }

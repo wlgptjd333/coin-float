@@ -103,6 +103,31 @@ data class SymbolInfo(
     }.joinToString(" · ")
 }
 
+/** One row of the market list: last price, 24 h change (null where the venue publishes none), 24 h turnover in USD(T). */
+data class MarketTicker(val symbol: String, val price: Double, val changePercent: Double?, val quoteVolume: Double)
+
+/** The market list's rankings, like exchange apps: most traded, biggest risers, biggest fallers. */
+enum class MarketSort(val label: String) { VOLUME("거래대금"), GAINERS("상승"), LOSERS("하락") }
+
+/**
+ * The top of a ranking, optionally on one venue. Risers and fallers leave out markets that barely trade ([minVolume] of
+ * 24 h turnover): a thinly traded listing can move 50 % on one order and would fill the list with noise.
+ */
+fun rankMarket(
+    tickers: Collection<MarketTicker>,
+    sort: MarketSort,
+    venue: Exchange? = null,
+    minVolume: Double = 100_000.0,
+    limit: Int = 100
+): List<MarketTicker> {
+    val pool = tickers.asSequence().filter { venue == null || Exchange.of(it.symbol) == venue }.filter { it.price > 0.0 }
+    return when (sort) {
+        MarketSort.VOLUME -> pool.filter { it.quoteVolume > 0.0 }.sortedByDescending { it.quoteVolume }
+        MarketSort.GAINERS -> pool.filter { it.changePercent != null && it.quoteVolume >= minVolume }.sortedByDescending { it.changePercent }
+        MarketSort.LOSERS -> pool.filter { it.changePercent != null && it.quoteVolume >= minVolume }.sortedBy { it.changePercent }
+    }.take(limit).toList()
+}
+
 /** Short name for headers: "BTCUSDT", "xyz:TSLA (HL)", "SOXL (VAR)". */
 fun displaySymbol(symbol: String, info: SymbolInfo?): String = when (Exchange.of(symbol)) {
     Exchange.BINANCE -> symbol

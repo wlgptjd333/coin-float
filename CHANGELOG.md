@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.36.0] - 2026-11-03
+
+### Added
+- **A market list in the chart's symbol picker**, like exchange apps: favorites, or the top 100 by 24 h turnover
+  (거래대금), risers (상승) and fallers (하락), over all venues or one of them (Binance, Hyperliquid, Variational). Each
+  row shows price and 24 h change; the star adds or removes a favorite. Risers and fallers leave out markets with less
+  than $100k of 24 h turnover. The snapshot is fetched only while the picker is open, every 30 s.
 ## [1.35.0] - 2026-11-03
 
 ### Added
