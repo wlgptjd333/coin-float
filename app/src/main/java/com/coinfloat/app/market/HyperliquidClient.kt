@@ -271,7 +271,20 @@ class HyperliquidClient(
         next?.let { send("subscribe", candleSubscription(it)) }
     }
 
-    private fun ctxSubscription(key: String) = JSONObject().put("type", "activeAssetCtx").put("coin", coin(key))
+    // The coin name each key was last subscribed under, to tell whether a guessed name has to be corrected.
+    private val sentCoins = ConcurrentHashMap<String, String>()
+
+    private fun ctxSubscription(key: String): JSONObject {
+        val c = coin(key)
+        sentCoins[key] = c
+        return JSONObject().put("type", "activeAssetCtx").put("coin", c)
+    }
+
+    /** The listing arrived: reconnect only if a subscription went out under a guessed name that was wrong ("kPEPE"). */
+    fun listingLoaded() {
+        val wrong = synchronized(lock) { activeSymbols.any { k -> coinOf(k)?.let { it != sentCoins[k] } == true } }
+        if (wrong) reconnectNow()
+    }
     private fun candleSubscription(s: CandleStream) = JSONObject().put("type", "candle").put("coin", coin(s.key)).put("interval", s.hlInterval)
 
     private fun send(method: String, subscription: JSONObject) {
