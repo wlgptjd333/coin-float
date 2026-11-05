@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.36.3] - 2026-11-05
+
+### Changed
+- **Folding the values at the top of the chart (▴) hides the indicator rows too.** It used to leave every indicator's
+  name on the chart. Chart settings › "상단 수치를 접었을 때" brings back the old way: names stay, values go.
+
 ## [1.36.2] - 2026-11-04
 
 ### Changed
