@@ -19,6 +19,11 @@ CoinFloat은 어떤 앱 위에든 작은 시세창을 띄워 두는 앱입니다
 · 누르면 그 자리에서 미니 차트가 열려요
 · 잠금화면 알림에서도 시세를 볼 수 있어요
 
+■ 코인뿐 아니라 주식 · 원자재까지
+· 코인 무기한 선물과 함께 미국 주식, ETF, 금 · 은 같은 원자재 선물 시세도 볼 수 있어요
+· 여러 거래소의 종목을 한 번에 검색해요
+· 거래대금 · 상승 · 하락 순 시장 목록으로 전체 시장을 훑어볼 수 있어요
+
 ■ 고급 차트
 · 이동평균, VWAP, 볼린저, RSI, MACD 등 기본 지표와 지표 59종 라이브러리
 · CVD, 미결제약정, 청산, 호가 벽과 히트맵, 풋프린트
@@ -51,26 +56,29 @@ CoinFloat은 어떤 앱 위에든 작은 시세창을 띄워 두는 앱입니다
 
 **포그라운드 서비스 (특수 용도, FOREGROUND_SERVICE_SPECIAL_USE)**
 
+선언 화면은 출시 검토의 "선언으로 이동" 링크로 들어가야 권한 목록이 나옵니다(앱 콘텐츠에서 직접 열면 빈 화면). 작업은 "기타", **시연 동영상 링크가 필수**입니다(없으면 저장 버튼이 꺼짐). 영상: 앱에서 시세창을 켜고, 다른 앱으로 나가도 시세가 계속 바뀌고, 알림의 숨기기 · 보이기 · 중지가 동작하는 30초 정도.
+
 ```text
 The app's core feature is a small floating window showing live cryptocurrency prices on top of other apps, which the
 user turns on themselves. The foreground service keeps the WebSocket price stream and the overlay window alive while
-the user is in other apps, and shows a persistent notification with Hide / Show / Stop actions. No other foreground
-service type fits a continuously visible, user-started market-price overlay. If the service stopped, the prices on
-screen would freeze or the window would disappear while the user is relying on it. The stream pauses when the screen
-is off or the user hides the window.
+the user is in other apps, and shows a persistent notification with Hide / Show / Stop actions. It must start
+immediately when the user turns the window on, and it cannot be paused and restarted later: if the service stopped,
+the prices on screen would freeze or the window would disappear while the user is relying on it. No other foreground
+service type fits a continuously visible, user-started market-price overlay. The stream pauses when the screen is off
+or the user hides the window.
 ```
 
 **다른 앱 위에 표시 (SYSTEM_ALERT_WINDOW):** 앱의 핵심 기능이며, 사용자가 시스템 설정에서 직접 허용합니다. 시스템 UI를 가리거나 입력을 가로채지 않고, 사용자가 언제든 끌거나 숨길 수 있습니다.
 
 **정확한 알람 (SCHEDULE_EXACT_ALARM):** 사용자가 만든 차트 알람을 봉 마감 시각에 확인합니다. 사용자가 시스템 설정에서 허용합니다.
 
-**심사 안내 (App access 항목):**
+**심사 안내 (로그인 세부정보 항목, 500자 제한):** "예, 제한된 부분 있음"으로 두고 사용자 이름 · 비밀번호 없이 아래 안내만 넣었습니다. 위치에 따른 제한도 이 항목에 해당하기 때문입니다.
 
 ```text
-No account is needed; Google sign-in is optional. To see the core feature: open the app, turn on "시세창 켜기" on the
-Home tab and allow "Display over other apps". The chart tab opens without any setup.
-Market data comes from Binance's public API, which blocks some regions such as the United States. If the prices stay
-empty, please test from a region where Binance is available (for example South Korea).
+No account needed; Google sign-in is optional. Open the app, turn on "시세창 켜기" on the Home tab and allow "Display
+over other apps" to see the floating price window. The chart tab works without setup. Binance's public API blocks some
+regions (e.g. the US, HTTP 451); the app then shows the reason. Hyperliquid markets are not region-blocked: pick one in
+the chart's symbol search. Or test from a region where Binance works (e.g. South Korea).
 ```
 
 **심사 위험:** Binance 선물 API는 미국 등 일부 지역에서 HTTP 451로 막힌다고 보고됩니다(개발자 포럼 기준). 심사 환경이 미국이면 시세가 비어 "작동하지 않는 앱"으로 거절될 수 있습니다. 대응: 출시 국가를 Binance 이용 가능 지역으로 제한하고, 위 안내를 적습니다. 앱은 451을 받으면 홈 화면과 차트에 이유를 보여 줍니다(1.34.2).
@@ -80,7 +88,7 @@ empty, please test from a region where Binance is available (for example South K
 | 질문 | 답 |
 |---|---|
 | 데이터 수집 | 예 (Google 로그인을 쓰는 사용자만) |
-| 수집 데이터 | 이메일 주소, 사용자 ID, 앱 내 설정(기타 앱 활동) |
+| 수집 데이터 | 이메일 주소, 사용자 ID, 기타 사용자 제작 콘텐츠(Pine 스크립트 · 작도 · 알람 규칙), 기타 작업(차트 · 시세창 설정) |
 | 수집 목적 | 앱 기능, 계정 관리 |
 | 처리 방식 | 선택 사항 (로그인은 필수 아님) |
 | 제3자 공유 | 아니요 (Firebase는 서비스 제공자) |
@@ -91,6 +99,8 @@ empty, please test from a region where Binance is available (for example South K
 **금융 기능 신고:** 거래소, 지갑, 주문 기능이 없습니다. 시세 조회 전용으로 답합니다.
 
 ## 4. 앱 서명
+
+**완료(2026-11-04):** Play는 앱을 만들 때 Google 키를 자동으로 만들어 둡니다. 첫 출시 전에 "키 변경 > Java Keystore의 키 내보내기 및 업로드"로 기존 키(SHA-256 `47:47:1E:...:07:05`)로 바꿨습니다. 내보내기는 GitHub Actions에서 저장소 시크릿과 Google PEPK 도구로 했고(임시 브랜치, 결과는 Google 공개 키로 암호화), 브랜치와 아티팩트는 지웠습니다.
 
 Play 앱 서명을 켤 때 **기존 키를 업로드하는 방식**을 고릅니다. 그래야 GitHub APK와 Play 빌드가 서로 업데이트되고, Google 로그인의 Android 클라이언트(SHA-1)를 그대로 쓸 수 있습니다. Google이 만든 키를 쓰면 Google Cloud에 그 SHA-1로 Android 클라이언트를 추가해야 합니다. 비밀번호는 Play Console 안내에 따라 직접 처리하고, 채팅이나 AI 도구에 붙여 넣지 않습니다.
 
@@ -168,8 +178,8 @@ I am happy to test your app in return. Comment with your link.
 
 ## 7. 순서
 
-1. 사용자: Play 개발자 계정 등록과 본인 인증
-2. AAB 업로드, 위 자료 입력, 비공개 테스트 트랙 생성
+1. ~~사용자: Play 개발자 계정 등록과 본인 인증~~ (개인 계정 "hyesung", gwidama와 같은 계정)
+2. ~~AAB 업로드, 위 자료 입력, 비공개 테스트 트랙 생성~~ (2026-11-04, 비공개 테스트 - Alpha, 178개국, 테스터 목록 tester_group01)
 3. 테스터 모집, 14일 진행, 받은 의견 반영
 4. 정식 출시 신청
 5. 원스토어 등록 검토, 사업자 등록 후 Galaxy Store 검토
