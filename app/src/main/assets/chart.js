@@ -113,6 +113,7 @@ defineSettings('chart', {
         { k: 'sep', t: 'bool', label: '날짜 구분선', sub: '분 · 시간봉은 하루, 일봉은 한 주가 바뀌는 곳에 세로선', def: false },
         { k: 'hilo', t: 'bool', label: '화면 최고가 · 최저가 표시', def: true },
         { k: 'legend', t: 'sel', label: '상단 수치 표시', def: 'full', opts: [['full', '시세 + 지표 (탭하면 펼침)'], ['ohlc', '시세만'], ['off', '숨김']] },
+        { k: 'legendFold', t: 'sel', label: '상단 수치를 접었을 때 (▴)', def: 'all', opts: [['all', '지표 줄까지 모두 숨김'], ['values', '지표 이름은 남기고 수치만 숨김']] },
         { t: 'sec', label: '하단 지표 창' },
         { k: 'merge', t: 'bool', label: '하단 지표를 한 창에 합치기', sub: 'RSI · MACD · CVD · OI · 청산을 한 창에 겹쳐 보여줍니다', def: false }
     ],
@@ -3521,7 +3522,9 @@ function renderLegend() {
         legendHooks.forEach(function (fn) { try { var h = fn(i); if (h) parts.push(h); } catch (e) { console.error(e); } });
     }
     var l2 = parts.length ? '<div class="row">' + parts.join(' &nbsp;') + '</div>' : '';
-    setLegend(l1, toggle, l2, mode === 'full' ? legendRows(i, open) : []);
+    // folded (▾) hides the indicator rows too, unless the settings keep their names
+    var rows = mode === 'full' && (open || S('chart').legendFold === 'values') ? legendRows(i, open) : [];
+    setLegend(l1, toggle, l2, rows);
     fillPaneValues(i);
 }
 // ---- indicator rows on the chart, TradingView-style: one row per indicator laid over the price (name + values at the
@@ -3575,7 +3578,7 @@ function legendItems(i) {
 // rows as { shell: the row with an empty name button (rebuilt only when a row is added, removed, selected or hidden),
 // body: the name and values that go into that button on every tick }
 function legendRows(i, open) {
-    // collapsed (▾): the rows stay, names only, so they can still be tapped
+    // collapsed (▾) with "names stay" in the settings: names only, so they can still be tapped
     return legendItems(i).map(function (it) {
         var sel = legendSel === it.k, k = escHtml(it.k);
         return {
@@ -3589,7 +3592,7 @@ function legendRows(i, open) {
 }
 $('legend').addEventListener('click', function (e) {
     var t = e.target.closest && e.target.closest('button'); if (!t) return;
-    if (t.id === 'lg_t') { legendOpen = !legendOpen; LS.set('legendOpen', legendOpen); renderLegend(); return; }
+    if (t.id === 'lg_t') { legendOpen = !legendOpen; LS.set('legendOpen', legendOpen); legendSel = null; renderLegend(); return; }
     var k = t.getAttribute('data-k'), a = t.getAttribute('data-a'); if (!k) return;
     clearTimeout(legendSelT);
     if (a === 'sel') {
