@@ -1,6 +1,6 @@
 # CoinFloat 인수인계서
 
-> 2026-11-05 새 Play 등록: applicationId는 `com.byhyesung.coinfloat`, 버전 1.36.3(74)입니다. 아래 기존 설치본 업데이트/서명 설명보다 [새 등록과 서명 절차](docs/store-launch.md#4-새-앱-등록과-서명-2026-11-05)를 우선합니다. Google 생성 Play 서명 키로 준비하며, 새 패키지에 대한 Android OAuth 클라이언트 등록과 실기기 로그인 검증이 필요합니다.
+> 2026-11-05 새 Play 등록: applicationId는 `com.byhyesung.coinfloat`, 버전 1.36.3(74)입니다. 아래 기존 설치본 업데이트/서명 설명보다 [새 등록과 서명 절차](docs/store-launch.md#4-새-앱-등록과-서명-2026-11-05)를 우선합니다. Play는 Google 생성 앱 서명 키를 쓰고, AAB는 별도 업로드 키로 서명합니다(CI 시크릿 `UPLOAD_*`). 새 패키지용 Android OAuth 클라이언트는 등록했고, 실기기 로그인 검증이 남았습니다.
 
 작성일: 2026-10-30 (2026-11-03 갱신) · 기준 버전: **v1.35.0**
 받는 쪽: Gemini Argon 4 (이후 버그 수정 · 기능 개선 담당)
