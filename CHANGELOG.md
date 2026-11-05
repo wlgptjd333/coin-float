@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.36.3] - 2026-11-05
+
+### Changed
+- Android application ID is now `com.byhyesung.coinfloat` for the new Google Play listing. Kotlin namespace is unchanged.
+- Google sign-in requires an Android OAuth client for the new package and distribution signing certificate.
+
 ## [1.36.2] - 2026-11-04
 
 ### Changed

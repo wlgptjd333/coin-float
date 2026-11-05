@@ -90,9 +90,15 @@ empty, please test from a region where Binance is available (for example South K
 
 **금융 기능 신고:** 거래소, 지갑, 주문 기능이 없습니다. 시세 조회 전용으로 답합니다.
 
-## 4. 앱 서명
+## 4. 새 앱 등록과 서명 (2026-11-05)
 
-Play 앱 서명을 켤 때 **기존 키를 업로드하는 방식**을 고릅니다. 그래야 GitHub APK와 Play 빌드가 서로 업데이트되고, Google 로그인의 Android 클라이언트(SHA-1)를 그대로 쓸 수 있습니다. Google이 만든 키를 쓰면 Google Cloud에 그 SHA-1로 Android 클라이언트를 추가해야 합니다. 비밀번호는 Play Console 안내에 따라 직접 처리하고, 채팅이나 AI 도구에 붙여 넣지 않습니다.
+- 새 applicationId: `com.byhyesung.coinfloat`. Kotlin namespace는 `com.coinfloat.app` 그대로입니다.
+- 새 등록용 버전: 1.36.3 (versionCode 74), 1.36.2 코드 기반.
+- Play는 Google 생성 앱 서명 키를 사용하는 방식으로 준비합니다. 기존 CI 서명 키는 AAB 업로드 키로 유지합니다.
+- GitHub APK와 Play 설치본의 서명이 달라지므로 서로 덮어 설치할 수 없습니다.
+- Google 로그인: Google Cloud `coin-float` 프로젝트에서 새 패키지와 **Play 앱 서명 인증서 SHA-1**에 맞는 Android OAuth 클라이언트를 등록해야 합니다. GitHub APK도 로그인하려면 새 패키지 + CI 인증서 SHA-1 조합도 별도로 등록합니다. 기존 Web OAuth 클라이언트는 유지합니다.
+- 업로드 전에 AAB의 패키지명, 버전, 업로드 인증서를 확인합니다. 로컬 키가 없으면 debug 키로 빌드되므로 로컬 AAB를 Play에 올리지 않습니다. CI의 서명된 AAB를 사용합니다.
+- 등록 진행 상태: 코드 변경 완료, 빌드 및 Console/OAuth 설정 확인 중. 아직 새 앱의 로그인이나 Play 제출이 완료됐다고 볼 수 없습니다.
 
 ## 5. 테스터 모집
 
