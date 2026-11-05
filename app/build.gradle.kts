@@ -19,11 +19,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.coinfloat.app"
+        applicationId = "com.byhyesung.coinfloat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 73
-        versionName = "1.36.2"
+        versionCode = 74
+        versionName = "1.36.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
