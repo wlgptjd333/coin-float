@@ -104,9 +104,10 @@ CF.defineSettings('depth', {
         { k: 'walls', t: 'range', label: '표시할 벽 개수', def: 6, min: 0, max: 10, step: 1 },
         { k: 'group', t: 'sel', label: '벽을 묶는 가격 폭', def: 'auto', opts: [['fine', '좁게 (가격의 0.02%)'], ['auto', '보통 (0.05%, BTC 약 $50)'], ['wide', '넓게 (0.1%)'], ['tick', '묶지 않음 (호가 한 칸)']] },
         { k: 'minWall', t: 'num', label: '벽으로 볼 최소 금액 ($)', def: 60000, min: 5000, max: 50000000, step: 10000 },
-        { k: 'labels', t: 'bool', label: '금액 · 가격 · 거리(%) 라벨', def: true },
-        { k: 'font', t: 'range', label: '라벨 글자 크기', def: 11, min: 9, max: 15, step: 1, unit: 'px', showIf: function (c) { return c.labels; } },
-        { k: 'lines', t: 'sel', label: '벽 점선', def: 'long', opts: [['off', '없음'], ['short', '짧게'], ['long', '길게'], ['full', '차트 끝까지']] },
+        { k: 'labels', t: 'bool', label: '벽 옆에 금액 표시', def: true },
+        { k: 'lstyle', t: 'sel', label: '표시 내용', def: 'amt', opts: [['amt', '금액만 (14.9M)'], ['dist', '금액 + 거리 (14.9M -1.6%)'], ['full', '자세히 (매수벽 · 가격 · 거리)']], showIf: function (c) { return c.labels; } },
+        { k: 'font', t: 'range', label: '글자 크기', def: 10, min: 8, max: 15, step: 1, unit: 'px', showIf: function (c) { return c.labels; } },
+        { k: 'lines', t: 'sel', label: '벽 점선', def: 'short', opts: [['off', '없음'], ['short', '짧게'], ['long', '길게'], ['full', '차트 끝까지']] },
         { t: 'note', label: '벽 = 그 가격대(묶는 폭 안)에 쌓인 대기 주문 합계가 유난히 큰 곳. 가장 큰 매수벽 · 매도벽은 굵게 표시합니다. 현재가 아래는 매수벽, 위는 매도벽만 보이고, 1.2초 이상 유지된 주문만 인정해 깜빡임을 줄였습니다. 호가는 언제든 취소될 수 있어(스푸핑) 벽이 지지 · 저항을 보장하지는 않습니다.' }
     ]
 });
@@ -988,16 +989,17 @@ function paintDepth(ctx, w, h) {
         ctx.fillStyle = CF.hexA(col, wl.top ? 1 : 0.85); ctx.fillRect(w - len, y - thick / 2, len, thick);     // the wall itself, drawn solid
         var xr = w - len - 5, xl = xr, size = cfg.font || 11;
         if (cfg.labels && Math.abs(y - lastLabelY) >= size + 3) {                        // label sits left of the bar: it never covers it
-            var dist = last ? (wl.p / last - 1) * 100 : 0;
-            var text = (wl.bid ? '매수벽 ' : '매도벽 ') + fmtUsd(wl.v) + ' · ' + CF.fmtPrice(wl.p) + (last ? ' (' + (dist >= 0 ? '+' : '') + dist.toFixed(2) + '%)' : '');
-            ctx.font = '700 ' + size + 'px -apple-system, Roboto, sans-serif';
+            // the color already says buy or sell and the axis gives the price: by default just the size, quietly
+            var dist = last ? (wl.p / last - 1) * 100 : 0, amt = wl.v >= 1e9 ? (wl.v / 1e9).toFixed(2) + 'B' : wl.v >= 1e6 ? (wl.v / 1e6).toFixed(1) + 'M' : Math.round(wl.v / 1e3) + 'K', pct = (dist >= 0 ? '+' : '') + dist.toFixed(1) + '%';
+            var text = cfg.lstyle === 'full' ? (wl.bid ? '매수벽 ' : '매도벽 ') + fmtUsd(wl.v) + ' · ' + CF.fmtPrice(wl.p) + ' (' + pct + ')'
+                : cfg.lstyle === 'dist' ? amt + ' ' + pct : amt;
+            ctx.font = (wl.top ? '700 ' : '600 ') + size + 'px -apple-system, Roboto, sans-serif';
             var tw = ctx.measureText(text).width;
-            ctx.fillStyle = 'rgba(19,23,34,' + (wl.top ? 0.85 : 0.7) + ')';                 // a backing plate keeps it readable over candles
-            ctx.fillRect(xr - tw - 4, y - size / 2 - 3, tw + 8, size + 6);
-            tag(ctx, text, xr, y, wl.top ? '#FFFFFF' : col, 'right', size);
-            if (wl.top) { ctx.fillStyle = col; ctx.fillRect(xr - tw - 4, y - size / 2 - 3, 2, size + 6); }
+            ctx.globalAlpha = wl.top ? 1 : 0.85;
+            tag(ctx, text, xr, y, col, 'right', size);
+            ctx.globalAlpha = 1;
             lastLabelY = y;
-            xl = xr - tw - 9;
+            xl = xr - tw - 6;
         }
         if (cfg.lines !== 'off' && xl > 8) {
             var span = w * (cfg.lines === 'long' ? 0.45 : cfg.lines === 'full' ? 1 : 0.14);

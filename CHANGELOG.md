@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.38.1] - 2026-11-09
+
+### Changed
+- **Order-book wall labels are just the size now** (`49.3M`), in the side's color, without the words, price, distance or
+  the dark plate; the dashed lines are short again. The long form (`매수벽 · price · distance`) and size + distance are
+  options in the wall settings.
+
 ## [1.38.0] - 2026-11-09
 
 ### Added
