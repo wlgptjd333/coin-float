@@ -33,18 +33,18 @@ class AlertStore(context: Context) {
 
     fun rules(): List<AlertRule> {
         if (prefs.contains("rules")) return AlertRule.listFromJson(prefs.getString("rules", "[]"))
-        // First run: start from the recommended set (the chart's "추천 정예 · 실전 표준" alert profile) on BTC
-        return defaultRules("BTCUSDT").also(::saveRules)
+        // First run: start from the recommended set (the chart's "🎯 역추세" alert profile, backtested) on BTC and ETH
+        return (defaultRules("BTCUSDT") + defaultRules("ETHUSDT")).also(::saveRules)
     }
 
     private fun defaultRules(symbol: String): List<AlertRule> {
         val s = symbol.uppercase()
         val id = "def-${s.lowercase()}"
         return listOf(
-            AlertRule(id = "$id-vol15m", symbol = s, interval = "15m", kind = "vol", mult = 4.0, vlen = 20, minBody = 0.2),
-            AlertRule(id = "$id-brk1h", symbol = s, interval = "1h", kind = "brk", len = 20, volMult = 1.5),
-            AlertRule(id = "$id-div1h", symbol = s, interval = "1h", kind = "div", src = "rsi", reg = true, right = 3),
-            AlertRule(id = "$id-ema4h", symbol = s, interval = "4h", kind = "ind", cond = "pma", ma = "ema", len = 200)
+            // heads-up: a 5m volume burst, the moment it happens (real-time)
+            AlertRule(id = "$id-vol5m", symbol = s, interval = "5m", kind = "vol", mult = 4.0, vlen = 20, minBody = 0.2, live = true),
+            // entry candidate: a 15m flush / blow-off that was absorbed (at the close)
+            AlertRule(id = "$id-exh15m", symbol = s, interval = "15m", kind = "exh", mult = 3.0, vlen = 20, range = 0.8, wick = 0.4)
         )
     }
     fun saveRules(list: List<AlertRule>) {

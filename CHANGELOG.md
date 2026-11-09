@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.38.2] - 2026-11-10
+
+### Changed
+- **The counter-trend profile (🎯 역추세) is the default**: first in the profile list, and a fresh install starts with it
+  on BTC and ETH (5m volume real-time heads-up + 15m exhaustion). Its description, the help and the guide give the
+  per-coin backtest (BTC / HYPE / SOL / ETH have an edge, XRP / DOGE do not). Existing alerts are not touched.
+
 ## [1.38.1] - 2026-11-09
 
 ### Changed
