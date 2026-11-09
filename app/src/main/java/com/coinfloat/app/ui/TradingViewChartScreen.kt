@@ -1139,6 +1139,8 @@ private class ChartBridge(
         o.put("history", org.json.JSONArray().apply { store.history().forEach { put(it.toJson()) } })
         o.put("exact", com.coinfloat.app.alerts.AlertScheduler.canExact(ctx))
         o.put("notif", androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled())
+        // real-time alerts run inside the floating window's service; without it they are checked at the close only
+        o.put("liveOk", com.coinfloat.app.alerts.LiveAlertMonitor.running)
         return o.toString()
     }
 
@@ -1147,14 +1149,17 @@ private class ChartBridge(
         val ctx = webView.context.applicationContext
         val store = com.coinfloat.app.alerts.AlertStore(ctx)
         val rules = com.coinfloat.app.alerts.AlertRule.listFromJson(json)
-        // a new rule only looks at candles that close from now on (no alert for what happened before it existed)
-        val st = store.state(); val now = System.currentTimeMillis()
-        rules.forEach { r -> if (!st.has(r.id)) st.put(r.id, org.json.JSONObject().put("last", com.coinfloat.app.alerts.AlertTime.lastClosedOpen(r.interval, now))) }
-        store.saveRules(rules)
-        val ids = rules.map { it.id }.toSet()
-        st.keys().asSequence().toList().filter { it !in ids }.forEach { st.remove(it) }
-        store.saveState(st)
+        synchronized(com.coinfloat.app.alerts.AlertStore.LOCK) {
+            // a new rule only looks at candles that close from now on (no alert for what happened before it existed)
+            val st = store.state(); val now = System.currentTimeMillis()
+            rules.forEach { r -> if (!st.has(r.id)) st.put(r.id, org.json.JSONObject().put("last", com.coinfloat.app.alerts.AlertTime.lastClosedOpen(r.interval, now))) }
+            store.saveRules(rules)
+            val ids = rules.map { it.id }.toSet()
+            st.keys().asSequence().toList().filter { it !in ids }.forEach { st.remove(it) }
+            store.saveState(st)
+        }
         com.coinfloat.app.alerts.AlertScheduler.schedule(ctx)
+        com.coinfloat.app.alerts.LiveAlertMonitor.refresh(ctx)
         return rules.size.toString()
     }
 

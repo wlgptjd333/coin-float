@@ -45,14 +45,18 @@ function redraw() { CF.redraw(); }
 CF.defineSettings('oi', {
     title: '미결제약정(OI) 설정', onChange: function () { CF.styleSubs(); CF.refreshSub('oi'); },
     fields: [
+        { k: 'mode', t: 'sel', label: '표시', def: 'line', opts: [['line', 'OI 선'], ['delta', '봉마다 OI 증감 막대'], ['both', '선 + 증감 막대']] },
         { k: 'color', t: 'color', label: '선 색', def: '#FFB300' },
         { k: 'width', t: 'range', label: '선 두께', def: 2, min: 1, max: 4, step: 1, unit: 'px' },
-        { k: 'unit', t: 'sel', label: '단위', def: 'usd', opts: [['usd', '금액 ($)'], ['coin', '수량 (코인)']] }
+        { k: 'unit', t: 'sel', label: '단위', def: 'usd', opts: [['usd', '금액 ($)'], ['coin', '수량 (코인)']] },
+        { t: 'note', label: '증감 막대: 초록 = 그 봉 동안 포지션이 새로 열림(OI 증가), 빨강 = 포지션이 닫힘(OI 감소). 가격 상승 + OI 증가는 새 롱 유입, 가격 상승 + OI 감소는 숏 청산 · 숏 커버링 쪽입니다. 바이낸스 OI 기록은 5분 단위라 1분 · 3분봉에서는 5분마다 막대가 생기고, 진행 중인 봉은 10초마다 갱신됩니다.' }
     ]
 });
 CF.defineSettings('liq', {
-    title: '실시간 청산 설정', onChange: function () { CF.styleSubs(); redraw(); },
+    title: '실시간 청산 설정', onChange: function (c, k) { CF.styleSubs(); redraw(); if (k === 'xex' && liq.key) { liqXStart(); CF.scheduleLegend(); } },
     fields: [
+        { t: 'sec', label: '데이터' },
+        { k: 'xex', t: 'bool', label: 'Bybit · OKX 청산 합산', sub: '바이낸스는 1초에 1건만 공개해서 연쇄 청산 때 크게 빠집니다. Bybit은 모든 청산을 보내 줍니다', def: true },
         { t: 'sec', label: '버블' },
         { k: 'bubbles', t: 'bool', label: '차트에 청산 버블 표시', def: true },
         { k: 'ttl', t: 'sel', label: '버블 유지 시간 (지나면 서서히 사라짐)', def: '900', opts: [['60', '1분'], ['300', '5분'], ['900', '15분'], ['3600', '1시간'], ['14400', '4시간'], ['0', '계속 표시']], showIf: function (c) { return c.bubbles; } },
@@ -63,7 +67,7 @@ CF.defineSettings('liq', {
         { k: 'lineA', t: 'range', label: '테두리 진하기', def: 70, min: 0, max: 100, step: 1, unit: '%', showIf: function (c) { return c.bubbles; } },
         { k: 'labels', t: 'bool', label: '금액 숫자 표시', def: true, showIf: function (c) { return c.bubbles; } },
         { k: 'labelMin', t: 'num', label: '숫자 표시 최소 금액 ($)', def: 150000, min: 0, max: 5000000, step: 10000, showIf: function (c) { return c.bubbles && c.labels; } },
-        { t: 'note', label: '청산 데이터는 앱이 켜져 있는 동안 받은 것만 쌓입니다. (롱청산 = 빨강 계열, 숏청산 = 초록 계열)' }
+        { t: 'note', label: '롱청산 = 빨강(아래 막대), 숏청산 = 초록(위 막대). 거래소들이 과거 청산 기록을 공개하지 않아서, 이 차트를 켜 둔 동안 받은 것만 쌓입니다(분 단위로 3일 보관). 차트를 안 보던 시간의 봉은 비어 있는 게 정상입니다. 막대 금액은 청산 체결 시각의 봉에 들어갑니다.' }
     ]
 });
 CF.defineSettings('trades', {
@@ -86,19 +90,24 @@ CF.defineSettings('trades', {
     ]
 });
 CF.defineSettings('depth', {
-    title: '호가 벽 설정', onChange: redraw,
+    title: '호가 벽 설정', onChange: function (c, k) { if (k === 'xex') XB.sync(); if (k === 'group' || k === 'xex') walls.map.clear(); depthView.bins = null; redraw(); CF.scheduleLegend(); },
     fields: [
+        { t: 'sec', label: '데이터' },
+        { k: 'xex', t: 'bool', label: 'Bybit · OKX 호가 합산', sub: '바이낸스 한 곳은 실제 대기 물량의 절반도 안 됩니다. 막대 · 벽 · 히트맵에 함께 더합니다', def: true },
+        { k: 'summary', t: 'bool', label: '±0.5 · 1 · 2% 매수 · 매도 물량 (상단 수치)', def: true },
         { t: 'sec', label: '깊이 막대' },
         { k: 'bars', t: 'bool', label: '우측 깊이 막대 표시', def: true },
         { k: 'barW', t: 'range', label: '막대 최대 길이', def: 28, min: 10, max: 50, step: 1, unit: '%', showIf: function (c) { return c.bars; } },
-        { k: 'opacity', t: 'range', label: '막대 진하기', def: 32, min: 10, max: 80, step: 1, unit: '%', showIf: function (c) { return c.bars; } },
+        { k: 'opacity', t: 'range', label: '막대 진하기', def: 38, min: 10, max: 80, step: 1, unit: '%', showIf: function (c) { return c.bars; } },
         { k: 'rowPx', t: 'range', label: '막대 두께(촘촘함)', def: 6, min: 3, max: 14, step: 1, unit: 'px', showIf: function (c) { return c.bars; } },
         { t: 'sec', label: '매수 · 매도 벽' },
-        { k: 'walls', t: 'range', label: '표시할 벽 개수', def: 4, min: 0, max: 8, step: 1 },
+        { k: 'walls', t: 'range', label: '표시할 벽 개수', def: 6, min: 0, max: 10, step: 1 },
+        { k: 'group', t: 'sel', label: '벽을 묶는 가격 폭', def: 'auto', opts: [['fine', '좁게 (가격의 0.02%)'], ['auto', '보통 (0.05%, BTC 약 $50)'], ['wide', '넓게 (0.1%)'], ['tick', '묶지 않음 (호가 한 칸)']] },
         { k: 'minWall', t: 'num', label: '벽으로 볼 최소 금액 ($)', def: 60000, min: 5000, max: 50000000, step: 10000 },
-        { k: 'labels', t: 'bool', label: '금액 라벨 (막대 왼쪽)', def: true },
-        { k: 'lines', t: 'sel', label: '벽 점선', def: 'short', opts: [['off', '없음'], ['short', '짧게'], ['long', '길게']] },
-        { t: 'note', label: '벽은 현재가 아래에는 매수벽, 위에는 매도벽만 표시합니다. 1.2초 이상 유지된 주문만 벽으로 인정해 깜빡임을 줄였습니다.' }
+        { k: 'labels', t: 'bool', label: '금액 · 가격 · 거리(%) 라벨', def: true },
+        { k: 'font', t: 'range', label: '라벨 글자 크기', def: 11, min: 9, max: 15, step: 1, unit: 'px', showIf: function (c) { return c.labels; } },
+        { k: 'lines', t: 'sel', label: '벽 점선', def: 'long', opts: [['off', '없음'], ['short', '짧게'], ['long', '길게'], ['full', '차트 끝까지']] },
+        { t: 'note', label: '벽 = 그 가격대(묶는 폭 안)에 쌓인 대기 주문 합계가 유난히 큰 곳. 가장 큰 매수벽 · 매도벽은 굵게 표시합니다. 현재가 아래는 매수벽, 위는 매도벽만 보이고, 1.2초 이상 유지된 주문만 인정해 깜빡임을 줄였습니다. 호가는 언제든 취소될 수 있어(스푸핑) 벽이 지지 · 저항을 보장하지는 않습니다.' }
     ]
 });
 CF.defineSettings('heat', {
@@ -146,30 +155,55 @@ CF.defineSettings('liqmap', {
 // =====================================================================================================
 var OI_PERIOD = { '1m': '5m', '3m': '5m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h', '6h': '6h', '12h': '12h', '1d': '1d', '3d': '1d', '1w': '1d', '1M': '1d' };
 var PERIOD_SEC = { '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '12h': 43200, '1d': 86400 };
-var oi = { pts: [], timer: null, seq: 0, period: '15m' };
+var oi = { pts: [], lv: [], timer: null, seq: 0, period: '15m' };
 
 function oiVal(p) { return CF.S('oi').unit === 'coin' ? p.coin : p.usd; }
 // The pane shares the time scale with the candles, so every sample is snapped onto the candle that contains it; samples
 // outside the loaded candles (or off the candle grid) would otherwise insert extra bars and shift all overlays.
+// History samples plus the live ones (one per candle, every 10 s while the chart is open), oldest first. On 1m / 3m charts
+// the history is 5-minute, so the live samples are what give those candles their own OI.
+function oiAll() {
+    if (!oi.lv.length) return oi.pts;
+    var t0 = oi.lv[0].time;
+    return oi.pts.filter(function (p) { return p.time < t0; }).concat(oi.lv);
+}
 function oiPoints() {
     var out = [], lastT = null;
-    oi.pts.forEach(function (p) {
+    oiAll().forEach(function (p) {
         var t = candleStartOf(p.time); if (t == null) return;
         if (t === lastT) out[out.length - 1].value = oiVal(p); else { out.push({ time: t, value: oiVal(p) }); lastT = t; }
     });
     return out;
 }
 function oiAt(candleT) {                            // last OI sample at or before the candle's end
-    var a = oi.pts, lo = 0, hi = a.length - 1, best = -1, end = candleT + CF.secs() - 1;
+    var a = oiAll(), lo = 0, hi = a.length - 1, best = -1, end = candleT + CF.secs() - 1;
     while (lo <= hi) { var m = (lo + hi) >> 1; if (a[m].time <= end) { best = m; lo = m + 1; } else hi = m - 1; }
     return best >= 0 ? { cur: a[best], prev: best > 0 ? a[best - 1] : null } : null;
 }
+// per-candle change of the OI (the first candle of the history has none)
+function oiDeltas(pts) {
+    var out = [];
+    for (var i = 1; i < pts.length; i++) {
+        var d = pts[i].value - pts[i - 1].value;
+        out.push({ time: pts[i].time, value: d, color: CF.hexA(d >= 0 ? UP() : DOWN(), 0.75) });
+    }
+    return out;
+}
 CF.registerSub('oi', {
     create: function (pane, sid) {
-        return { line: chart.addSeries(LW.LineSeries, Object.assign({ color: '#FFB300', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: CF.compactFormat }, sid ? { priceScaleId: sid } : {}), pane) };
+        var o = { line: chart.addSeries(LW.LineSeries, Object.assign({ color: '#FFB300', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: CF.compactFormat }, sid ? { priceScaleId: sid } : {}), pane) };
+        // the bars get their own (hidden) scale: billions of OI and millions of change do not share an axis
+        o.bars = chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceFormat: CF.compactFormat, priceScaleId: (sid || 'oi') + 'd' }, pane);
+        try { o.bars.priceScale().applyOptions({ visible: false, scaleMargins: { top: 0.55, bottom: 0 } }); } catch (e) { /* ignore */ }
+        return o;
     },
-    style: function (o) { var c = CF.S('oi'); o.line.applyOptions({ color: c.color, lineWidth: c.width }); },
-    setData: function (o) { o.line.setData(oiPoints()); },
+    style: function (o) {
+        var c = CF.S('oi');
+        o.line.applyOptions({ color: c.color, lineWidth: c.width, visible: c.mode !== 'delta' });
+        o.bars.applyOptions({ visible: c.mode !== 'line' });
+        try { o.bars.priceScale().applyOptions({ scaleMargins: c.mode === 'delta' ? { top: 0.1, bottom: 0.1 } : { top: 0.55, bottom: 0 } }); } catch (e) { /* ignore */ }
+    },
+    setData: function (o) { var p = oiPoints(); o.line.setData(p); o.bars.setData(CF.S('oi').mode === 'line' ? [] : oiDeltas(p)); },
     legend: function (i) {
         var c = CF.candles()[i], r = c && oiAt(c.time);
         if (!r) return '';
@@ -182,7 +216,7 @@ CF.registerFeature('oi', {
     start: function () {
         var sym = CF.symbol(), seq = ++oi.seq;
         oi.period = OI_PERIOD[CF.interval()] || '1h';
-        oi.pts = [];
+        oi.pts = []; oi.lv = [];
         getJson(FAPI + '/futures/data/openInterestHist?symbol=' + sym + '&period=' + oi.period + '&limit=500').then(function (rows) {
             if (seq !== oi.seq || !Array.isArray(rows)) return;
             oi.pts = rows.map(function (r) { return { time: Math.floor(r.timestamp / 1000), coin: +r.sumOpenInterest, usd: +r.sumOpenInterestValue }; }).sort(function (a, b) { return a.time - b.time; });
@@ -191,58 +225,109 @@ CF.registerFeature('oi', {
         oi.timer = setInterval(function () {
             getJson(FAPI + '/fapi/v1/openInterest?symbol=' + sym).then(function (r) {
                 if (seq !== oi.seq || !oi.pts.length) return;
-                var per = PERIOD_SEC[oi.period] || 3600, t = Math.floor(Date.now() / 1000 / per) * per, coin = +r.openInterest, usd = coin * lastPrice(), last = oi.pts[oi.pts.length - 1];
-                if (last.time === t) { last.coin = coin; last.usd = usd; } else if (t > last.time) oi.pts.push({ time: t, coin: coin, usd: usd });
-                var live = CF.subSeries('oi'), ct = candleStartOf(Date.now() / 1000);
-                if (live && ct != null) live.line.update({ time: ct, value: CF.S('oi').unit === 'coin' ? coin : usd });
-                CF.scheduleLegend();
+                var t = candleStartOf(Date.now() / 1000), coin = +r.openInterest, usd = coin * lastPrice(), last = oi.lv[oi.lv.length - 1];
+                if (t == null) return;
+                if (last && last.time === t) { last.coin = coin; last.usd = usd; } else oi.lv.push({ time: t, coin: coin, usd: usd });
+                if (oi.lv.length > 2000) oi.lv.shift();
+                CF.refreshSub('oi');                            // the line and the forming candle's change bar
             }).catch(function () { /* next poll */ });
-        }, 15000);
+        }, 10000);
     },
-    stop: function () { oi.seq++; clearInterval(oi.timer); oi.timer = null; oi.pts = []; }
+    stop: function () { oi.seq++; clearInterval(oi.timer); oi.timer = null; oi.pts = []; oi.lv = []; }
 });
 
 // =====================================================================================================
-// Live liquidations: bubbles on the chart + long/short liquidation volume per candle
+// Live liquidations: bubbles on the chart + long/short liquidation volume per candle.
+// Binance @forceOrder sends at most ONE liquidation per symbol per second (the latest), so in a cascade most of them never
+// arrive; Bybit's allLiquidation sends every one, and OKX's liquidation-orders the USDT swaps. With "합산" on, all three
+// are added up. Per-minute totals are kept for 3 days (they survive reloads and feed the bars on any interval); single
+// events only for the bubbles.
 // =====================================================================================================
-var liq = { list: [], saveT: null, off: null, name: null, key: null };
+var liq = { list: [], min: {}, ver: 0, saveT: null, off: null, name: null, key: null, mkey: null, x: {}, st: {}, sym: null, cache: null };
+var LIQ_KEEP = 3 * 86400;
 function liqKey() { return 'liq.' + CF.symbol(); }
-function liqSave() { clearTimeout(liq.saveT); liq.saveT = setTimeout(function () { LS.set(liq.key, liq.list.slice(-400)); }, 3000); }
+function liqPrune() {
+    var cut = Date.now() / 1000 - LIQ_KEEP;
+    Object.keys(liq.min).forEach(function (k) { if (+k < cut) delete liq.min[k]; });
+}
+function liqSave() {
+    clearTimeout(liq.saveT);
+    liq.saveT = setTimeout(function () { liqPrune(); LS.set(liq.key, liq.list.slice(-400)); LS.set(liq.mkey, liq.min); }, 3000);
+}
+// one liquidation from any source. side: 'L' = a long position was liquidated (forced sell), 'S' = a short (forced buy)
+function liqAdd(src, tMs, side, price, usd) {
+    if (!(usd > 0) || !(price > 0)) return;
+    var t = Math.floor(tMs / 1000), m = t - t % 60, b = liq.min[m] || (liq.min[m] = { L: 0, S: 0 });
+    b[side] += usd;
+    if (src !== 'bn') b.x = (b.x || 0) + usd;                                          // part from the other exchanges
+    liq.ver++;
+    if (usd >= Math.min(20000, CF.S('liq').minUsd)) {
+        liq.list.push({ t: t, side: side, price: price, usd: usd, src: src });
+        if (liq.list.length > 800) liq.list.splice(0, liq.list.length - 800);
+        CF.redraw();
+    }
+    liqSave(); liqRefreshSoon();
+}
+// candle open time -> { L, S, x } over the loaded candles; rebuilt only when data or candles change
 function liqBuckets() {
+    var cs = CF.candles(), ck = liq.ver + '|' + cs.length + '|' + (cs.length ? cs[0].time + ':' + cs[cs.length - 1].time : '') + '|' + CF.interval();
+    if (liq.cache && liq.cache.k === ck) return liq.cache.m;
     var m = {};
-    liq.list.forEach(function (e) {
-        var t = candleStartOf(e.t); if (t == null) return;
-        var b = m[t] || (m[t] = { L: 0, S: 0 });
-        if (e.side === 'L') b.L += e.usd; else b.S += e.usd;
+    Object.keys(liq.min).forEach(function (k) {
+        var e = liq.min[k], t = candleStartOf(+k); if (t == null) return;
+        var b = m[t] || (m[t] = { L: 0, S: 0, x: 0 });
+        b.L += e.L; b.S += e.S; b.x += e.x || 0;
     });
+    liq.cache = { k: ck, m: m };
     return m;
+}
+// totals of the last `sec` seconds (cached until the data or the minute changes; the legend asks on every tick)
+function liqSum(sec) {
+    var now = Date.now() / 1000, ck = liq.ver + '|' + Math.floor(now / 60) + '|' + sec;
+    liq.sums = liq.sums || {};
+    if (liq.sums[sec] && liq.sums[sec].k === ck) return liq.sums[sec].o;
+    var cut = now - sec, o = { L: 0, S: 0 };
+    Object.keys(liq.min).forEach(function (k) { if (+k >= cut - 59) { o.L += liq.min[k].L; o.S += liq.min[k].S; } });
+    liq.sums[sec] = { k: ck, o: o };
+    return o;
 }
 // The pane is rebuilt over every loaded candle; in a cascade dozens of liquidations arrive per second, so they are
 // folded into one rebuild every 500 ms.
 function liqRefreshSoon() {
     if (liq.refT) return;
-    liq.refT = setTimeout(function () { liq.refT = null; CF.refreshSub('liq'); }, 500);
+    liq.refT = setTimeout(function () { liq.refT = null; CF.refreshSub('liq'); CF.scheduleLegend(); }, 500);
 }
 function liqSeriesData() {
     var m = liqBuckets(), longs = [], shorts = [];
     CF.candles().forEach(function (c) {
         var b = m[c.time];
-        if (b && b.L) longs.push({ time: c.time, value: -b.L, color: CF.hexA(DOWN(), 0.75) });
-        if (b && b.S) shorts.push({ time: c.time, value: b.S, color: CF.hexA(UP(), 0.75) });
+        if (b && b.L) longs.push({ time: c.time, value: -b.L, color: CF.hexA(DOWN(), 0.8) });
+        if (b && b.S) shorts.push({ time: c.time, value: b.S, color: CF.hexA(UP(), 0.8) });
     });
     return { longs: longs, shorts: shorts };
+}
+function liqSrcText() {
+    var on = ['Binance'], cfg = CF.S('liq');
+    if (cfg.xex) ['by', 'ok'].forEach(function (id) { var s = liq.st[id]; if (s === 'live' || s === 'wait') on.push(id === 'by' ? 'Bybit' : 'OKX'); });
+    return on.join('+');
 }
 CF.registerSub('liq', {
     create: function (pane, sid) {
         var opt = Object.assign({ priceLineVisible: false, lastValueVisible: false, priceFormat: CF.compactFormat }, sid ? { priceScaleId: sid } : {});
         var o = { L: chart.addSeries(LW.HistogramSeries, opt, pane) };
         o.S = chart.addSeries(LW.HistogramSeries, Object.assign({}, opt), pane);
+        try { o.pl = o.L.createPriceLine({ price: 0, color: 'rgba(132,142,156,.4)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false }); } catch (e) { /* ignore */ }
         return o;
     },
     setData: function (o) { var d = liqSeriesData(); o.L.setData(d.longs); o.S.setData(d.shorts); },
     legend: function (i) {
-        var c = CF.candles()[i], b = c && liqBuckets()[c.time];
-        return '<span style="color:' + DOWN() + '">롱청산 ' + fmtUsd(b ? b.L : 0) + '</span> <span style="color:' + UP() + '">숏청산 ' + fmtUsd(b ? b.S : 0) + '</span>';
+        var cs = CF.candles(), c = cs[i], b = c && liqBuckets()[c.time];
+        var h = '<span style="color:' + DOWN() + '">롱청산 ' + fmtUsd(b ? b.L : 0) + '</span> <span style="color:' + UP() + '">숏청산 ' + fmtUsd(b ? b.S : 0) + '</span>';
+        if (i === cs.length - 1) {                                                         // the newest candle: running totals too
+            var h1 = liqSum(3600), h4 = liqSum(14400);
+            h += ' <span style="color:#848E9C">· 1시간 롱 ' + fmtUsd(h1.L) + ' / 숏 ' + fmtUsd(h1.S) + ' · 4시간 롱 ' + fmtUsd(h4.L) + ' / 숏 ' + fmtUsd(h4.S) + ' · ' + liqSrcText() + '</span>';
+        }
+        return h;
     }
 });
 function liqItems(w, h, fn) {
@@ -272,40 +357,132 @@ function paintLiqLabels(ctx, w, h) {
     ctx.font = '700 10px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.lineJoin = 'round';
     liqItems(w, h, function (e, x, y, r, fade, cfg) {
         if (e.usd < cfg.labelMin) return;
-        var t = fmtUsd(e.usd);
+        var t = (e.side === 'L' ? '롱 ' : '숏 ') + fmtUsd(e.usd);
         ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(11,14,17,' + (0.75 * fade).toFixed(2) + ')'; ctx.strokeText(t, x, y);
         ctx.fillStyle = 'rgba(255,255,255,' + (0.35 + 0.65 * fade).toFixed(2) + ')'; ctx.fillText(t, x, y);
     });
     ctx.textAlign = 'start';
 }
+// ---- other exchanges ---------------------------------------------------------------------------------------------------
+// "1000PEPEUSDT" -> { base: 'PEPE', mult: 1000 }
+function liqSplit(sym) {
+    var m = /^(1000000|10000|1000|100|1M)?([A-Z0-9]+?)USDT$/.exec(sym); if (!m) return null;
+    return { base: m[2], mult: { '1000000': 1e6, '10000': 1e4, '1000': 1e3, '100': 100, '1M': 1e6 }[m[1]] || 1 };
+}
+// a price more than 2 % away from the chart means the pairing is wrong (another coin under the same name): drop it
+function liqPriceOk(src, p) {
+    var ref = lastPrice(); if (!ref || Math.abs(p / ref - 1) <= 0.02) return true;
+    var s = liq.x[src]; if (s && ++s.bad > 3) { liq.st[src] = 'mismatch'; s.close(); }
+    return false;
+}
+function liqSocket(src, url, onOpen, onMsg, ping, pingMs) {
+    return xSock(url, onOpen, onMsg, ping, pingMs, function (state) { liq.st[src] = state; });
+}
+// a WebSocket to another exchange that reconnects with back-off and keeps itself alive with the exchange's ping;
+// onState('wait' | 'retry') reports the connection
+function xSock(url, onOpen, onMsg, ping, pingMs, onState) {
+    var s = { ws: null, closed: false, delay: 1000, timer: 0, pinger: 0, bad: 0 };
+    function open() {
+        if (s.closed) return;
+        try { s.ws = new WebSocket(url); } catch (e) { retry(); return; }
+        s.ws.onopen = function () { if (s.closed) return; s.delay = 1000; onState('wait'); onOpen(s.ws); if (ping) s.pinger = setInterval(function () { try { s.ws.send(ping); } catch (e) { /* closing */ } }, pingMs); };
+        s.ws.onmessage = function (e) { if (s.closed) return; if (e.data === 'pong') return; var m; try { m = JSON.parse(e.data); } catch (err) { return; } try { onMsg(m); } catch (err2) { console.error(err2); } };
+        s.ws.onclose = function () { clearInterval(s.pinger); s.ws = null; if (!s.closed) { onState('retry'); retry(); } };
+        s.ws.onerror = function () { /* onclose follows */ };
+    }
+    function retry() { clearTimeout(s.timer); s.timer = setTimeout(open, s.delay); s.delay = Math.min(s.delay * 2, 30000); }
+    s.close = function () { s.closed = true; clearTimeout(s.timer); clearInterval(s.pinger); if (s.ws) { try { s.ws.close(); } catch (e) { /* ignore */ } } };
+    open();
+    return s;
+}
+var LIQ_X = {
+    // Bybit: S is the side of the position that was liquidated ("Buy" = a long; checked against price moves), v in coins,
+    // p the bankruptcy price, which sits beyond the market: the bubble goes at the market price instead
+    by: function (sym) {
+        return liqSocket('by', 'wss://stream.bybit.com/v5/public/linear', function (ws) {
+            ws.send(JSON.stringify({ op: 'subscribe', args: ['allLiquidation.' + sym] }));
+        }, function (m) {
+            if (m.op === 'subscribe' && m.success === false) { liq.st.by = 'none'; liq.x.by && liq.x.by.close(); return; }
+            if (!m.topic || m.topic !== 'allLiquidation.' + sym || !Array.isArray(m.data)) return;
+            m.data.forEach(function (d) {
+                var p = +d.p, q = +d.v; if (!liqPriceOk('by', p)) return;
+                liq.st.by = 'live'; liqAdd('by', +d.T || Date.now(), d.S === 'Buy' ? 'L' : 'S', lastPrice() || p, p * q);
+            });
+        }, JSON.stringify({ op: 'ping' }), 20000);
+    },
+    // OKX: every USDT / USD swap's liquidations on one channel; side is the liquidation order's side (sell = a long)
+    ok: function (sym) {
+        var sp = liqSplit(sym); if (!sp) return null;
+        var inst = sp.base + '-USDT-SWAP', ct = 0, s = null, dead = false;
+        getJson('https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=' + inst).then(function (j) {
+            var d = j && j.data && j.data[0]; if (dead) return;
+            if (!d) { liq.st.ok = 'none'; return; }
+            ct = (+d.ctVal || 0) * (+d.ctMult || 1); if (!(ct > 0)) { liq.st.ok = 'none'; return; }
+            s = liqSocket('ok', 'wss://ws.okx.com/ws/v5/public', function (ws) {
+                ws.send(JSON.stringify({ op: 'subscribe', args: [{ channel: 'liquidation-orders', instType: 'SWAP' }] }));
+            }, function (m) {
+                if (m.event === 'error') { liq.st.ok = 'none'; s && s.close(); return; }
+                if (!m.arg || m.arg.channel !== 'liquidation-orders' || !Array.isArray(m.data)) return;
+                m.data.forEach(function (r) {
+                    if (r.instId !== inst || !Array.isArray(r.details)) return;
+                    r.details.forEach(function (d) {
+                        var px = +d.bkPx, coins = +d.sz * ct; if (!liqPriceOk('ok', px * sp.mult)) return;
+                        liq.st.ok = 'live'; liqAdd('ok', +d.ts || Date.now(), d.side === 'sell' ? 'L' : 'S', lastPrice() || px * sp.mult, px * coins);
+                    });
+                });
+            }, 'ping', 25000);
+            liq.x.ok = s;
+        }).catch(function () { if (!dead) liq.st.ok = 'none'; });
+        return { close: function () { dead = true; if (s) s.close(); } };
+    }
+};
+function liqXStart() {
+    liqXStop();
+    if (!CF.S('liq').xex) return;
+    var sym = CF.symbol();
+    Object.keys(LIQ_X).forEach(function (id) { liq.st[id] = 'wait'; var c = LIQ_X[id](sym); if (c) { if (!liq.x[id]) liq.x[id] = c; } else liq.st[id] = 'none'; });
+}
+function liqXStop() {
+    Object.keys(liq.x).forEach(function (id) { try { liq.x[id].close(); } catch (e) { /* ignore */ } });
+    liq.x = {}; liq.st = {};
+}
 CF.registerFeature('liq', {
     start: function () {
-        var sym = CF.symbol(), cutoff = Date.now() / 1000 - 3 * 86400;
-        liq.name = sym.toLowerCase() + '@forceOrder'; liq.key = liqKey();
+        var sym = CF.symbol(), cutoff = Date.now() / 1000 - LIQ_KEEP;
+        liq.sym = sym; liq.name = sym.toLowerCase() + '@forceOrder'; liq.key = liqKey(); liq.mkey = 'liq.m.' + sym;
         liq.list = (LS.get(liq.key, []) || []).filter(function (e) { return e && e.t > cutoff; });
+        liq.min = LS.get(liq.mkey, null);
+        if (!liq.min || typeof liq.min !== 'object') {                                    // first run after the update: rebuild from the saved events
+            liq.min = {};
+            liq.list.forEach(function (e) { var m = e.t - e.t % 60, b = liq.min[m] || (liq.min[m] = { L: 0, S: 0 }); b[e.side] += e.usd; });
+        }
+        liqPrune(); liq.ver++; liq.cache = null;
         var offLb = CF.layer('bottom', paintLiq), offLl = CF.layer('top', paintLiqLabels);
         liq.off = function () { offLb(); offLl(); };
         liq.fade = setInterval(function () { if (liq.list.length && +CF.S('liq').ttl) CF.redraw(); }, 4000);     // let bubbles fade out
+        // a liquidation can arrive a moment before its candle exists on the chart: redo the bars when a candle opens
+        liq.onNew = function (kind) { if (kind === 'new' && CF.ind.liq) { liq.cache = null; liqRefreshSoon(); } };
         CF.refreshSub('liq');
-        streams.market.sub(liq.name, function (d) {
+        streams.market.sub(liq.name, liq.handler = function (d) {
             var o = d && d.o; if (!o || o.s !== sym) return;
-            var price = +o.ap || +o.p, qty = +o.z || +o.q, usd = price * qty;
-            if (!(usd > 0)) return;
+            var price = +o.ap || +o.p, qty = +o.z || +o.q;
             // a forced SELL closes a long position, a forced BUY closes a short
-            liq.list.push({ t: Math.floor((o.T || Date.now()) / 1000), side: o.S === 'SELL' ? 'L' : 'S', price: price, usd: usd });
-            if (liq.list.length > 600) liq.list.splice(0, liq.list.length - 600);
-            liqSave(); CF.redraw(); liqRefreshSoon();
+            liqAdd('bn', o.T || Date.now(), o.S === 'SELL' ? 'L' : 'S', price, price * qty);
         });
+        liqXStart();
     },
     stop: function () {
-        streams.market.unsub(liq.name);
+        streams.market.unsub(liq.name, liq.handler);
+        liqXStop();
         if (liq.off) { liq.off(); liq.off = null; }
         clearInterval(liq.fade); liq.fade = null;
         clearTimeout(liq.refT); liq.refT = null;
-        clearTimeout(liq.saveT); if (liq.list.length) LS.set(liq.key, liq.list.slice(-400));
-        liq.list = [];
+        clearTimeout(liq.saveT);
+        if (liq.key) { liqPrune(); if (liq.list.length) LS.set(liq.key, liq.list.slice(-400)); LS.set(liq.mkey, liq.min); }
+        liq.list = []; liq.min = {}; liq.ver++; liq.cache = null; liq.onNew = null;
     }
 });
+CF.onData(function (kind) { if (liq.onNew) liq.onNew(kind); });
 
 // =====================================================================================================
 // Large trades (aggTrade) as bubbles. Auto mode: roughly the biggest 0.5 % of recent prints.
@@ -474,10 +651,12 @@ var Book = {
         this.reset();
         streams.pub.sub(this.name, this.handler = function (d) { self.onDiff(d); });
         this.snapshot();
+        XB.sync();
     },
     stop: function () {
         if (this.users === 0 || --this.users > 0) return;
         streams.pub.unsub(this.name, this.handler); this.reset(); this.seq++;
+        XB.stop();
     },
     reset: function () { this.bids = new Map(); this.asks = new Map(); this.has = false; this.syncing = false; this.buf = []; this.lastU = 0; this.first = false; this.best = null; },
     snapshot: function () {
@@ -545,41 +724,185 @@ var Book = {
         var m = this.mid(); if (!m) return; var lo = m * 0.92, hi = m * 1.08, self = this;
         this.bids.forEach(function (q, p) { if (p < lo) self.bids.delete(p); });
         this.asks.forEach(function (q, p) { if (p > hi) self.asks.delete(p); });
+        XB.prune(lo, hi);
     }
 };
 streams.pub.hooks.push(function () { if (Book.users) Book.resync(); });          // socket re-opened → rebuild quietly
 
+// ---- other exchanges' books -------------------------------------------------------------------------------------------
+// Bybit (1000 levels) and OKX (400 levels) books of the same perpetual, in Binance price / coin units. Added to the depth
+// bars, the walls, the heatmap and the ±% totals when "합산" is on: one exchange shows only part of the liquidity that
+// actually stops a move (BTC: Binance has a bit under half of it).
+var XB = { want: false, sym: null, books: {}, conns: {}, st: {}, ver: 0 };
+function xbBook(id) { var b = XB.books[id]; if (!b) b = XB.books[id] = { bids: new Map(), asks: new Map(), ok: false }; return b; }
+function xbApply(map, rows, pm, qm) {
+    if (!rows) return;
+    for (var i = 0; i < rows.length; i++) { var p = +rows[i][0] * pm, q = +rows[i][1] * qm; if (!(q > 0)) map.delete(p); else map.set(p, q); }
+}
+// a book far from Binance's price is another coin under the same name (or broken): drop that exchange
+function xbSane(id, b) {
+    var m = Book.mid(); if (!m) return true;
+    var bb = -Infinity, aa = Infinity;
+    b.bids.forEach(function (q, p) { if (p > bb) bb = p; }); b.asks.forEach(function (q, p) { if (p < aa) aa = p; });
+    if (!isFinite(bb) || !isFinite(aa) || Math.abs((bb + aa) / 2 / m - 1) <= 0.01) return true;
+    XB.st[id] = 'mismatch'; b.ok = false; var c = XB.conns[id]; if (c) c.close(); delete XB.conns[id];
+    return false;
+}
+function xbChanged() { XB.ver++; if (!XB.redrawT) XB.redrawT = setTimeout(function () { XB.redrawT = 0; CF.redraw(); }, 250); }
+var XB_FEEDS = {
+    by: function (sym) {
+        var b = xbBook('by'), depth = 1000, sock = null, n = 0;
+        var s = xSock('wss://stream.bybit.com/v5/public/linear', function (ws) {
+            sock = ws; b.ok = false; ws.send(JSON.stringify({ op: 'subscribe', args: ['orderbook.' + depth + '.' + sym] }));
+        }, function (m) {
+            if (m.op === 'subscribe' && m.success === false) {
+                if (depth === 1000) { depth = 200; sock.send(JSON.stringify({ op: 'subscribe', args: ['orderbook.200.' + sym] })); }
+                else { XB.st.by = 'none'; s.close(); }
+                return;
+            }
+            if (!m.topic || m.topic.indexOf('orderbook.') !== 0 || !m.data) return;
+            var d = m.data;
+            if (m.type === 'snapshot' || d.u === 1) { b.bids = new Map(); b.asks = new Map(); }
+            xbApply(b.bids, d.b, 1, 1); xbApply(b.asks, d.a, 1, 1);
+            b.ok = true; XB.st.by = 'live';
+            if (++n % 50 === 1 && !xbSane('by', b)) return;
+            xbChanged();
+        }, JSON.stringify({ op: 'ping' }), 20000, function (st) { XB.st.by = st; b.ok = false; });
+        return s;
+    },
+    ok: function (sym) {
+        var sp = liqSplit(sym); if (!sp) return null;
+        var inst = sp.base + '-USDT-SWAP', b = xbBook('ok'), s = null, dead = false, seq = null, sock = null, n = 0, resync = false;
+        getJson('https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=' + inst).then(function (j) {
+            var d = j && j.data && j.data[0]; if (dead) return;
+            var ct = d ? (+d.ctVal || 0) * (+d.ctMult || 1) : 0;
+            if (!(ct > 0)) { XB.st.ok = 'none'; return; }
+            var sub = { op: 'subscribe', args: [{ channel: 'books', instId: inst }] };
+            s = xSock('wss://ws.okx.com/ws/v5/public', function (ws) { sock = ws; seq = null; resync = false; b.ok = false; ws.send(JSON.stringify(sub)); }, function (m) {
+                if (m.event === 'error') { XB.st.ok = 'none'; s.close(); return; }
+                if (!m.arg || m.arg.channel !== 'books' || !Array.isArray(m.data) || !m.data[0]) return;
+                var r = m.data[0];
+                if (m.action === 'snapshot') { b.bids = new Map(); b.asks = new Map(); resync = false; }
+                else if (resync) return;                                                       // waiting for the fresh snapshot
+                else if (seq == null || r.prevSeqId !== seq) {                                  // missed an update: start over
+                    b.ok = false; seq = null; resync = true;
+                    sock.send(JSON.stringify({ op: 'unsubscribe', args: sub.args })); sock.send(JSON.stringify(sub));
+                    return;
+                }
+                seq = r.seqId;
+                xbApply(b.bids, r.bids, sp.mult, ct / sp.mult); xbApply(b.asks, r.asks, sp.mult, ct / sp.mult);
+                b.ok = true; XB.st.ok = 'live';
+                if (++n % 50 === 1 && !xbSane('ok', b)) return;
+                xbChanged();
+            }, 'ping', 25000, function (st) { XB.st.ok = st; b.ok = false; });
+            if (!dead) XB.conns.ok = s; else s.close();
+        }).catch(function () { if (!dead) XB.st.ok = 'none'; });
+        return { close: function () { dead = true; if (s) s.close(); } };
+    }
+};
+XB.sync = function () {
+    var want = Book.users > 0 && !!CF.S('depth').xex, sym = CF.symbol();
+    if (!want || XB.sym !== sym) XB.stop();
+    if (!want) return;
+    XB.sym = sym;
+    Object.keys(XB_FEEDS).forEach(function (id) {
+        if (XB.conns[id] || XB.st[id] === 'none' || XB.st[id] === 'mismatch') return;
+        XB.st[id] = 'wait'; var c = XB_FEEDS[id](sym);
+        if (c) { if (!XB.conns[id]) XB.conns[id] = c; } else XB.st[id] = 'none';
+    });
+};
+XB.stop = function () {
+    Object.keys(XB.conns).forEach(function (id) { try { XB.conns[id].close(); } catch (e) { /* ignore */ } });
+    XB.conns = {}; XB.books = {}; XB.st = {}; XB.sym = null; XB.ver++;
+};
+XB.prune = function (lo, hi) {
+    Object.keys(XB.books).forEach(function (id) {
+        var b = XB.books[id];
+        b.bids.forEach(function (q, p) { if (p < lo) b.bids.delete(p); });
+        b.asks.forEach(function (q, p) { if (p > hi) b.asks.delete(p); });
+    });
+};
+XB.names = function () {
+    var out = ['Binance'];
+    Object.keys(XB.books).forEach(function (id) { if (XB.books[id].ok) out.push(id === 'by' ? 'Bybit' : 'OKX'); });
+    return out.join('+');
+};
+// every resting level: Binance's book plus the other exchanges' when they are on. fn(price, qty, isBid)
+function eachLevel(fn) {
+    Book.bids.forEach(function (q, p) { fn(p, q, true); });
+    Book.asks.forEach(function (q, p) { fn(p, q, false); });
+    Object.keys(XB.books).forEach(function (id) {
+        var b = XB.books[id]; if (!b.ok) return;
+        b.bids.forEach(function (q, p) { fn(p, q, true); });
+        b.asks.forEach(function (q, p) { fn(p, q, false); });
+    });
+}
+function bookVer() { return Book.ver + ':' + XB.ver; }
+
 // ---- walls & depth profile -------------------------------------------------------------------------------------------
 // Bars: resting liquidity per price row on the right edge, binned on a fixed price grid so they do not slide while the
-// chart moves. Walls: individual levels that stand far above the rest; each one has to persist before it is shown and
-// stays a moment after it fades, so ordinary book churn does not make them blink.
-var walls = { map: new Map(), t: 0 }, depthView = { max: 1, t: 0 };
+// chart moves. Walls: price zones (a fixed share of the price, like the paid order-book tools group them) whose resting
+// liquidity stands far above the rest. A single tick undercounts a wall: big orders are spread over neighbouring
+// prices. Each wall has to persist before it is shown and stays a moment after it fades, so book churn does not blink.
+var walls = { map: new Map(), t: 0, step: 0 }, depthView = { max: 1, t: 0 };
+var WALL_GROUP = { fine: 0.0002, auto: 0.0005, wide: 0.001, tick: 0 };
 function niceStep(raw) {
     if (!(raw > 0)) return 1;
     var e = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10)), m = raw / e;
     return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * e;
 }
-function updateWalls(minWall) {
-    var now = Date.now(); if (now - walls.t < 400 || (walls.ver === Book.ver && now - walls.t < 1500)) return;
-    walls.t = now; walls.ver = Book.ver;
+function updateWalls(cfg) {
+    var now = Date.now(), ver = bookVer(); if (now - walls.t < 400 || (walls.ver === ver && now - walls.t < 1500)) return;
+    walls.t = now; walls.ver = ver;
     var q = Book.quotes(); if (!q) return;
-    var all = [];
-    Book.bids.forEach(function (qty, p) { if (p <= q.bid) all.push({ p: p, v: p * qty, bid: true }); });
-    Book.asks.forEach(function (qty, p) { if (p >= q.ask) all.push({ p: p, v: p * qty, bid: false }); });
-    if (!all.length) return;
-    var vals = all.map(function (l) { return l.v; }).sort(function (a, b) { return a - b; });
-    var thr = Math.max(minWall, vals[Math.floor(vals.length * 0.992)] || 0);                // top ~0.8 % of the book
-    all.forEach(function (l) {
-        if (l.v < thr) return;
-        var st = walls.map.get(l.p);
-        if (st && st.bid === l.bid) { st.v = l.v; st.seen = now; }
-        else walls.map.set(l.p, { p: l.p, v: l.v, bid: l.bid, seen: now, born: now, shown: false });
+    var f = WALL_GROUP[cfg.group] != null ? WALL_GROUP[cfg.group] : WALL_GROUP.auto;
+    var step = f ? niceStep((q.bid + q.ask) / 2 * f) : 0;
+    if (step !== walls.step) { walls.map.clear(); walls.step = step; }
+    // zone key -> { v: liquidity, p: price of its biggest level (where the wall really sits) }
+    var zones = new Map();
+    eachLevel(function (p, qty, bid) {
+        if (bid ? p > q.bid : p < q.ask) return;
+        var k = (bid ? 'b' : 'a') + (step ? Math.floor(p / step) : p), v = p * qty, z = zones.get(k);
+        if (!z) zones.set(k, z = { v: 0, top: 0, p: p, bid: bid });
+        z.v += v; if (v > z.top) { z.top = v; z.p = p; }
     });
-    walls.map.forEach(function (st, p) {
+    if (!zones.size) return;
+    var vals = []; zones.forEach(function (z) { vals.push(z.v); }); vals.sort(function (a, b) { return a - b; });
+    var thr = Math.max(cfg.minWall, step ? 0 : vals[Math.floor(vals.length * 0.992)] || 0);
+    // Zones: a wall has to stand out from the zones around it (≥ 2× their median, on its own side of the market). The
+    // band right at the price is always the thickest, so a plain "biggest zones" pick only ever showed that band.
+    // The snapshots only reach so far (Binance 1000 levels: BTC about ±0.5 %); past that, only levels that changed since
+    // are known. Inside the covered run (from the touch out to the first gap of 5 empty zones) empty means empty;
+    // outside it a known level is a lone big order, a wall when it is at least the typical covered zone.
+    var bIdx = step ? Math.floor(q.bid / step) : 0, aIdx = step ? Math.floor(q.ask / step) : 0;
+    function run(pre, from, dir) {
+        var i = from, gap = 0, last = from, vs = [];
+        while (gap < 5 && Math.abs(i - from) < 2000) { var o = zones.get(pre + i); if (o) { gap = 0; last = i; vs.push(o.v); } else gap++; i += dir; }
+        vs.sort(function (a, b) { return a - b; });
+        return { end: last, med: vs.length ? vs[vs.length >> 1] : 0 };
+    }
+    var cov = step ? { b: run('b', bIdx, -1), a: run('a', aIdx, 1) } : null;
+    function prominent(k, z) {
+        if (!step) return true;
+        var i = +k.slice(1), c = cov[k[0]], lo = z.bid ? c.end : aIdx, hi = z.bid ? bIdx : c.end;
+        if (i < lo || i > hi) return z.v >= Math.max(cfg.minWall, c.med);
+        var arr = [];
+        for (var j = i - 8; j <= i + 8; j++) { if (j === i || j < lo || j > hi) continue; var o = zones.get(k[0] + j); arr.push(o ? o.v : 0); }
+        if (arr.length < 4) return false;
+        arr.sort(function (a, b) { return a - b; });
+        return z.v >= 2 * Math.max(arr[arr.length >> 1], 1);
+    }
+    zones.forEach(function (z, k) {
+        if (z.v < thr || !prominent(k, z)) return;
+        var st = walls.map.get(k);
+        if (st) { st.v = z.v; st.p = z.p; st.seen = now; }
+        else walls.map.set(k, { p: z.p, v: z.v, v0: z.v, bid: z.bid, seen: now, born: now, shown: false });
+    });
+    walls.map.forEach(function (st, k) {
         if (st.seen === now) return;
-        var qty = (st.bid ? Book.bids : Book.asks).get(p), v = qty ? qty * p : 0;
-        if (v >= thr * 0.6) { st.v = v; st.seen = now; }                                  // shrank a bit, still a wall
-        else if (now - st.seen > 1500) walls.map.delete(p);                               // gone for good
+        var z = zones.get(k), v = z ? z.v : 0;
+        if (v >= Math.max(thr, st.v0 * 0.6)) { st.v = v; st.seen = now; }               // shrank a bit, still a wall
+        else if (now - st.seen > 1500) walls.map.delete(k);                               // gone for good
         else st.v = v;
     });
 }
@@ -595,9 +918,20 @@ function visibleWalls(cfg, pBot, pTop) {
         out.push(st);
     });
     out.sort(function (a, b) { return b.v * (b.shown ? 1.3 : 1) - a.v * (a.shown ? 1.3 : 1); });   // already shown ones keep their slot
-    var top = out.slice(0, cfg.walls);
-    walls.map.forEach(function (st) { st.shown = false; });
+    // biggest first, but a wall whose label would sit on top of a bigger one's gives its slot to the next one down,
+    // so the slots spread over the visible range instead of piling up at the price
+    var top = [], gapPx = (cfg.font || 11) + 5;
+    for (var i = 0; i < out.length && top.length < cfg.walls; i++) {
+        var y = CF.yOf(out[i].p);
+        if (y != null && top.some(function (t) { return Math.abs(t.y - y) < gapPx; })) continue;
+        out[i].y = y; top.push(out[i]);
+    }
+    walls.map.forEach(function (st) { st.shown = false; st.top = false; });
     top.forEach(function (st) { st.shown = true; });
+    [true, false].forEach(function (bid) {                                               // the biggest one per side stands out
+        var best = null; top.forEach(function (st) { if (st.bid === bid && (!best || st.v > best.v)) best = st; });
+        if (best) best.top = true;
+    });
     return top;
 }
 function paintDepth(ctx, w, h) {
@@ -605,16 +939,15 @@ function paintDepth(ctx, w, h) {
     var q = Book.quotes(); if (!q) return;
     var cfg = CF.S('depth'), pTop = CF.priceAt(0), pBot = CF.priceAt(h);
     if (pTop == null || pBot == null || !(pTop > pBot)) return;
-    updateWalls(cfg.minWall);
+    updateWalls(cfg);
     var maxW = w * cfg.barW / 100, upC = UP(), dnC = DOWN(), len, k;
     var step = niceStep((pTop - pBot) / Math.max(4, h / cfg.rowPx));
     var i0 = Math.floor(pBot / step), n = Math.floor(pTop / step) - i0 + 1;
     if (n < 1 || n > 800) return;
-    var key = Book.ver + '|' + step + '|' + i0 + '|' + n, bins = depthView.bins;
+    var key = bookVer() + '|' + step + '|' + i0 + '|' + n, bins = depthView.bins;
     if (!bins || bins.key !== key) {
         var bid = new Float64Array(n), ask = new Float64Array(n), idx;
-        Book.bids.forEach(function (qty, p) { idx = Math.floor(p / step) - i0; if (idx >= 0 && idx < n) bid[idx] += p * qty; });
-        Book.asks.forEach(function (qty, p) { idx = Math.floor(p / step) - i0; if (idx >= 0 && idx < n) ask[idx] += p * qty; });
+        eachLevel(function (p, qty, isBid) { idx = Math.floor(p / step) - i0; if (idx >= 0 && idx < n) (isBid ? bid : ask)[idx] += p * qty; });
         // scale reference: a handful of huge orders must not flatten everything else
         var nz = [], m0 = 0;
         for (k = 0; k < n; k++) { if (bid[k] > 0) nz.push(bid[k]); if (ask[k] > 0) nz.push(ask[k]); }
@@ -646,29 +979,62 @@ function paintDepth(ctx, w, h) {
             ctx.fillRect(w - len, ya, len, Math.max(1, yb - ya - 0.6));
         }
     }
+    var last = lastPrice();
     var list = visibleWalls(cfg, pBot, pTop).sort(function (a, b) { return CF.yOf(a.p) - CF.yOf(b.p); }), lastLabelY = -99;
     list.forEach(function (wl) {
         var y = CF.yOf(wl.p); if (y == null || y < 4 || y > h - 4) return;
-        var col = wl.bid ? upC : dnC;
-        len = Math.max(3, Math.min(1, wl.v / ref) * maxW);
-        ctx.fillStyle = CF.hexA(col, 0.85); ctx.fillRect(w - len, y - 1.5, len, 3);          // the wall itself, drawn solid
-        var xr = w - len - 5, xl = xr;
-        if (cfg.labels && Math.abs(y - lastLabelY) >= 12) {                                // label sits left of the bar: it never covers it
-            var text = (wl.bid ? '매수 ' : '매도 ') + fmtUsd(wl.v);
-            tag(ctx, text, xr, y, col, 'right'); lastLabelY = y;
-            ctx.font = '600 10px -apple-system, Roboto, sans-serif';
-            xl = xr - ctx.measureText(text).width - 5;
+        var col = wl.bid ? upC : dnC, thick = wl.top ? 4 : 3;
+        len = Math.max(6, Math.min(1, wl.v / ref) * maxW);
+        ctx.fillStyle = CF.hexA(col, wl.top ? 1 : 0.85); ctx.fillRect(w - len, y - thick / 2, len, thick);     // the wall itself, drawn solid
+        var xr = w - len - 5, xl = xr, size = cfg.font || 11;
+        if (cfg.labels && Math.abs(y - lastLabelY) >= size + 3) {                        // label sits left of the bar: it never covers it
+            var dist = last ? (wl.p / last - 1) * 100 : 0;
+            var text = (wl.bid ? '매수벽 ' : '매도벽 ') + fmtUsd(wl.v) + ' · ' + CF.fmtPrice(wl.p) + (last ? ' (' + (dist >= 0 ? '+' : '') + dist.toFixed(2) + '%)' : '');
+            ctx.font = '700 ' + size + 'px -apple-system, Roboto, sans-serif';
+            var tw = ctx.measureText(text).width;
+            ctx.fillStyle = 'rgba(19,23,34,' + (wl.top ? 0.85 : 0.7) + ')';                 // a backing plate keeps it readable over candles
+            ctx.fillRect(xr - tw - 4, y - size / 2 - 3, tw + 8, size + 6);
+            tag(ctx, text, xr, y, wl.top ? '#FFFFFF' : col, 'right', size);
+            if (wl.top) { ctx.fillStyle = col; ctx.fillRect(xr - tw - 4, y - size / 2 - 3, 2, size + 6); }
+            lastLabelY = y;
+            xl = xr - tw - 9;
         }
         if (cfg.lines !== 'off' && xl > 8) {
-            var span = w * (cfg.lines === 'long' ? 0.45 : 0.14);
-            ctx.strokeStyle = CF.hexA(col, 0.5); ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+            var span = w * (cfg.lines === 'long' ? 0.45 : cfg.lines === 'full' ? 1 : 0.14);
+            ctx.strokeStyle = CF.hexA(col, wl.top ? 0.75 : 0.5); ctx.lineWidth = wl.top ? 1.5 : 1; ctx.setLineDash([5, 4]);
             ctx.beginPath(); ctx.moveTo(xl, y); ctx.lineTo(Math.max(0, xl - span), y); ctx.stroke(); ctx.setLineDash([]);
         }
     });
 }
+// resting liquidity within ±pct of the market, both sides (cached for a second: the legend asks on every tick)
+var bandCache = { t: 0, ver: null, v: null };
+function bookBands() {
+    if (!Book.has) return null;
+    var now = Date.now(), ver = bookVer();
+    if (bandCache.v && (bandCache.ver === ver || now - bandCache.t < 1000)) return bandCache.v;
+    var q = Book.quotes(); if (!q) return null;
+    var mid = (q.bid + q.ask) / 2, pcts = [0.005, 0.01, 0.02], out = pcts.map(function (p) { return { pct: p, b: 0, a: 0 }; });
+    eachLevel(function (p, qty, bid) {
+        var d = Math.abs(p / mid - 1), v = p * qty;
+        if (bid ? p > q.bid : p < q.ask) return;
+        for (var i = 0; i < out.length; i++) if (d <= out[i].pct) { if (bid) out[i].b += v; else out[i].a += v; }
+    });
+    bandCache = { t: now, ver: ver, v: out };
+    return out;
+}
 var depthOff = null;
 CF.registerFeature('depth', {
-    start: function () { walls.map.clear(); depthView.max = 1; depthView.t = 0; depthView.bins = null; Book.start(); depthOff = CF.layer('top', paintDepth); },
+    legend: function () {
+        var cfg = CF.S('depth'); if (!cfg.summary) return '';
+        var bands = bookBands(); if (!bands) return '<span style="color:#848E9C">호가 불러오는 중…</span>';
+        var h = bands.map(function (x, i) {
+            var tot = x.a + x.b, share = tot ? x.b / tot : 0.5, buy = share >= 0.5;
+            return '<span style="color:#B2B5BE">±' + (x.pct * 100) + '%</span> <span style="color:' + UP() + '">매수 ' + fmtUsd(x.b) + '</span>/<span style="color:' + DOWN() + '">매도 ' + fmtUsd(x.a) + '</span>' +
+                (i === 0 ? ' <b style="color:' + (buy ? UP() : DOWN()) + '">' + (buy ? '매수' : '매도') + ' ' + Math.round(Math.max(share, 1 - share) * 100) + '%</b>' : '');
+        }).join(' · ');
+        return h + ' <span style="color:#848E9C">· ' + XB.names() + '</span>';
+    },
+    start: function () { walls.map.clear(); walls.step = 0; depthView.max = 1; depthView.t = 0; depthView.bins = null; Book.start(); depthOff = CF.layer('top', paintDepth); },
     stop: function () { if (depthOff) { depthOff(); depthOff = null; } walls.map.clear(); Book.stop(); }
 });
 
@@ -730,7 +1096,7 @@ function heatSample() {
     else if (mid < Heat.low + (Heat.high - Heat.low) * 0.2 || mid > Heat.high - (Heat.high - Heat.low) * 0.2) heatRecenter(mid);
     var rows = Heat.ROWS, vals = new Float64Array(rows), idx, i;
     function add(q, p) { idx = Math.floor((p - Heat.low) / Heat.step); if (idx >= 0 && idx < rows) vals[idx] += p * q; }
-    Book.bids.forEach(add); Book.asks.forEach(add);
+    eachLevel(function (p, q) { add(q, p); });
     // Colors are relative to what is normal for this book: ordinary cells stay transparent, thick resting orders heat up.
     var nz = []; for (i = 0; i < rows; i++) if (vals[i] > 0) nz.push(vals[i]);
     if (nz.length) { nz.sort(function (a, b) { return a - b; }); var ref = nz[Math.floor(nz.length * 0.9)]; Heat.med = Heat.med ? Heat.med * 0.85 + ref * 0.15 : ref; }
@@ -977,8 +1343,7 @@ function bookImbalance() {
     if (!Book.has) return null;
     var q = Book.quotes(); if (!q) return null;
     var lo = q.bid * 0.995, hi = q.ask * 1.005, b = 0, a = 0;
-    Book.bids.forEach(function (qty, p) { if (p >= lo) b += p * qty; });
-    Book.asks.forEach(function (qty, p) { if (p <= hi) a += p * qty; });
+    eachLevel(function (p, qty, bid) { if (bid) { if (p >= lo && p <= q.bid) b += p * qty; } else if (p <= hi && p >= q.ask) a += p * qty; });
     return b + a > 0 ? b / (a + b) : null;
 }
 CF.registerFeature('bidask', {
@@ -1288,5 +1653,5 @@ CF.registerFeature('bfx', {
     stop: function () { bfx.seq++; clearInterval(bfx.timer); bfx.timer = 0; bfx.long = {}; bfx.short = {}; bfx.state = 'idle'; }
 });
 
-window.__flow = { modelLiq: modelLiq, Book: Book, Heat: Heat, oi: oi, liq: liq, big: big, lmap: lmap, walls: walls, fmtUsd: fmtUsd };
+window.__flow = { modelLiq: modelLiq, Book: Book, XB: XB, Heat: Heat, oi: oi, liq: liq, big: big, lmap: lmap, walls: walls, fmtUsd: fmtUsd, bookBands: bookBands };
 })();

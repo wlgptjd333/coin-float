@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.37.0] - 2026-11-09
+
+### Added
+- **Real-time alerts (⚡)**: a rule can fire on the candle that is still forming, the moment its condition is met, instead
+  of after the candle closes. Volume spikes fire when the running volume passes the threshold, breakouts and line
+  crosses when the price is through, indicator crosses on the forming value. One notification per candle; the close
+  check uses the same keys, so nothing is sent twice. Runs inside the floating window's service (one Binance and one
+  Hyperliquid socket for every symbol / interval a live rule uses); without the service the rule is checked at the close
+  as before. Divergences stay close-based (their pivot needs closed candles).
+- **"⚡ 초단타 · 1분/5분 실시간" alert profile**: 1m volume 6x and 5m volume 4x (both with a 0.2 % body), 5m 20-candle
+  breakout, 15m RSI divergence. Measured on Binance (10 days of 1m, 31 days of 5m): about 5 volume alerts a day on BTC,
+  more on alts. The volume guide in the form now has 1m / 5m numbers.
+- **Liquidations from Bybit and OKX** added to Binance's (on by default). Binance publishes at most one liquidation per
+  symbol per second, so cascades were heavily undercounted.
+- **Order-book walls over Bybit + OKX + Binance books**, grouped into price zones (0.05 % of the price by default) and
+  picked by how much they stand out from the zones around them, so walls further from the price show up instead of
+  only the thick band at the price. Labels give size, price and distance; the biggest wall per side is highlighted.
+  ±0.5 / 1 / 2 % bid and ask totals in the legend.
+- **OI change bars**: the OI pane can show the per-candle change (opened vs closed positions) as bars, alone or with the
+  line. Live OI is sampled every 10 s per candle, so 1m / 3m charts get their own OI instead of 5-minute steps.
+
+### Fixed
+- **Liquidation bars vanished on older candles**: only the last 400 single events were kept, so a busy hour pushed the
+  earlier ones out. Per-minute totals are now kept for 3 days. A liquidation that arrived a moment before its candle
+  appeared on the chart is no longer left out.
+- OKX streams moved to port 443 (OKX is retiring 8443).
+
 ## [1.36.3] - 2026-11-05
 
 ### Changed

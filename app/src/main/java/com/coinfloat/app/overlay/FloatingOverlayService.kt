@@ -269,6 +269,7 @@ class FloatingOverlayService : Service() {
             syncFeed()
             showOverlay(currentSettings)
             startPriceObserving()
+            com.coinfloat.app.alerts.LiveAlertMonitor.start(this@FloatingOverlayService)
         }
     }
 
@@ -303,6 +304,7 @@ class FloatingOverlayService : Service() {
     private fun stopWithoutForgetting() {
         isServiceRunning = false
         _isServiceActive.value = false
+        com.coinfloat.app.alerts.LiveAlertMonitor.stop()
         overlayController.hide()
         marketDataRepository.stop()
         priceUpdateJob?.cancel()
@@ -322,6 +324,7 @@ class FloatingOverlayService : Service() {
         serviceScope.launch {
             settingsRepository.updateServiceEnabled(false)
         }
+        com.coinfloat.app.alerts.LiveAlertMonitor.stop()
         overlayController.hide()
         marketDataRepository.stop()
         priceUpdateJob?.cancel()
@@ -470,6 +473,7 @@ class FloatingOverlayService : Service() {
             runCatching { (getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(cb) }
         }
         networkCallback = null
+        com.coinfloat.app.alerts.LiveAlertMonitor.stop()
         overlayController.hide()
         marketDataRepository.setMiniChartStream(null, null)
         marketDataRepository.stop()

@@ -192,4 +192,36 @@ class AlertEngineTest {
         val v = AlertRule.fromJson(JSONObject("""{"id":"a","symbol":"BTCUSDT","interval":"15m","kind":"vol","vlen":1,"minBody":99}"""))!!
         assertEquals(5, v.vlen); assertEquals(10.0, v.minBody, 0.0)
     }
+
+    @Test
+    fun liveFlagIsKeptExceptForDivergences() {
+        val v = AlertRule.fromJson(JSONObject("""{"id":"a","symbol":"BTCUSDT","interval":"1m","kind":"vol","live":true}"""))!!
+        assertTrue(v.live)
+        assertTrue(AlertRule.fromJson(v.toJson())!!.live)
+        // a divergence needs its pivot confirmed by closed candles: it can never be real-time
+        val d = AlertRule.fromJson(JSONObject("""{"id":"a","symbol":"BTCUSDT","interval":"1m","kind":"div","live":true}"""))!!
+        assertTrue(!d.live)
+        // rules saved before real-time alerts existed stay close-based
+        assertTrue(!AlertRule.fromJson(JSONObject("""{"id":"a","symbol":"BTCUSDT","interval":"1m","kind":"vol"}"""))!!.live)
+    }
+
+    @Test
+    fun liveVolumeSpikeFiresOnTheFormingCandleWithTheCloseKey() {
+        // 20 closed candles of 10, then a forming one that has already traded 45: 4.5x before it closes
+        val closed = bars(List(21) { 100.0 + it * 0.01 })
+        val forming = Bar(21 * 60_000L, 100.2, 100.9, 100.1, 100.8, 45.0, 30.0)
+        val live = AlertEngine.volumeSpike(closed + forming, 4.0, 20, minBody = 0.2)
+        assertNotNull(live)
+        assertEquals(forming.openTime, live!!.candleTime)
+        // the same candle checked again at its close gives the same key, so it is not notified twice
+        val atClose = AlertEngine.volumeSpike(closed + forming.copy(volume = 60.0, close = 101.0), 4.0, 20, minBody = 0.2)
+        assertEquals(live.key, atClose!!.key)
+        // not there yet: no signal
+        assertNull(AlertEngine.volumeSpike(closed + forming.copy(volume = 30.0), 4.0, 20, minBody = 0.2))
+    }
+
+    @Test
+    fun liveDetailTalksAboutThePriceNow() {
+        assertEquals("상단 101 위에서 거래 중", com.coinfloat.app.alerts.LiveAlertMonitor.liveDetail("상단 101 위에서 마감"))
+    }
 }
