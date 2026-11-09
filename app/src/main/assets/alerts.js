@@ -256,6 +256,14 @@ function openList() {
     if (!data.exact) rows.push(warnRow('정확한 시간 알람이 꺼져 있어 몇 분 늦게 울릴 수 있어요', '허용하기', 'exact'));
     if (hasBridge && data.liveOk === false && data.rules.some(function (r) { return r.on && isLive(r); }))
         rows.push(CF.noteRow('⚡ 실시간 알람은 플로팅 시세창(앱 홈의 시세창 켜기)이 켜져 있을 때 동작해요. 지금은 꺼져 있어서 봉이 마감될 때만 확인합니다.'));
+    if (hasBridge && data.rules.some(function (r) { return r.on && isLive(r); })) {
+        var so = data.liveScreenOff !== false;
+        var lr = el('div', 'row-opt', '<span style="flex:1;min-width:0">⚡ 화면이 꺼져 있어도 실시간 감시<small>' +
+            (so ? '켜짐 · 주머니 속에서도 바로 울려요. 대신 시세 연결이 계속 열려 있어 배터리를 더 씁니다' : '꺼짐 · 화면이 꺼지면 연결을 끊고, 그동안은 봉 마감 때만 확인해요 (배터리 절약)') +
+            '</small></span><span class="switch' + (so ? ' on' : '') + '"></span>');
+        lr.onclick = function () { data.liveScreenOff = !so; action('liveScreenOff:' + (so ? '0' : '1')); openList(); };
+        rows.push(lr);
+    }
     rows.push(alertProfilesBox());
     var guideRow = el('div', 'row-opt', '<span style="flex:1">📖 알람 3단계 대응법 · 실측 빈도 설명서<small>알람이 울렸을 때 차트에서 확인하는 순서와 백테스트 결과</small></span><span style="color:var(--muted)">›</span>');
     guideRow.setAttribute('role', 'button');
