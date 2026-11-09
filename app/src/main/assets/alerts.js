@@ -29,8 +29,16 @@ var data = { rules: [], history: [], exact: true, notif: true };
 var ALERT_PROFILES = LS.get('alertProfiles', []); if (!Array.isArray(ALERT_PROFILES)) ALERT_PROFILES = [];
 var BUILTIN_ALERT_PROFILES = [
     {
+        n: '🎯 역추세 · 저점/고점 잡기 (백테스트)',
+        d: '기본 추천 · ① 5분봉 거래량 4배 ⚡실시간 = "급변 중, 아직 들어가지 말 것" 주의 알림 (하루 4~6번) ② 15분봉 투매·과열 소진 = 진입 후보 (마감 확인, 하루 0.4~0.9번). 180일 백테스트 4시간 승률 BTC 62 · HYPE 64 · SOL 59 · ETH 57% (무작위 45~50%). XRP · DOGE는 소진 알람 우위가 없었어요',
+        rules: [
+            { interval: '5m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
+            { interval: '15m', kind: 'exh', mult: 3, vlen: 20, range: 0.8, wick: 0.4, up: true, down: true }
+        ]
+    },
+    {
         n: '추천 정예 · 실전 표준',
-        d: '기본 추천 · 15m 거래량 4배(몸통 0.2%) · 1h 20봉 돌파 · 1h RSI 다이버전스 · 4h EMA200 (하루 ~4.3회)',
+        d: '추세 · 구조 · 15m 거래량 4배(몸통 0.2%) · 1h 20봉 돌파 · 1h RSI 다이버전스 · 4h EMA200 (하루 ~4.3회)',
         rules: [
             { interval: '15m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true },
             { interval: '1h', kind: 'brk', len: 20, volMult: 1.5, up: true, down: true },
@@ -49,16 +57,8 @@ var BUILTIN_ALERT_PROFILES = [
         ]
     },
     {
-        n: '🎯 역추세 · 저점/고점 잡기 (백테스트)',
-        d: '① 5분봉 거래량 4배 ⚡실시간 = "급변 중, 아직 들어가지 말 것" 주의 알림 (하루 4~6번) ② 15분봉 투매·과열 소진 = 진입 후보 (마감 확인, 하루 0.4~0.9번 · 180일 백테스트 4시간 승률 57~62%)',
-        rules: [
-            { interval: '5m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
-            { interval: '15m', kind: 'exh', mult: 3, vlen: 20, range: 0.8, wick: 0.4, up: true, down: true }
-        ]
-    },
-    {
         n: '⚡ 초단타 · 추세 따라가기',
-        d: '봉 마감 전 즉시 알림 · 1m 거래량 10배(몸통 0.3%) · 5m 거래량 4배(몸통 0.2%) · 15m 거래량 4배 (BTC 하루 ~7번, ETH·SOL 8~11번). 오늘 06:45 급락 06:46, 20:16 급등 20:18에 울렸을 설정',
+        d: '봉 마감 전 즉시 알림 · 1m 거래량 10배(몸통 0.3%) · 5m 거래량 4배(몸통 0.2%) · 15m 거래량 4배 (BTC 하루 ~7번, ETH·SOL 8~11번). 11/9 06:45 급락 때 06:46, 20:16 급등 때 20:18에 울렸을 설정',
         rules: [
             { interval: '1m', kind: 'vol', mult: 10, vlen: 20, minBody: 0.3, up: true, down: true, live: true },
             { interval: '5m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
@@ -122,7 +122,7 @@ function load() {
     if (!LS.get('alertProfileInitV129', false)) {
         LS.set('alertProfileInitV129', true);
         if (data.rules.length) {
-            var isAlreadyDefault = data.rules.length === 4 && data.rules.every(function (r) { return String(r.id || '').indexOf('def-') === 0; });
+            var isAlreadyDefault = data.rules.length > 0 && data.rules.every(function (r) { return String(r.id || '').indexOf('def-') === 0; });
             if (!isAlreadyDefault && !ALERT_PROFILES.some(function (p) { return p.n === '이전 내 알람 (백업)'; })) {
                 ALERT_PROFILES.unshift({
                     n: '이전 내 알람 (백업)',
