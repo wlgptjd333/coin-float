@@ -48,7 +48,7 @@
 | `overlay/OverlayController.kt` | 플로팅 창과 미니 차트. 탭 처리는 `handleOverlayClick` |
 | `overlay/OverlayRestoreReceiver.kt` | 업데이트 · 재부팅 후 시세창 자동 복원 |
 | `ui/TradingViewChartScreen.kt` | 차트 WebView와 JS 브리지(`ChartBridge`, `@JavascriptInterface`) |
-| `alerts/` | 네이티브 알람 엔진. 앱이 꺼져 있어도 울림. CVD는 바이낸스 기준 |
+| `alerts/` | 네이티브 알람 엔진. 앱이 꺼져 있어도 울림. CVD는 바이낸스 기준. ⚡ 실시간 규칙은 `LiveAlertMonitor`가 시세창 서비스 안에서 진행 중인 봉으로 판정(1.37.0) |
 | `sync/GoogleSignIn.kt` | Google 계정 시트(Credential Manager)로 ID 토큰 받기 |
 | `settings/SettingsSync.kt` | 계정을 따라다니는 앱 설정(관심 종목, 시세창 모양)의 JSON 변환과 값 검증 |
 | `market/` | 거래소 클라이언트(`PriceFeed`): Binance, Hyperliquid, Variational. 종목 키는 Binance `BTCUSDT`, `HL-XYZ-TSLA`(실제 코인명은 `SymbolInfo.pair`, 예 `xyz:TSLA`, `kPEPE`), `VAR-SOXL`. 오더플로우 기능은 Binance 종목에서만 동작 |

@@ -38,7 +38,9 @@ data class AlertRule(
     val bbm: Double = 2.0,
     // "vol": average length and the smallest candle body (percent) that counts
     val vlen: Int = 20,
-    val minBody: Double = 0.0
+    val minBody: Double = 0.0,
+    // also check the forming candle and notify the moment the condition is met (LiveAlertMonitor), not only at the close
+    val live: Boolean = false
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("symbol", symbol); put("interval", interval); put("kind", kind); put("on", on); put("once", once)
@@ -46,7 +48,7 @@ data class AlertRule(
         put("len", len); put("right", right); put("volMult", volMult)
         put("t1", t1); put("p1", p1); put("t2", t2); put("p2", p2); put("label", label); put("drawing", drawing)
         put("cond", cond); put("lvl", lvl); put("len2", len2); put("ma", ma); put("bbm", bbm)
-        put("vlen", vlen); put("minBody", minBody)
+        put("vlen", vlen); put("minBody", minBody); put("live", live)
     }
 
     companion object {
@@ -81,7 +83,8 @@ data class AlertRule(
                 len2 = o.optInt("len2", 50).coerceIn(2, 400), ma = if (o.optString("ma") == "sma") "sma" else "ema",
                 bbm = o.optDouble("bbm", 2.0).let { if (it.isFinite()) it.coerceIn(0.5, 5.0) else 2.0 },
                 vlen = o.optInt("vlen", 20).coerceIn(5, 200),
-                minBody = o.optDouble("minBody", 0.0).let { if (it.isFinite()) it.coerceIn(0.0, 10.0) else 0.0 }
+                minBody = o.optDouble("minBody", 0.0).let { if (it.isFinite()) it.coerceIn(0.0, 10.0) else 0.0 },
+                live = o.optBoolean("live", false) && kind != "div"
             )
         }
 
@@ -97,17 +100,19 @@ data class AlertRule(
 /** A fired alert, kept for the history list and the chart markers. */
 data class AlertEvent(
     val ruleId: String, val symbol: String, val interval: String, val candleTime: Long, val at: Long,
-    val title: String, val detail: String, val marker: String, val dir: Int = 0
+    val title: String, val detail: String, val marker: String, val dir: Int = 0,
+    // fired on the forming candle (real-time), before it closed
+    val live: Boolean = false
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("ruleId", ruleId); put("symbol", symbol); put("interval", interval); put("t", candleTime); put("at", at)
-        put("title", title); put("detail", detail); put("marker", marker); put("dir", dir)
+        put("title", title); put("detail", detail); put("marker", marker); put("dir", dir); put("live", live)
     }
 
     companion object {
         fun fromJson(o: JSONObject) = AlertEvent(
             o.optString("ruleId"), o.optString("symbol"), o.optString("interval"), o.optLong("t"), o.optLong("at"),
-            o.optString("title"), o.optString("detail"), o.optString("marker"), o.optInt("dir", 0)
+            o.optString("title"), o.optString("detail"), o.optString("marker"), o.optInt("dir", 0), o.optBoolean("live", false)
         )
     }
 }

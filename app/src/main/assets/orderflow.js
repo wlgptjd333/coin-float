@@ -829,7 +829,7 @@ var XS = {
             if (!X.status.ok || X.status.ok.sym !== sym) return;                   // stopped meanwhile
             var d = j && j.data && j.data[0]; if (!d) { X.status.ok.state = 'none'; return; }
             ct = (+d.ctVal || 0) * (+d.ctMult || 1); if (!(ct > 0) || !X.status.ok || X.status.ok.sym !== sym) return;
-            s = xSocket('ok', 'wss://ws.okx.com:8443/ws/v5/public', function (ws) {
+            s = xSocket('ok', 'wss://ws.okx.com/ws/v5/public', function (ws) {          // port 8443 is being retired (OKX notice 64010)
                 ws.send(JSON.stringify({ op: 'subscribe', args: [{ channel: 'trades', instId: inst }] }));
             }, function (m) {
                 if (m.event === 'error') { X.status.ok.state = 'none'; s && s.close(); return; }

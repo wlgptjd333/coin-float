@@ -71,7 +71,11 @@ class AlertStore(context: Context) {
     }
     fun clearHistory() { prefs.edit().putString("history", "[]").apply() }
 
-    companion object { const val MAX_HISTORY = 100 }
+    companion object {
+        const val MAX_HISTORY = 100
+        /** The close check and the live monitor both read-modify-write the state and history. */
+        val LOCK = Any()
+    }
 }
 
 /**
@@ -181,17 +185,26 @@ object AlertRunner {
         val rules = store.rules().filter { it.on }
         if (rules.isEmpty()) return
         val now = System.currentTimeMillis()
-        val state = store.state()
+        val snapshot = store.state()
         // rules whose interval closed a candle they have not seen yet, grouped so each chart is fetched once
-        val due = rules.filter { r -> (state.optJSONObject(r.id)?.optLong("last", 0L) ?: 0L) < AlertTime.lastClosedOpen(r.interval, now) }
+        val due = rules.filter { r -> (snapshot.optJSONObject(r.id)?.optLong("last", 0L) ?: 0L) < AlertTime.lastClosedOpen(r.interval, now) }
         if (due.isEmpty()) return
         val groups = due.groupBy { it.symbol to it.interval }
         val fetched = kotlinx.coroutines.coroutineScope {
             groups.keys.map { k -> async { k to runCatching { fetchBars(k.first, k.second, now) }.getOrNull() } }.awaitAll()
         }.toMap()
+        // the live monitor may have sent something meanwhile: read the state again and hold the lock while checking
         val events = ArrayList<AlertEvent>()
+        synchronized(AlertStore.LOCK) { checkDue(store, due, fetched, now, events) }
+        if (events.isNotEmpty()) events.forEach { AlertNotifier.post(context, it) }
+    }
+
+    private fun checkDue(store: AlertStore, due: List<AlertRule>, fetched: Map<Pair<String, String>, List<Bar>?>, now: Long, events: ArrayList<AlertEvent>) {
+        val state = store.state()
         val disable = HashSet<String>()
+        val stillOn = store.rules().filter { it.on }.map { it.id }.toSet()     // a one-shot rule the live monitor just used up
         for (r in due) {
+            if (r.id !in stillOn) continue
             val bars = fetched[r.symbol to r.interval] ?: continue        // network down: try again at the next close
             if (bars.isEmpty()) continue
             val st = state.optJSONObject(r.id) ?: JSONObject()
@@ -215,10 +228,7 @@ object AlertRunner {
         }
         store.saveState(state)
         if (disable.isNotEmpty()) store.saveRules(store.rules().map { if (it.id in disable) it.copy(on = false) else it })
-        if (events.isNotEmpty()) {
-            store.addHistory(events)
-            events.forEach { AlertNotifier.post(context, it) }
-        }
+        if (events.isNotEmpty()) store.addHistory(events)
     }
 }
 
@@ -248,7 +258,7 @@ object AlertNotifier {
         val pi = PendingIntent.getActivity(context, id, tap, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("$base ${label(e.interval)} · ${e.title}")
+            .setContentTitle("${if (e.live) "⚡" else ""}$base ${label(e.interval)} · ${e.title}")
             .setContentText(e.detail)
             .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -266,6 +276,10 @@ object AlertNotifier {
     /** "10/17 14:15 봉 마감" - which candle the alert is about, so it can be found on the chart (the 🔔 sits on that candle). */
     fun candleLabel(e: AlertEvent): String {
         val f = java.text.SimpleDateFormat(if (e.interval == "1d" || e.interval == "1w") "M/d" else "M/d HH:mm", java.util.Locale.KOREA)
+        if (e.live) {
+            val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.KOREA).format(java.util.Date(e.at))
+            return "⚡ 실시간 · ${f.format(java.util.Date(e.candleTime))} 봉 진행 중 ($t, ${label(e.interval)})"
+        }
         return "${f.format(java.util.Date(e.candleTime))} 봉 마감 (${label(e.interval)})"
     }
 

@@ -13,7 +13,9 @@ var IV_LABEL = { '1m': '1분', '3m': '3분', '5m': '5분', '15m': '15분', '30m'
 var VOL_GUIDE = '하루에 몇 번 울리나 (실측, BTC · ETH 기준 / 알트는 20% 정도 적음)\n' +
     '· 15분봉: 2배 약 10번 · 3배 4~5번 · 4배 2~3번 · 5배 1~1.5번\n' +
     '· 1시간봉: 2배 약 3번 · 3배 1.3번 · 4배 0.7번 · 5배 0.4번\n' +
-    '추천: 15분봉은 4~5배, 1시간봉은 3배. 3배 신호의 약 3분의 1이 미국 장 시작 무렵(UTC 12~14시)에 몰립니다.';
+    '· 5분봉 (몸통 0.2%↑): 3배 약 5~7번 · 4배 3~5번 · 5배 2~4번\n' +
+    '· 1분봉 (몸통 0.2%↑): 4배 3~6번 · 6배 2~5번 · 8배 2~4번 (몸통 조건 없으면 6배도 하루 20번 넘게)\n' +
+    '추천: 1분봉 6배 · 5분봉 4배(둘 다 몸통 0.2%), 15분봉은 4~5배, 1시간봉은 3배. 3배 신호의 약 3분의 1이 미국 장 시작 무렵(UTC 12~14시)에 몰립니다.';
 var SRC_LABEL = { rsi: 'RSI', macd: 'MACD', cvd: 'CVD', vol: '거래량' };
 
 // ---- storage: the app (bridge); in a desktop browser a local copy so the page can be tried out -------------------------
@@ -43,12 +45,22 @@ var BUILTIN_ALERT_PROFILES = [
         ]
     },
     {
-        n: '단타 · 변동성 스캘핑',
-        d: '15분봉 집중 · 거래량 3배(몸통 0.2%) · 20봉 돌파 · 볼린저 이탈 · CVD 다이버전스 (하루 6~8회)',
+        n: '⚡ 초단타 · 1분/5분 실시간',
+        d: '봉 마감 전 즉시 알림 · 1m 거래량 6배 · 5m 거래량 4배(둘 다 몸통 0.2%) · 5m 20봉 돌파 · 15m RSI 다이버전스 (BTC 실측 거래량 알람 하루 ~5회, 알트는 더 많음)',
         rules: [
-            { interval: '15m', kind: 'vol', mult: 3, vlen: 20, minBody: 0.2, up: true, down: true },
-            { interval: '15m', kind: 'brk', len: 20, volMult: 1.5, up: true, down: true },
-            { interval: '15m', kind: 'ind', cond: 'bb', len: 20, bbm: 2, up: true, down: true },
+            { interval: '1m', kind: 'vol', mult: 6, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
+            { interval: '5m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
+            { interval: '5m', kind: 'brk', len: 20, volMult: 1.5, up: true, down: true, live: true },
+            { interval: '15m', kind: 'div', src: 'rsi', reg: true, hid: false, right: 3, up: true, down: true }
+        ]
+    },
+    {
+        n: '단타 · 변동성 스캘핑',
+        d: '15분봉 집중 · ⚡ 실시간 · 거래량 3배(몸통 0.2%) · 20봉 돌파 · 볼린저 이탈 · CVD 다이버전스 (하루 6~8회)',
+        rules: [
+            { interval: '15m', kind: 'vol', mult: 3, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
+            { interval: '15m', kind: 'brk', len: 20, volMult: 1.5, up: true, down: true, live: true },
+            { interval: '15m', kind: 'ind', cond: 'bb', len: 20, bbm: 2, up: true, down: true, live: true },
             { interval: '15m', kind: 'div', src: 'cvd', reg: true, hid: false, right: 3, up: true, down: true }
         ]
     },
@@ -68,7 +80,7 @@ var alertProfOpen = false;
 var curAlertProfile = LS.get('curAlertProfile', BUILTIN_ALERT_PROFILES[0].n);
 function makeRule(sym, tpl) {
     return Object.assign({
-        id: uid(), symbol: sym, interval: '15m', kind: 'vol', on: true, once: false,
+        id: uid(), symbol: sym, interval: '15m', kind: 'vol', on: true, once: false, live: false,
         mult: 4, vlen: 20, minBody: 0.2, src: 'rsi', reg: true, hid: false,
         up: true, down: true, len: 20, right: 3, volMult: 1.5,
         cond: 'pma', ma: 'ema', len2: 200, lvl: 70, bbm: 2,
@@ -131,7 +143,11 @@ function curIv() { var i = CF.interval(); return IVS.indexOf(i) >= 0 ? i : '15m'
 
 // ---- describing a rule ---------------------------------------------------------------------------------------------------
 function dirText(r, a, b) { return r.up && r.down ? a + '·' + b : r.up ? a : b; }
-function describe(r) {
+// real-time: checked on the forming candle and notified the moment the condition is met (divergences wait for pivots)
+function canLive(r) { return r.kind !== 'div'; }
+function isLive(r) { return !!r.live && canLive(r); }
+function describe(r) { return (isLive(r) ? '⚡ ' : '') + describeCond(r); }
+function describeCond(r) {
     if (r.kind === 'vol') return '거래량 급증 · 직전 ' + (r.vlen || 20) + '봉 평균의 ' + r.mult + '배 이상' + (r.up && r.down ? '' : r.up ? ' · 양봉만' : ' · 음봉만') + (r.minBody > 0 ? ' · 몸통 ' + r.minBody + '%↑' : '');
     if (r.kind === 'div') return SRC_LABEL[r.src] + ' 다이버전스 · ' + [r.reg ? '일반' : '', r.hid ? '히든' : ''].filter(Boolean).join('·') + ' · ' + dirText(r, '상승', '하락');
     if (r.kind === 'brk') return r.len + '봉 ' + dirText(r, '고점 돌파', '저점 이탈') + (r.volMult ? ' · 거래량 확인' : '');
@@ -238,6 +254,8 @@ function openList() {
     var sym = CF.symbol(), rows = [];
     if (!data.notif) rows.push(warnRow('알림이 꺼져 있어 알람이 와도 보이지 않아요', '알림 켜기', 'notif'));
     if (!data.exact) rows.push(warnRow('정확한 시간 알람이 꺼져 있어 몇 분 늦게 울릴 수 있어요', '허용하기', 'exact'));
+    if (hasBridge && data.liveOk === false && data.rules.some(function (r) { return r.on && isLive(r); }))
+        rows.push(CF.noteRow('⚡ 실시간 알람은 플로팅 시세창(앱 홈의 시세창 켜기)이 켜져 있을 때 동작해요. 지금은 꺼져 있어서 봉이 마감될 때만 확인합니다.'));
     rows.push(alertProfilesBox());
     var guideRow = el('div', 'row-opt', '<span style="flex:1">📖 알람 3단계 대응법 · 실측 빈도 설명서<small>알람이 울렸을 때 차트에서 확인하는 순서와 백테스트 결과</small></span><span style="color:var(--muted)">›</span>');
     guideRow.setAttribute('role', 'button');
@@ -253,15 +271,15 @@ function openList() {
     if (data.history.length) {
         rows.push(CF.sectionTitle('최근 울린 알람'));
         data.history.slice(0, 15).forEach(function (e) {
-            var hr = el('div', 'row-opt', '<span style="flex:1;min-width:0"><b>' + esc(base(e.symbol)) + '</b> ' + esc(IV_LABEL[e.interval] || e.interval) + ' · ' + esc(e.title) +
-                '<small>' + esc(e.detail) + '</small><small>' + fmtTime(e.t) + ' 봉 · 알림 ' + fmtTime(e.at) + ' · 눌러서 차트에서 보기</small></span>');
+            var hr = el('div', 'row-opt', '<span style="flex:1;min-width:0">' + (e.live ? '<span style="color:#F0B90B">⚡</span>' : '') + '<b>' + esc(base(e.symbol)) + '</b> ' + esc(IV_LABEL[e.interval] || e.interval) + ' · ' + esc(e.title) +
+                '<small>' + esc(e.detail) + '</small><small>' + fmtTime(e.t) + (e.live ? ' 봉 진행 중 (실시간)' : ' 봉 마감') + ' · 알림 ' + fmtTime(e.at) + ' · 눌러서 차트에서 보기</small></span>');
             hr.onclick = function () { showEvent(e); };
             rows.push(hr);
         });
         var clr = el('button', 'reset', '기록 지우기'); clr.onclick = function () { action('clear'); data.history = []; if (!hasBridge) store(); refreshMarkers(); openList(); };
         rows.push(clr);
     }
-    rows.push(CF.noteRow('봉이 마감될 때마다 확인하고, 앱을 닫아도 알림으로 알려줍니다. 화면이 꺼진 채 오래 두면 휴대폰 절전 때문에 몇 분 늦을 수 있어요. 알람은 매매 조언이 아니라 관찰 도구입니다.'));
+    rows.push(CF.noteRow('봉이 마감될 때마다 확인하고, 앱을 닫아도 알림으로 알려줍니다. ⚡ 실시간 알람은 봉이 끝나기 전, 조건이 맞는 순간(1초 안팎) 바로 울리고 같은 봉에서는 한 번만 울립니다. 화면이 꺼진 채 오래 두면 휴대폰 절전 때문에 마감 알람이 몇 분 늦을 수 있어요. 알람은 매매 조언이 아니라 관찰 도구입니다.'));
     CF.openSheet('알람', rows);
 }
 function warnRow(text, btn, act) {
@@ -300,7 +318,7 @@ function openForm(rule, preset) {
     if (rule) { draft = { orig: rule, r: JSON.parse(JSON.stringify(rule)) }; if (draft.r.vlen == null) draft.r.vlen = 20; if (draft.r.minBody == null) draft.r.minBody = 0; }
     else {
         var p = lastClose();
-        draft = { orig: null, r: Object.assign({ id: uid(), symbol: CF.symbol(), interval: curIv(), kind: 'vol', on: true, once: false, mult: 4, vlen: 20, minBody: 0.2, src: 'rsi', reg: true, hid: false,
+        draft = { orig: null, r: Object.assign({ id: uid(), symbol: CF.symbol(), interval: curIv(), kind: 'vol', on: true, once: false, live: true, mult: 4, vlen: 20, minBody: 0.2, src: 'rsi', reg: true, hid: false,
             up: true, down: true, len: 20, right: 3, volMult: 1.5, t1: 0, p1: +CF.fmtPrice(p).replace(/,/g, '') || p, t2: 0, p2: 0, label: '', drawing: '' }, preset || {}) };
     }
     renderForm();
@@ -365,6 +383,13 @@ function renderForm() {
         rows.push(toggle('위로 돌파 (선 위에서 마감)', r.up, function (v) { r.up = v; if (!v && !r.down) r.down = true; rr(); }));
         rows.push(toggle('아래로 이탈 (선 아래에서 마감)', r.down, function (v) { r.down = v; if (!v && !r.up) r.up = true; rr(); }));
     }
+    if (canLive(r)) {
+        rows.push(toggle('⚡ 실시간 (봉 마감 전에 바로 알림)', !!r.live, function (v) { r.live = v; rr(); },
+            r.kind === 'vol' ? '진행 중인 봉의 거래량이 기준을 넘는 순간 울림' :
+            r.kind === 'brk' ? '가격이 고점·저점을 넘는 순간 울림 (거래량 조건은 지금까지 쌓인 양으로 판단)' :
+            r.kind === 'line' ? '가격이 선을 넘는 순간 울림' : '진행 중인 봉 값으로 교차하는 순간 울림 (마감 때 되돌아갈 수 있음)'));
+        if (r.live) rows.push(CF.noteRow('실시간 알람은 빠른 대신, 봉이 마감될 때 조건이 되돌아가 있을 수 있어요(속임 돌파 · 꼬리). 플로팅 시세창이 켜져 있어야 동작하고, 꺼져 있으면 봉 마감 때 확인합니다.'));
+    }
     rows.push(toggle('한 번 울리면 끄기', r.once, function (v) { r.once = v; rr(); }));
     var foot = el('div', 'dfoot', '<div class="drow"><button class="cancel">취소</button><span style="flex:1"></span><button class="ok">' + (draft.orig ? '저장' : '알람 켜기') + '</button></div>');
     foot.querySelector('.cancel').onclick = function () { draft = null; openList(); };
@@ -374,7 +399,7 @@ function renderForm() {
         else data.rules.push(rule);
         if (data.rules.length > 100) { CF.toast('알람은 100개까지 만들 수 있어요'); data.rules.pop(); return; }
         store(); draft = null; openList();
-        CF.toast(base(rule.symbol) + ' ' + (IV_LABEL[rule.interval] || rule.interval) + ' 알람을 켰어요 · 다음 봉 마감부터 확인');
+        CF.toast(base(rule.symbol) + ' ' + (IV_LABEL[rule.interval] || rule.interval) + ' 알람을 켰어요 · ' + (isLive(rule) ? '지금부터 실시간 확인' : '다음 봉 마감부터 확인'));
     };
     CF.openSheet(draft.orig ? '알람 수정' : '알람 추가 · ' + base(r.symbol), rows, foot);
 }
