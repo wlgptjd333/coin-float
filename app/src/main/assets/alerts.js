@@ -17,6 +17,10 @@ var VOL_GUIDE = '하루에 몇 번 울리나 (실측, BTC · ETH 기준 / 알트
     '· 1분봉 (몸통 0.2%↑): 4배 3~6번 · 6배 2~5번 · 8배 2~4번 (몸통 조건 없으면 6배도 하루 20번 넘게)\n' +
     '추천: 1분봉 6배 · 5분봉 4배(둘 다 몸통 0.2%), 15분봉은 4~5배, 1시간봉은 3배. 3배 신호의 약 3분의 1이 미국 장 시작 무렵(UTC 12~14시)에 몰립니다.';
 var SRC_LABEL = { rsi: 'RSI', macd: 'MACD', cvd: 'CVD', vol: '거래량' };
+// filled in from the backtest (see the profile below)
+var EXH_NOTE = '떨어지는 칼날을 잡지 않도록, 투매(과열)가 끝난 흔적(신저가·신고가 + 거래량 폭발 + 되돌린 꼬리)이 봉 마감으로 확인된 뒤에만 울립니다. 그래서 실시간이 없습니다.\n' +
+    '백테스트 (BTC·ETH·SOL 선물 180일, 15분봉 · 3배 · 0.8% · 꼬리 40%): 하루 0.4 · 0.9 · 0.8번. 알림 반대 방향으로 4시간 뒤 평균 +0.43 · +0.35 · +0.25%, 1% 익절/1% 손절 4시간 승률 62 · 57 · 59% (아무 때나 들어가면 45~47%). 24시간 넘게 들고 가는 쪽은 우위가 없었고, 4시간 안에 중간값 0.6~0.8% 반대로 흔들렸습니다. 1분 · 1시간봉 버전은 우위가 없었습니다.\n' +
+    '반등을 보장하지 않습니다. 손절 위치(이 봉의 꼬리 끝 너머)를 먼저 정하세요.';
 
 // ---- storage: the app (bridge); in a desktop browser a local copy so the page can be tried out -------------------------
 var B = window.AndroidBridge;
@@ -45,13 +49,20 @@ var BUILTIN_ALERT_PROFILES = [
         ]
     },
     {
-        n: '⚡ 초단타 · 1분/5분 실시간',
-        d: '봉 마감 전 즉시 알림 · 1m 거래량 6배 · 5m 거래량 4배(둘 다 몸통 0.2%) · 5m 20봉 돌파 · 15m RSI 다이버전스 (BTC 실측 거래량 알람 하루 ~5회, 알트는 더 많음)',
+        n: '🎯 역추세 · 저점/고점 잡기 (백테스트)',
+        d: '① 5분봉 거래량 4배 ⚡실시간 = "급변 중, 아직 들어가지 말 것" 주의 알림 (하루 4~6번) ② 15분봉 투매·과열 소진 = 진입 후보 (마감 확인, 하루 0.4~0.9번 · 180일 백테스트 4시간 승률 57~62%)',
         rules: [
-            { interval: '1m', kind: 'vol', mult: 6, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
             { interval: '5m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
-            { interval: '5m', kind: 'brk', len: 20, volMult: 1.5, up: true, down: true, live: true },
-            { interval: '15m', kind: 'div', src: 'rsi', reg: true, hid: false, right: 3, up: true, down: true }
+            { interval: '15m', kind: 'exh', mult: 3, vlen: 20, range: 0.8, wick: 0.4, up: true, down: true }
+        ]
+    },
+    {
+        n: '⚡ 초단타 · 추세 따라가기',
+        d: '봉 마감 전 즉시 알림 · 1m 거래량 10배(몸통 0.3%) · 5m 거래량 4배(몸통 0.2%) · 15m 거래량 4배 (BTC 하루 ~7번, ETH·SOL 8~11번). 오늘 06:45 급락 06:46, 20:16 급등 20:18에 울렸을 설정',
+        rules: [
+            { interval: '1m', kind: 'vol', mult: 10, vlen: 20, minBody: 0.3, up: true, down: true, live: true },
+            { interval: '5m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
+            { interval: '15m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true, live: true }
         ]
     },
     {
@@ -144,7 +155,7 @@ function curIv() { var i = CF.interval(); return IVS.indexOf(i) >= 0 ? i : '15m'
 // ---- describing a rule ---------------------------------------------------------------------------------------------------
 function dirText(r, a, b) { return r.up && r.down ? a + '·' + b : r.up ? a : b; }
 // real-time: checked on the forming candle and notified the moment the condition is met (divergences wait for pivots)
-function canLive(r) { return r.kind !== 'div'; }
+function canLive(r) { return r.kind !== 'div' && r.kind !== 'exh'; }
 function isLive(r) { return !!r.live && canLive(r); }
 function describe(r) { return (isLive(r) ? '⚡ ' : '') + describeCond(r); }
 function describeCond(r) {
@@ -152,6 +163,7 @@ function describeCond(r) {
     if (r.kind === 'div') return SRC_LABEL[r.src] + ' 다이버전스 · ' + [r.reg ? '일반' : '', r.hid ? '히든' : ''].filter(Boolean).join('·') + ' · ' + dirText(r, '상승', '하락');
     if (r.kind === 'brk') return r.len + '봉 ' + dirText(r, '고점 돌파', '저점 이탈') + (r.volMult ? ' · 거래량 확인' : '');
     if (r.kind === 'line') return (r.label || CF.fmtPrice(r.p1)) + ' ' + dirText(r, '상향 돌파', '하향 이탈');
+    if (r.kind === 'exh') return dirText(r, '과열', '투매') + ' 소진 · 거래량 ' + r.mult + '배 · 캔들 ' + (r.range || 0.4) + '%↑ · 꼬리 ' + Math.round((r.wick || 0.4) * 100) + '% 회복'
     if (r.kind === 'ind') {
         var ma = r.ma === 'sma' ? 'SMA' : 'EMA';
         if (r.cond === 'rsi') return 'RSI(' + r.len + ') ' + r.lvl + ' ' + dirText(r, '상향 돌파', '하향 이탈');
@@ -334,8 +346,9 @@ function openForm(rule, preset) {
 function renderForm() {
     var r = draft.r, rows = [], rr = function () { renderForm(); };
     var fromLine = !!r.drawing;
-    if (!fromLine) rows.push(seg('종류', [['vol', '거래량 급증'], ['div', '다이버전스'], ['ind', '지표 조건'], ['brk', '고점·저점 돌파'], ['line', '가격 돌파']], r.kind, function (k) {
-        r.kind = k; if (k === 'line') { r.once = true; if (!(r.p1 > 0)) r.p1 = lastClose(); r.p2 = r.p1; r.t1 = r.t2 = 0; }
+    if (!fromLine) rows.push(seg('종류', [['vol', '거래량 급증'], ['exh', '소진 (역추세)'], ['div', '다이버전스'], ['ind', '지표 조건'], ['brk', '고점·저점 돌파'], ['line', '가격 돌파']], r.kind, function (k) {
+        r.kind = k;
+        if (k === 'exh') { r.live = false; r.interval = '15m'; r.mult = 3; r.range = 0.8; r.wick = 0.4; r.up = true; r.down = true; } if (k === 'line') { r.once = true; if (!(r.p1 > 0)) r.p1 = lastClose(); r.p2 = r.p1; r.t1 = r.t2 = 0; }
         if (k === 'ind') { indDefaults(r, r.cond || 'rsi'); } rr();
     }));
     rows.push(seg('확인할 봉', IVS.map(function (i) { return [i, IV_LABEL[i]]; }), r.interval, function (i) { r.interval = i; rr(); }));
@@ -348,6 +361,13 @@ function renderForm() {
         rows.push(seg('캔들 몸통이 최소', [[0, '제한 없음'], [0.1, '0.1%'], [0.2, '0.2%'], [0.5, '0.5%']], r.minBody, function (v) { r.minBody = v; rr(); }));
         rows.push(CF.noteRow('거래량만 크고 가격이 거의 안 움직인 봉(도지 · 흡수)을 거르려면 몸통 조건을 켜세요. 3배 신호의 약 3분의 1이 몸통 0.2% 미만이었습니다.'));
         rows.push(CF.noteRow(VOL_GUIDE));
+    } else if (r.kind === 'exh') {
+        rows.push(seg('거래량이 평균의 몇 배 이상', [[2.5, '2.5배'], [3, '3배'], [4, '4배'], [6, '6배'], [8, '8배']], r.mult, function (m) { r.mult = m; rr(); }));
+        rows.push(seg('캔들 높이 (고가-저가) 최소', [[0.6, '0.6%'], [0.8, '0.8%'], [1, '1%'], [1.2, '1.2%'], [1.5, '1.5%']], r.range, function (v) { r.range = v; rr(); }));
+        rows.push(seg('극단에서 되돌린 꼬리', [[0.3, '30%'], [0.4, '40%'], [0.5, '50%']], r.wick, function (v) { r.wick = v; rr(); }));
+        rows.push(toggle('저점: 투매 소진 (반등 후보)', r.down, function (v) { r.down = v; if (!v && !r.up) r.up = true; rr(); }, '거래량 폭발로 20봉 신저가를 찍고 꼬리를 달고 마감'));
+        rows.push(toggle('고점: 과열 소진 (반락 후보)', r.up, function (v) { r.up = v; if (!v && !r.down) r.down = true; rr(); }, '거래량 폭발로 20봉 신고가를 찍고 밀려서 마감'));
+        rows.push(CF.noteRow(EXH_NOTE));
     } else if (r.kind === 'div') {
         rows.push(seg('지표', [['rsi', 'RSI'], ['macd', 'MACD'], ['cvd', 'CVD'], ['vol', '거래량']], r.src, function (s) { r.src = s; if (s === 'vol') { r.reg = true; r.hid = false; } rr(); }));
         rows.push(toggle('일반 다이버전스', r.reg, function (v) { r.reg = v; if (!v && !r.hid) r.hid = true; rr(); }, '가격은 새 고점(저점)인데 지표는 못 따라감 · 추세 전환 신호'));

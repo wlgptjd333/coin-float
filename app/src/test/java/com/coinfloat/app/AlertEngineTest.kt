@@ -221,6 +221,24 @@ class AlertEngineTest {
     }
 
     @Test
+    fun exhaustionNeedsANewLowClimaxVolumeAndAWick() {
+        // 20 quiet candles around 100, then a flush to 98 on 10x volume that closes at 99.2 (60 % back off the low)
+        val quiet = bars(List(21) { 100.0 + (it % 2) * 0.05 })
+        val flush = Bar(21 * 60_000L, 100.0, 100.05, 98.0, 99.2, 100.0, 40.0)
+        val s = AlertEngine.exhaustion(quiet + flush, 8.0, 0.4, 0.4, low = true, high = true)
+        assertNotNull(s)
+        assertEquals(1, s!!.dir)                                     // a flush that was absorbed: a bounce candidate
+        // closed at the low: still falling, no signal (the knife is still dropping)
+        assertNull(AlertEngine.exhaustion(quiet + flush.copy(close = 98.1), 8.0, 0.4, 0.4, low = true, high = true))
+        // not enough volume
+        assertNull(AlertEngine.exhaustion(quiet + flush.copy(volume = 50.0), 8.0, 0.4, 0.4, low = true, high = true))
+        // lows only: a blow-off top is ignored
+        val pop = Bar(21 * 60_000L, 100.0, 102.0, 99.95, 100.6, 100.0, 60.0)
+        assertNull(AlertEngine.exhaustion(quiet + pop, 8.0, 0.4, 0.4, low = true, high = false))
+        assertEquals(-1, AlertEngine.exhaustion(quiet + pop, 8.0, 0.4, 0.4, low = false, high = true)!!.dir)
+    }
+
+    @Test
     fun liveDetailTalksAboutThePriceNow() {
         assertEquals("상단 101 위에서 거래 중", com.coinfloat.app.alerts.LiveAlertMonitor.liveDetail("상단 101 위에서 마감"))
     }

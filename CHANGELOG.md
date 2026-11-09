@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.38.0] - 2026-11-09
+
+### Added
+- **Exhaustion alert (소진 · 역추세)** for counter-trend entries: a closed candle on at least 3x volume, at least 0.8 %
+  tall, that made a new 20-candle low (high) and closed at least 40 % of its range back off it. Close-only by design:
+  it waits for proof that the flush ended instead of firing into it. Backtest (Binance futures 1m candles, 180 days,
+  BTC / ETH / SOL, 15m candles): 0.4 / 0.9 / 0.8 a day; fading it gained +0.43 / +0.35 / +0.25 % on average after 4 h
+  and won a 1 % target before a 1 % stop within 4 h 62 / 57 / 59 % of the time against 45-47 % for random entries.
+  Nearby settings (2.5-4x, 0.8-1.2 %, 30-50 %) were all positive; 1m and 1h versions had no edge, and no version kept
+  an edge past 24 h.
+- **"🎯 역추세 · 저점/고점 잡기" profile**: 5m volume 4x real-time as a "something is happening, don't enter yet" heads-up,
+  15m exhaustion as the entry candidate.
+
+### Changed
+- **"⚡ 초단타" profile** is now 1m volume 10x (0.3 % body), 5m 4x and 15m 4x, all real-time. The 5m breakout rule
+  (about 14 alerts a day) and 1m 6x (5-10 a day, no edge in the backtest) are out.
+- Real-time alerts: a "keep watching with the screen off" switch in the alert sheet (on by default; off saves battery,
+  those rules are then checked at the close while the screen is off).
+
+### Fixed
+- Real-time alerts: reconnecting backs off (3 s up to 1 min) instead of retrying every 3 s without network; a Wi-Fi /
+  mobile switch reconnects at once; quiet coins no longer reconnect every 30 s; rules are read once per change instead
+  of parsed on every check; a missing candle refetches the history at most every 5 s; a one-shot rule already used up
+  by the close check cannot fire again live.
+
 ## [1.37.0] - 2026-11-09
 
 ### Added

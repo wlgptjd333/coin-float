@@ -10,6 +10,8 @@ import org.json.JSONObject
  *  - "div"  divergence (src: rsi | macd | cvd | vol; reg / hid; bull / bear)
  *  - "brk"  close beyond the highest high / lowest low of the previous `len` candles
  *  - "line" close across a price level or a line drawn on the chart (t1, p1, t2, p2)
+ *  - "exh"  exhaustion for counter-trend entries: climax volume (mult), a candle at least ange percent tall that made
+ *           a new low (down) / high (up) and closed wick of its range back off it
  */
 data class AlertRule(
     val id: String,
@@ -40,7 +42,10 @@ data class AlertRule(
     val vlen: Int = 20,
     val minBody: Double = 0.0,
     // also check the forming candle and notify the moment the condition is met (LiveAlertMonitor), not only at the close
-    val live: Boolean = false
+    val live: Boolean = false,
+    // "exh": smallest candle height (percent of the open) and how far back off the extreme it has to close (share of the range)
+    val range: Double = 0.4,
+    val wick: Double = 0.4
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("symbol", symbol); put("interval", interval); put("kind", kind); put("on", on); put("once", once)
@@ -49,10 +54,11 @@ data class AlertRule(
         put("t1", t1); put("p1", p1); put("t2", t2); put("p2", p2); put("label", label); put("drawing", drawing)
         put("cond", cond); put("lvl", lvl); put("len2", len2); put("ma", ma); put("bbm", bbm)
         put("vlen", vlen); put("minBody", minBody); put("live", live)
+        put("range", range); put("wick", wick)
     }
 
     companion object {
-        val KINDS = setOf("vol", "div", "brk", "line", "ind")
+        val KINDS = setOf("vol", "div", "brk", "line", "ind", "exh")
         val CONDS = setOf("rsi", "pma", "mama", "macd", "macd0", "bb")
         val SOURCES = setOf("rsi", "macd", "cvd", "vol")
         private val SYMBOL = Regex("^[A-Z0-9][A-Z0-9-]{1,39}$")
@@ -84,7 +90,9 @@ data class AlertRule(
                 bbm = o.optDouble("bbm", 2.0).let { if (it.isFinite()) it.coerceIn(0.5, 5.0) else 2.0 },
                 vlen = o.optInt("vlen", 20).coerceIn(5, 200),
                 minBody = o.optDouble("minBody", 0.0).let { if (it.isFinite()) it.coerceIn(0.0, 10.0) else 0.0 },
-                live = o.optBoolean("live", false) && kind != "div"
+                live = o.optBoolean("live", false) && kind != "div" && kind != "exh",
+                range = o.optDouble("range", 0.4).let { if (it.isFinite()) it.coerceIn(0.1, 10.0) else 0.4 },
+                wick = o.optDouble("wick", 0.4).let { if (it.isFinite()) it.coerceIn(0.1, 0.9) else 0.4 }
             )
         }
 
@@ -102,7 +110,10 @@ data class AlertEvent(
     val ruleId: String, val symbol: String, val interval: String, val candleTime: Long, val at: Long,
     val title: String, val detail: String, val marker: String, val dir: Int = 0,
     // fired on the forming candle (real-time), before it closed
-    val live: Boolean = false
+    val live: Boolean = false,
+    // "exh": smallest candle height (percent of the open) and how far back off the extreme it has to close (share of the range)
+    val range: Double = 0.4,
+    val wick: Double = 0.4
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("ruleId", ruleId); put("symbol", symbol); put("interval", interval); put("t", candleTime); put("at", at)

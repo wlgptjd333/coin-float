@@ -160,7 +160,7 @@ object LiveAlertMonitor {
 
     /** Live rules this monitor can serve (divergences need confirmed pivots, Variational has no candles). */
     fun liveRules(context: Context): List<AlertRule> = AlertStore(context).rules().filter {
-        it.on && it.live && it.kind != "div" && Exchange.of(it.symbol) != Exchange.VARIATIONAL &&
+        it.on && it.live && it.kind != "div" && it.kind != "exh" && Exchange.of(it.symbol) != Exchange.VARIATIONAL &&
             (Exchange.of(it.symbol) != Exchange.HYPERLIQUID || it.interval in com.coinfloat.app.market.HyperliquidClient.INTERVALS)
     }
 
