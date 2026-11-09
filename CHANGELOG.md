@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.38.3] - 2026-11-10
+
+### Fixed
+- **The chart froze after an alert notification (or the floating window) opened it on another coin** while the app
+  was already on the chart: the header showed the new coin, the chart kept the old one's last picture until the tab
+  was switched. A quick pause -> resume resumed the WebView first, then the late answer to the pause froze it again.
+
 ## [1.38.2] - 2026-11-10
 
 ### Changed
