@@ -92,7 +92,7 @@ object LiveAlertMonitor {
         if (wanted == feeds.keys) return
         closeSockets()
         feeds.keys.retainAll(wanted)
-        wanted.forEach { k -> if (k !in feeds) feeds[k] = Feed(k.first, k.second) }
+        wanted.forEach { k -> if (!feeds.containsKey(k)) feeds[k] = Feed(k.first, k.second) }
         if (feeds.isEmpty()) { watchdog?.cancel(); watchdog = null; Log.d(TAG, "no live rules"); return }
         Log.d(TAG, "watching ${feeds.keys}")
         feeds.values.forEach { loadHistory(it) }
