@@ -174,6 +174,7 @@ object AlertRunner {
             regular = rule.reg, hidden = rule.hid, bull = rule.up, bear = rule.down, right = rule.right
         )
         "brk" -> AlertEngine.breakout(bars, rule.len, rule.up, rule.down, rule.volMult)
+        "exh" -> AlertEngine.exhaustion(bars, rule.mult, rule.range, rule.wick, low = rule.down, high = rule.up, len = rule.vlen)
         "ind" -> AlertEngine.indicatorCross(bars, rule.cond, rule.up, rule.down, rule.len, rule.lvl, rule.len2, rule.ma != "sma", rule.bbm)
         "line" -> AlertEngine.lineCross(bars, rule.t1, rule.p1, rule.t2, rule.p2, AlertTime.length(rule.interval), rule.up, rule.down,
             rule.label.ifEmpty { if (rule.p1 == rule.p2) AlertEngine.fmtP(rule.p1) else "추세선" })

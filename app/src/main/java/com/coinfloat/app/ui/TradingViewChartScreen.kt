@@ -1141,6 +1141,7 @@ private class ChartBridge(
         o.put("notif", androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled())
         // real-time alerts run inside the floating window's service; without it they are checked at the close only
         o.put("liveOk", com.coinfloat.app.alerts.LiveAlertMonitor.running)
+        o.put("liveScreenOff", com.coinfloat.app.alerts.LiveAlertMonitor.screenOffAllowed(ctx))
         return o.toString()
     }
 
@@ -1168,6 +1169,7 @@ private class ChartBridge(
         val ctx = webView.context
         when (arg) {
             "clear" -> com.coinfloat.app.alerts.AlertStore(ctx).clearHistory()
+            "liveScreenOff:1", "liveScreenOff:0" -> com.coinfloat.app.alerts.LiveAlertMonitor.setScreenOffAllowed(ctx, arg == "liveScreenOff:1")
             "exact" -> if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) runCatching {
                 ctx.startActivity(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:" + ctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }

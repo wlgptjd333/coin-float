@@ -82,6 +82,7 @@ class FloatingOverlayService : Service() {
                     Log.d(TAG, "Screen OFF detected: pausing market data to conserve battery")
                     feedScreenOn = false
                     syncFeed()
+                    com.coinfloat.app.alerts.LiveAlertMonitor.setScreenOn(false)
                     overlayController.onScreenStateChanged(false)
                 }
                 Intent.ACTION_SCREEN_ON -> {
@@ -92,6 +93,7 @@ class FloatingOverlayService : Service() {
                     overlayController.onScreenStateChanged(!keyguardLocked)
                     feedScreenOn = true
                     syncFeed()
+                    com.coinfloat.app.alerts.LiveAlertMonitor.setScreenOn(true)
                 }
                 Intent.ACTION_USER_PRESENT -> {
                     Log.d(TAG, "Unlocked: resuming market data")
@@ -269,6 +271,7 @@ class FloatingOverlayService : Service() {
             syncFeed()
             showOverlay(currentSettings)
             startPriceObserving()
+            com.coinfloat.app.alerts.LiveAlertMonitor.setScreenOn(feedScreenOn)
             com.coinfloat.app.alerts.LiveAlertMonitor.start(this@FloatingOverlayService)
         }
     }
@@ -496,6 +499,7 @@ class FloatingOverlayService : Service() {
                 if (previous != null && previous != network) {
                     Log.d(TAG, "Default network changed: reconnecting the market feed")
                     marketDataRepository.reconnectNow()
+                    com.coinfloat.app.alerts.LiveAlertMonitor.reconnectNow()
                 }
             }
         }

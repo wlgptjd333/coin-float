@@ -203,6 +203,42 @@ object AlertEngine {
             "$dir ${if (green) "+" else "-"}${fmt2(body)}% · 직전 ${len}봉 평균 대비 ${fmt1(ratio)}배", "V×${fmt1(ratio)}", dir = if (green) 1 else -1)
     }
 
+    /**
+     * Exhaustion (capitulation) for counter-trend entries: the newest closed candle traded at least `mult` times the
+     * average volume of the `len` candles before it, was at least `minRange` percent tall, made a new low (high) of those
+     * candles, and closed at least `wick` (share of its range) back off that extreme: the forced selling (buying) hit and
+     * was absorbed. A flush to a new low is a bullish signal (a bounce candidate), a blow-off to a new high a bearish one.
+     * Only on closed candles: the wick that defines it exists only once the candle is done.
+     */
+    fun exhaustion(
+        bars: List<Bar>, mult: Double, minRange: Double, wick: Double, low: Boolean, high: Boolean, len: Int = 20
+    ): Signal? {
+        val n = bars.size
+        if (n < len + 1) return null
+        var sum = 0.0
+        var hi = Double.NEGATIVE_INFINITY
+        var lo = Double.POSITIVE_INFINITY
+        for (i in n - 1 - len until n - 1) { sum += bars[i].volume; hi = max(hi, bars[i].high); lo = min(lo, bars[i].low) }
+        val avg = sum / len
+        val last = bars[n - 1]
+        val rng = last.high - last.low
+        if (avg <= 0 || rng <= 0 || last.volume < mult * avg || last.open <= 0 || rng / last.open * 100 < minRange) return null
+        val ratio = last.volume / avg
+        val back = if (low) (last.close - last.low) / rng else 0.0
+        if (low && last.low < lo && back >= wick) {
+            return Signal(last.openTime, "exh-low-${last.openTime}", "투매 소진 · 반등 후보",
+                "거래량 평균의 ${fmt1(ratio)}배로 ${len}봉 신저가 ${fmtP(last.low)} 찍고 꼬리 ${Math.round(back * 100)}% 회복해 ${fmtP(last.close)}에서 마감",
+                "소진↑", dir = 1)
+        }
+        val down = if (high) (last.high - last.close) / rng else 0.0
+        if (high && last.high > hi && down >= wick) {
+            return Signal(last.openTime, "exh-high-${last.openTime}", "과열 소진 · 반락 후보",
+                "거래량 평균의 ${fmt1(ratio)}배로 ${len}봉 신고가 ${fmtP(last.high)} 찍고 꼬리 ${Math.round(down * 100)}% 밀려 ${fmtP(last.close)}에서 마감",
+                "소진↓", dir = -1)
+        }
+        return null
+    }
+
     /** Close beyond the highest high (lowest low) of the `len` candles before it, when the candle before had not broken out. */
     fun breakout(bars: List<Bar>, len: Int, up: Boolean, down: Boolean, volMult: Double = 0.0): Signal? {
         val n = bars.size

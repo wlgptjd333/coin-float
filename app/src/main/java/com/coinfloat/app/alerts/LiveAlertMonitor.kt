@@ -34,9 +34,13 @@ import java.util.concurrent.TimeUnit
 object LiveAlertMonitor {
     private const val TAG = "LiveAlerts"
     private const val EVAL_MS = 700L                 // a forming candle updates every 250 ms; checking more often adds nothing
-    private const val SILENCE_MS = 30_000L
+    // OkHttp's pings find dead sockets; this only catches a socket that is open but silent (a quiet coin can be silent
+    // for a while, so it is generous)
+    private const val SILENCE_MS = 120_000L
+    private const val HISTORY_GAP_MS = 5_000L        // a missing candle refetches the history at most this often
     private const val HL_WS = "wss://api.hyperliquid.xyz/ws"
     private const val BN_WS = "wss://fstream.binance.com/market/stream?streams="
+    private const val PREFS_SCREEN_OFF = "liveScreenOff"
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -50,20 +54,35 @@ object LiveAlertMonitor {
         @Volatile var forming: Bar? = null
         @Volatile var lastEval = 0L
         @Volatile var loading = false
+        @Volatile var lastLoad = 0L
         val hlCoin: String? = if (Exchange.of(symbol) == Exchange.HYPERLIQUID) LiveAlertMonitor.resolveHlCoin(symbol) else null
     }
 
     private var app: Context? = null
     private var scope: CoroutineScope? = null
     private val feeds = java.util.concurrent.ConcurrentHashMap<Pair<String, String>, Feed>()
+    // the live rules, read once per change instead of on every check (the store parses JSON)
+    @Volatile private var rules: List<AlertRule> = emptyList()
     private var bnSocket: WebSocket? = null
     private var hlSocket: WebSocket? = null
     private var bnGen = 0
     private var hlGen = 0
+    private var retryMs = 3_000L
     @Volatile private var lastMsg = 0L
     private var watchdog: Job? = null
+    private var screenOn = true
+    private var paused = false
     @Volatile var running = false
         private set
+
+    /** Keep watching while the screen is off (costs battery: the candle streams keep the radio awake). Default on. */
+    fun screenOffAllowed(context: Context): Boolean =
+        context.applicationContext.getSharedPreferences("cf_alerts", Context.MODE_PRIVATE).getBoolean(PREFS_SCREEN_OFF, true)
+
+    fun setScreenOffAllowed(context: Context, on: Boolean) {
+        context.applicationContext.getSharedPreferences("cf_alerts", Context.MODE_PRIVATE).edit().putBoolean(PREFS_SCREEN_OFF, on).apply()
+        syncPause()
+    }
 
     @Synchronized
     fun start(context: Context) {
@@ -78,8 +97,35 @@ object LiveAlertMonitor {
         running = false
         closeSockets()
         feeds.clear()
+        rules = emptyList()
         watchdog?.cancel(); watchdog = null
         scope?.cancel(); scope = null
+    }
+
+    /** Screen on / off from the service: with the screen off and watching not allowed, the sockets close until it is on. */
+    @Synchronized
+    fun setScreenOn(on: Boolean) {
+        screenOn = on
+        syncPause()
+    }
+
+    @Synchronized
+    private fun syncPause() {
+        val ctx = app ?: return
+        val pause = !screenOn && !screenOffAllowed(ctx)
+        if (pause == paused) return
+        paused = pause
+        if (!running || feeds.isEmpty()) return
+        if (pause) { Log.d(TAG, "screen off: paused"); closeSockets() }
+        else { Log.d(TAG, "resumed"); retryMs = 3_000L; feeds.values.forEach { it.forming = null; loadHistory(it, force = true) }; openSockets() }
+    }
+
+    /** The default network changed (Wi-Fi <-> mobile): the old sockets would hang until a ping times out. */
+    @Synchronized
+    fun reconnectNow() {
+        if (!running || paused || feeds.isEmpty()) return
+        retryMs = 3_000L
+        reconnect()
     }
 
     /** Rules changed (or the service started): follow the set of live rules. */
@@ -88,39 +134,50 @@ object LiveAlertMonitor {
         if (!running) return
         val ctx = context.applicationContext
         app = ctx
-        val wanted = liveRules(ctx).map { it.symbol to it.interval }.toSet()
+        rules = liveRules(ctx)                                   // new thresholds take effect even when the feeds stay the same
+        val wanted = rules.map { it.symbol to it.interval }.toSet()
         if (wanted == feeds.keys) return
         closeSockets()
         feeds.keys.retainAll(wanted)
         wanted.forEach { k -> if (!feeds.containsKey(k)) feeds[k] = Feed(k.first, k.second) }
         if (feeds.isEmpty()) { watchdog?.cancel(); watchdog = null; Log.d(TAG, "no live rules"); return }
         Log.d(TAG, "watching ${feeds.keys}")
-        feeds.values.forEach { loadHistory(it) }
+        paused = !screenOn && !screenOffAllowed(ctx)
+        if (paused) return
+        feeds.values.forEach { loadHistory(it, force = true) }
         openSockets()
         if (watchdog?.isActive != true) watchdog = scope?.launch {
             var ticks = 0
             while (isActive) {
                 delay(10_000L)
-                if (System.currentTimeMillis() - lastMsg > SILENCE_MS) reconnect()
-                // Hyperliquid closes sockets that send nothing for a minute; it wants its own ping message
-                if (++ticks % 5 == 0) hlSocket?.send("{\"method\":\"ping\"}")
+                if (!paused && System.currentTimeMillis() - lastMsg > SILENCE_MS) reconnect()
+                // Hyperliquid closes sockets that send nothing for a minute; it wants its own ping message (its pong
+                // also counts as a message for the silence check)
+                if (++ticks % 2 == 0) hlSocket?.send("{\"method\":\"ping\"}")
             }
         }
     }
 
     /** Live rules this monitor can serve (divergences need confirmed pivots, Variational has no candles). */
     fun liveRules(context: Context): List<AlertRule> = AlertStore(context).rules().filter {
-        it.on && it.live && it.kind != "div" && Exchange.of(it.symbol) != Exchange.VARIATIONAL &&
+        it.on && it.live && it.kind != "div" && it.kind != "exh" && Exchange.of(it.symbol) != Exchange.VARIATIONAL &&
             (Exchange.of(it.symbol) != Exchange.HYPERLIQUID || it.interval in com.coinfloat.app.market.HyperliquidClient.INTERVALS)
     }
 
     @Synchronized
     private fun reconnect() {
-        if (!running || feeds.isEmpty()) return
-        Log.d(TAG, "silent for ${SILENCE_MS / 1000}s: reconnecting")
+        if (!running || paused || feeds.isEmpty()) return
+        Log.d(TAG, "reconnecting")
         closeSockets()
-        feeds.values.forEach { loadHistory(it) }               // fill whatever closed while the socket was down
+        feeds.values.forEach { it.forming = null; loadHistory(it, force = true) }      // fill what closed while it was down
         openSockets()
+    }
+
+    /** After a failure: try again with a growing pause (3 s .. 1 min), so a phone without network does not spin. */
+    private fun retryLater(current: () -> Boolean) {
+        val wait: Long
+        synchronized(this) { wait = retryMs; retryMs = (retryMs * 2).coerceAtMost(60_000L) }
+        scope?.launch { delay(wait); if (current()) reconnect() }
     }
 
     private fun closeSockets() {
@@ -129,9 +186,11 @@ object LiveAlertMonitor {
         hlSocket?.cancel(); hlSocket = null
     }
 
-    private fun loadHistory(f: Feed) {
-        if (f.loading) return
+    private fun loadHistory(f: Feed, force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (f.loading || (!force && now - f.lastLoad < HISTORY_GAP_MS)) return
         f.loading = true
+        f.lastLoad = now
         scope?.launch {
             try {
                 val bars = AlertRunner.fetchBars(f.symbol, f.interval, System.currentTimeMillis())
@@ -139,7 +198,7 @@ object LiveAlertMonitor {
             } catch (e: Exception) {
                 Log.w(TAG, "history ${f.symbol} ${f.interval}: ${e.message}")
             } finally { f.loading = false }
-        }
+        } ?: run { f.loading = false }
     }
 
     private fun openSockets() {
@@ -190,16 +249,17 @@ object LiveAlertMonitor {
         override fun onMessage(webSocket: WebSocket, text: String) {
             if (!current()) return
             lastMsg = System.currentTimeMillis()
+            retryMs = 3_000L
             try { handle(text) } catch (e: Exception) { Log.w(TAG, "bad message: ${e.message}") }
         }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (!current()) return
             Log.w(TAG, "socket failed: ${t.message}")
-            scope?.launch { delay(3_000L); if (current()) reconnect() }
+            retryLater(current)
         }
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             if (!current()) return
-            scope?.launch { delay(3_000L); if (current()) reconnect() }
+            retryLater(current)
         }
     }
 
@@ -227,10 +287,10 @@ object LiveAlertMonitor {
 
     private fun evaluate(f: Feed, bars: List<Bar>) {
         val ctx = app ?: return
-        val rules = liveRules(ctx).filter { it.symbol == f.symbol && it.interval == f.interval }
-        if (rules.isEmpty()) return
+        val mine = this.rules.filter { it.symbol == f.symbol && it.interval == f.interval }
+        if (mine.isEmpty()) return
         val fired = ArrayList<Pair<AlertRule, Signal>>()
-        for (r in rules) {
+        for (r in mine) {
             val sig = runCatching { AlertRunner.evaluate(r, bars) }.getOrNull() ?: continue
             fired += r to sig
         }
@@ -242,7 +302,9 @@ object LiveAlertMonitor {
             val store = AlertStore(ctx)
             val state = store.state()
             val disable = HashSet<String>()
+            val stillOn = store.rules().filter { it.on }.map { it.id }.toSet()     // a one-shot rule the close check used up
             for ((r, sig) in fired) {
+                if (r.id !in stillOn) continue
                 val st = state.optJSONObject(r.id) ?: JSONObject()
                 val sent = st.optJSONArray("keys") ?: JSONArray()
                 if ((0 until sent.length()).any { sent.optString(it) == sig.key }) continue
