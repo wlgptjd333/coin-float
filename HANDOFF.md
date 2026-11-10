@@ -97,6 +97,7 @@ $env:PATH = "$env:LOCALAPPDATA\Programs\devtools\git\cmd;$env:LOCALAPPDATA\Progr
 3. main에 합칩니다. 차트나 `web/`이 바뀌었으면 GitHub Pages가 자동 배포됩니다.
 4. `vX.Y.Z` 태그를 push합니다. `release.yml`이 저장소 시크릿의 키로 서명해 릴리즈에 APK를 올립니다.
 5. APK를 받아 `adb install -r`로 폰에 설치합니다. 시세창이 자동으로 다시 뜨는지 봅니다.
+6. Google Play: 릴리즈의 `CoinFloat-vX.Y.Z-play.aab`를 Play Console › 비공개 테스트 - Alpha › 새 버전 만들기에 올리고, 게시 개요에서 검토를 위해 전송합니다. Play 앱은 **패키지가 다릅니다**(`com.byhyesung.coinfloat`, 빌드 옵션 `-PplayPackage=com.byhyesung.coinfloat`). 그리고 Play는 **업로드 키**(SHA-1 15:B0:04:61…, 저장소 시크릿 `UPLOAD_*`)로 서명한 번들만 받습니다. APK 키로 서명한 번들은 "잘못된 키로 서명"으로 거부됩니다. Play Console 앱 ID는 4976030323540656336입니다.
 
 ### 차트를 빠르게 확인하는 법
 

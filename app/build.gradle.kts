@@ -19,7 +19,9 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.coinfloat.app"
+        // The Google Play listing is its own package (com.byhyesung.coinfloat); GitHub releases and sideloaded
+        // installs stay com.coinfloat.app. The Play bundle is built with -PplayPackage=com.byhyesung.coinfloat.
+        applicationId = (project.findProperty("playPackage") as String?)?.takeIf { it.isNotBlank() } ?: "com.coinfloat.app"
         minSdk = 26
         targetSdk = 36
         versionCode = 80
