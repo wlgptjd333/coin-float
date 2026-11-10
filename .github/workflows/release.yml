@@ -54,7 +54,32 @@ jobs:
           fi
 
       - name: Build Release APK
-        run: ./gradlew assembleRelease bundleRelease
+        run: ./gradlew assembleRelease
+
+      # The Google Play listing is its own package (com.byhyesung.coinfloat) and Play takes bundles signed only with
+      # the upload key (UPLOAD_KEYSTORE_BASE64, UPLOAD_KEYSTORE_PASSWORD, UPLOAD_KEY_ALIAS, UPLOAD_KEY_PASSWORD), not
+      # with the APK key above. Without those secrets the bundle is still built but not attached: Play would refuse it.
+      - name: Build Play bundle
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+        run: |
+          if [ -n "$UPLOAD_KEYSTORE_BASE64" ]; then
+            echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.keystore"
+            COINFLOAT_KEYSTORE_FILE="$RUNNER_TEMP/upload.keystore" \
+            COINFLOAT_KEYSTORE_PASSWORD="$UPLOAD_KEYSTORE_PASSWORD" \
+            COINFLOAT_KEY_ALIAS="$UPLOAD_KEY_ALIAS" \
+            COINFLOAT_KEY_PASSWORD="$UPLOAD_KEY_PASSWORD" \
+              ./gradlew bundleRelease -PplayPackage=com.byhyesung.coinfloat
+            rm -f "$RUNNER_TEMP/upload.keystore"
+            echo "AAB_FOR_PLAY=true" >> "$GITHUB_ENV"
+          else
+            echo "::warning::UPLOAD_KEYSTORE_* secrets are missing; the bundle is not signed for Google Play and is not attached"
+            ./gradlew bundleRelease
+            echo "AAB_FOR_PLAY=false" >> "$GITHUB_ENV"
+          fi
 
       # Manual runs on a branch (fix/xyz) would otherwise put a "/" in the file name
       - name: Rename APK
@@ -63,8 +88,8 @@ jobs:
           echo "APK_NAME=$NAME" >> "$GITHUB_ENV"
           mkdir -p release-artifacts
           cp app/build/outputs/apk/release/app-release.apk "release-artifacts/CoinFloat-$NAME.apk"
-          # Google Play takes the bundle, not the APK
-          cp app/build/outputs/bundle/release/app-release.aab "release-artifacts/CoinFloat-$NAME.aab"
+          # Google Play takes the bundle, not the APK ("-play": the Play package, signed with the upload key)
+          cp app/build/outputs/bundle/release/app-release.aab "release-artifacts/CoinFloat-$NAME-play.aab"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -78,7 +103,7 @@ jobs:
         with:
           files: |
             release-artifacts/CoinFloat-${{ github.ref_name }}.apk
-            release-artifacts/CoinFloat-${{ github.ref_name }}.aab
+            ${{ env.AAB_FOR_PLAY == 'true' && format('release-artifacts/CoinFloat-{0}-play.aab', github.ref_name) || '' }}
           generate_release_notes: true
           draft: false
           prerelease: false
