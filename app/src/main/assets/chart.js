@@ -671,7 +671,7 @@ function subMember(key) {
     return subMembers[key] || (subMembers[key] = {
         name: function () { return SUBS[key].name || PANE_NAME[key] || key; },
         color: function () { return SUBS[key].color ? SUBS[key].color() : paneTagColor(key); },
-        legend: function (i) { return SUBS[key].legend ? SUBS[key].legend(i, candles[i]) : ''; },
+        legend: function (i, open) { return SUBS[key].legend ? SUBS[key].legend(i, candles[i], open) : ''; },
         settings: function () { if (SCHEMA[key]) openSettings(key); },
         close: function () { ind[key] = false; LS.set('ind', ind); applyIndicators(); },
         mount: function (pane, sid) {
@@ -791,7 +791,7 @@ function relayout(keepHeights) {
     for (var i = 1; i < ps.length; i++) {
         try { chart.priceScale('right', i).applyOptions({ scaleMargins: PANE_MARGINS }); } catch (e) { /* older engine */ }
     }
-    scaleBase = {};
+    scaleBase = {}; paneTagRoom = {};
     savePaneLay(); scheduleTags(); scheduleLegend(); redrawLayers();
 }
 function applySubs() {
@@ -1107,11 +1107,12 @@ function layoutPaneTags() {
         if (!el || (maxed && !isMax(v.g))) return;
         var top = el.getBoundingClientRect().top - base + 3;
         var state = isMax(v.g) ? ['max', '최대화 해제'] : isCol(v.g) ? ['col', '펼치기'] : null;
-        html += '<div class="ptag-row" style="top:' + top.toFixed(0) + 'px">' + v.keys.map(tagHtml).join('') +
+        html += '<div class="ptag-row"' + (state ? '' : ' data-pane="' + v.pane + '"') + ' style="top:' + top.toFixed(0) + 'px">' + v.keys.map(tagHtml).join('') +
             (state ? '<span class="ptag"><button class="pname" data-k="' + v.keys[0] + '" data-a="' + state[0] + '">' + state[1] + '</button></span>' : '') + '</div>';
     });
     box.innerHTML = html;
     fillPaneValues(lastLegendI);
+    fitPaneTags();
 }
 // each pane shows its indicators' values at the crosshair candle (or the newest), like TradingView's pane legends
 var lastLegendI = -1;
@@ -1120,9 +1121,33 @@ function fillPaneValues(i) {
     var box = $('pane_tags'); if (!box || !candles.length) return;
     if (i < 0 || i >= candles.length) i = candles.length - 1;
     Array.prototype.forEach.call(box.querySelectorAll('.pname[data-a="name"]'), function (b) {
-        var m = memberOf(b.getAttribute('data-k')); if (!m) return;
-        var h = ''; try { h = m.legend(i) || ''; } catch (e) { /* member gone */ }
-        b.innerHTML = h || escHtml(m.name());
+        var k = b.getAttribute('data-k'), m = memberOf(k); if (!m) return;
+        // a tapped tag (open) may say more than fits next to the others
+        var h = ''; try { h = m.legend(i, openTag === k) || ''; } catch (e) { /* member gone */ }
+        h = h || escHtml(m.name());
+        if (b.__h !== h) { b.__h = h; b.innerHTML = h; fitSoon(); }
+    });
+}
+var fitT = 0;
+function fitSoon() { if (fitT) return; fitT = setTimeout(function () { fitT = 0; fitPaneTags(); }, 400); }
+// The tag row lies over the top of its pane. The pane's scales leave that much room (plus a little) above their highest
+// value, so the numbers never sit on the lines; a row that wraps to two lines gets two lines of room.
+var paneTagRoom = {};
+function fitPaneTags() {
+    var box = $('pane_tags'); if (!box) return;
+    var ps = chart.panes();
+    Array.prototype.forEach.call(box.querySelectorAll('.ptag-row[data-pane]'), function (row) {
+        // a tapped tag is open for a few seconds only: the lines should not jump for that
+        if (row.querySelector('.ptag.open')) return;
+        var p = +row.getAttribute('data-pane'), el = ps[p] && ps[p].getHTMLElement && ps[p].getHTMLElement(); if (!el) return;
+        var h = el.getBoundingClientRect().height; if (!(h > 40)) return;
+        var top = clampN((row.offsetHeight + 8) / h, PANE_MARGINS.top, 0.5), key = Math.round(top * 50);
+        if (paneTagRoom[p] === key) return;
+        paneTagRoom[p] = key;
+        var m = { top: top, bottom: PANE_MARGINS.bottom };
+        try { chart.priceScale('right', p).applyOptions({ scaleMargins: m }); } catch (e) { /* older engine */ }
+        // the members' own scales follow; the ones that keep to the lower half on purpose (delta and OI bars) stay
+        memberScales(p).forEach(function (sc) { try { var o = sc.options().scaleMargins; if (o && o.top <= 0.5) sc.applyOptions({ scaleMargins: { top: top, bottom: o.bottom } }); } catch (e) { /* gone */ } });
     });
 }
 var openTag = null, openTagT = 0;
@@ -3210,7 +3235,7 @@ function openSettings(key, back) {
         if (helpTab[key]) { sheet.appendChild(helpBox(help)); $('sheet_bg').classList.add('show', 'live'); sheet.scrollTop = 0; backState(); return; }
     }
     if (key === 'chart') [
-        ['📖  상황별 지표 · 알람 설명서', '5가지 지표 프로필 · 알람 3단계 대응법 · 백테스트 요약', function () { if (CF.openGuide) CF.openGuide(function () { openSettings('chart', back); }, 'profiles'); }],
+        ['📖  상황별 지표 · 알람 설명서', '6가지 지표 프로필 · 알람 3단계 대응법 · 백테스트 요약', function () { if (CF.openGuide) CF.openGuide(function () { openSettings('chart', back); }, 'profiles'); }],
         ['▶  바 리플레이', '고른 봉부터 한 봉씩 재생하며 매매 연습', replayPick],
         ['⤴  차트 이미지 공유', '코인 · 시간봉 · 시각이 들어간 이미지', shareChart],
         ['☁️  계정 · 설정 동기화', 'Google 계정으로 자동 동기화, 파일로 옮기기 (앱 ↔ 웹)', function () { if (CF.openSync) CF.openSync(function () { openSettings('chart', back); }); }]
@@ -3232,8 +3257,25 @@ $('cfg_btn').onclick = function () { openSettings('chart'); };
 var IND_SETS = LS.get('indSets', []); if (!Array.isArray(IND_SETS)) IND_SETS = [];
 var BUILTIN_SETS = [
     {
+        // what the counter-trend alerts are about and nothing else: the candle and its volume (the climax), how stretched the
+        // price is (RSI), who was forced out (liquidations), and where it reverts to (VWAP, the EMAs)
+        n: '🎯 역추세 단타 (깔끔)',
+        d: '기본 추천 · 캔들이 주인공 · EMA(20·50·200) · VWAP(선만) · 거래량 · RSI · 청산 막대',
+        ind: { vol: true, ema: true, vwap: true, rsi: true, liq: true },
+        cfg: {
+            vol: { maOn: true, maLen: 20, opacity: 34, height: 14 },
+            ema: { lines: [{ p: 20, c: '#FF9800', w: 1, t: 'ema', on: true }, { p: 50, c: '#2962FF', w: 1, t: 'ema', on: true }, { p: 200, c: '#FFFFFF', w: 1, t: 'ema', on: true }] },
+            vwap: { anchor: 'day', color: '#00BCD4', width: 1, b1: false, b2: false },
+            rsi: { period: 14, levels: true, ob: 70, os: 30, band: true, mid: false, maOn: false },
+            liq: { bubbles: true, ttl: '900', minUsd: 100000, labels: false }
+        },
+        // liquidations start empty (exchanges publish no history): the pane is folded to its one line of numbers until wanted
+        lay: { groups: [['rsi'], ['liq']], main: [], h: { rsi: 0.2, liq: 0.15 }, col: { liq: true }, mainH: 1 },
+        pine: []
+    },
+    {
         n: '실전 메인 (구조·수급)',
-        d: '기본 추천 · EMA(20·50·200) · VWAP · 매물대 · CVD(현물비교) · OI+청산',
+        d: 'EMA(20·50·200) · VWAP · 매물대 · CVD(현물비교) · OI+청산',
         ind: { vol: true, ema: true, vwap: true, vp: true, cvd: true, oi: true, liq: true },
         cfg: {
             vol: { maOn: true, maLen: 20, opacity: 38, height: 16 },
@@ -3307,7 +3349,7 @@ var BUILTIN_SETS = [
     }
 ];
 var setsOpen = false;
-var curIndProfile = LS.get('curIndProfile', BUILTIN_SETS[0].n);
+var curIndProfile = LS.get('curIndProfile', BUILTIN_SETS[1].n);       // installs from before profiles had names: the old default
 function applyIndSet(set, silent) {
     Object.keys(ind).forEach(function (k) { ind[k] = !!(set.ind && set.ind[k]); });
     hiddenInd = {}; saveHidden();
@@ -3379,7 +3421,7 @@ function openIndicators() {
     var maLines = S('ma').lines.filter(function (l) { return l.on; }).map(function (l) { return l.p; }).join(' · ');
     var b = S('boll'), r = S('rsi'), m = S('macd');
     var guideRow = document.createElement('div'); guideRow.className = 'row-opt'; guideRow.setAttribute('role', 'button');
-    guideRow.innerHTML = '<span style="flex:1">📖 상황별 지표 · 알람 사용 설명서<small>5가지 추천 프로필 · 알람 3단계 대응 · 지표 조합 공식</small></span><span style="color:var(--muted)">›</span>';
+    guideRow.innerHTML = '<span style="flex:1">📖 상황별 지표 · 알람 사용 설명서<small>6가지 추천 프로필 · 알람 3단계 대응 · 지표 조합 공식</small></span><span style="color:var(--muted)">›</span>';
     guideRow.onclick = function () { if (CF.openGuide) CF.openGuide(openIndicators, 'profiles'); };
     var cmpRow = document.createElement('div'); cmpRow.className = 'row-opt'; cmpRow.setAttribute('role', 'button');
     cmpRow.innerHTML = '<span style="flex:1">코인 비교<small>' + (cmpSyms().length ? cmpSyms().map(function (s) { return s.replace(/USDT$/, ''); }).join(' · ') : '다른 코인의 % 움직임을 겹쳐 보기') + '</small></span><span style="color:var(--muted)">›</span>';
@@ -3531,7 +3573,7 @@ function renderLegend() {
 // crosshair candle); a tap on a row shows hide (eye), settings and remove. A hidden indicator keeps its row, dimmed.
 var legendSel = null, legendSelT = 0, legendItemHooks = [];
 var LEG_NAME = { ma: 'MA', ema: 'EMA', boll: 'BOLL', vwap: 'VWAP', st: 'Supertrend', vp: '매물대' };
-var FEAT_NAME = { fp: '풋프린트', bidask: 'Bid/Ask', trades: '대량 체결', depth: '호가 벽', heat: '호가 히트맵', liqmap: '청산맵', dom: 'DOM',
+var FEAT_NAME = { fp: '풋프린트', bidask: 'Bid/Ask', trades: '대량 체결', depth: '호가 벽', heat: '호가 히트맵', liqmap: '청산맵(추정)', dom: 'DOM',
     xex: '거래소 합산', liq: '청산', fund: '펀딩비', lsr: '롱숏 비율', bfx: '비트파이넥스', oi: 'OI', cvd: 'CVD' };
 var EYE = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 var EYE_OFF = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l18 18M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6A17.4 17.4 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/></svg>';

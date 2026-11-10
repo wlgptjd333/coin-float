@@ -212,7 +212,7 @@ fun SettingsContent(
         Group {
             ListRow(
                 title = "상황별 지표 · 알람 사용 설명서",
-                subtitle = "추천 프로필 5종 · 알람 3단계 대응법 · 백테스트 요약",
+                subtitle = "추천 프로필 6종 · 알람 3단계 대응법 · 백테스트 요약",
                 onClick = onShowGuide,
                 trailing = { Chevron() }
             )

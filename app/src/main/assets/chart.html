@@ -53,6 +53,18 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 #alert_btn .dot { display: none; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: #F0B90B; }
 #alert_btn.has .dot { display: block; }
 #ind_btn.on { color: var(--gold); }
+/* Full screen (and the website) on a phone held upright: coin, price and the buttons took the whole row, the intervals were
+   squeezed to nothing and the settings button hung off the edge. Two rows: what it is on top, what to do with it below. */
+@media (max-width: 560px) {
+    #app.immersive #topbar { flex: 0 0 auto; flex-wrap: wrap; align-content: center; row-gap: 2px; padding: 3px 4px; }
+    #app.immersive #top_cd { margin-right: auto; }
+    #app.immersive #exit_btn { order: 5; }
+    #app.immersive #topbar::after { content: ''; flex: 0 0 100%; height: 0; order: 6; }
+    #app.immersive #intervals { order: 7; flex: 1 1 0; }
+    #app.immersive #type_btn, #app.immersive #ind_btn, #app.immersive #alert_btn, #app.immersive #cfg_btn { order: 8; }
+    #app.immersive #sym_btn { font-size: 14.5px; }
+    #app.immersive #top_price { font-size: 14.5px; }
+}
 
 /* ---- main area ----------------------------------------------------------------------------------- */
 #main { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
@@ -156,6 +168,8 @@ body.pane-max #legend { display: none; }
 .ptag .pname span { font-weight: 600; }
 .ptag .pbtn { display: none; color: var(--muted); font-size: 11px; padding: 0 5px; height: 20px; }
 .ptag.open .pbtn { display: inline-block; }
+.ptag.open { height: auto; min-height: 20px; flex-wrap: wrap; max-width: 100%; }
+.ptag.open .pname { white-space: normal; height: auto; min-height: 20px; text-align: left; line-height: 1.5; }
 #top_cd { align-items: center; height: 20px; font-size: 11.5px; font-weight: 600; color: var(--text); background: rgba(255,255,255,.07); border-radius: 4px; padding: 0 6px; margin-right: 6px; flex: 0 0 auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
 #app #top_cd:empty { display: none !important; }
 #legend b { color: var(--text); font-weight: 600; }
@@ -301,6 +315,49 @@ textarea.code:focus { border-color: var(--accent); }
 .tplrow .sv { padding: 10px 12px; color: var(--accent); font-size: 12.5px; white-space: nowrap; }
 .ln .del { color: var(--muted); }
 .sheet-link { color: var(--muted); font-size: 12px; padding: 10px 16px 2px; display: block; }
+/* ---- sheets, quieter (1.39.0): bigger targets, one accent, hairlines instead of boxes ------------------------------- */
+#sheet_bg { background: rgba(0, 0, 0, .5); }
+#sheet { background: #1C2029; border-radius: 20px 20px 0 0; padding: 4px 0 calc(14px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -8px 30px rgba(0, 0, 0, .45); }
+#sheet::before { width: 36px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, .2); margin: 6px auto 2px; }
+#sheet h3 { font-size: 17px; font-weight: 700; letter-spacing: -.01em; padding: 10px 20px 10px; background: #1C2029; }
+#sheet h3 .back { font-size: 24px; padding: 0 10px 2px 0; }
+#sheet h3 .x { width: 30px; height: 30px; padding: 0; border-radius: 15px; background: rgba(255, 255, 255, .08); font-size: 13px; display: flex; align-items: center; justify-content: center; }
+.row-opt { min-height: 50px; padding: 11px 20px; font-size: 15px; line-height: 1.35; position: relative; }
+.row-opt small { font-size: 12px; line-height: 1.45; margin-top: 3px; }
+.row-opt + .row-opt::before { content: ''; position: absolute; left: 20px; right: 0; top: 0; height: 1px; background: rgba(255, 255, 255, .06); }
+.row-opt:active { background: rgba(255, 255, 255, .06); }
+.switch { flex: 0 0 46px; width: 46px; height: 28px; border-radius: 14px; background: rgba(120, 120, 128, .32); }
+.switch::after { top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); }
+.switch.on::after { transform: translateX(18px); }
+.sec { padding: 20px 20px 6px; font-size: 12.5px; letter-spacing: 0; }
+.note { padding: 8px 20px 4px; font-size: 12px; line-height: 1.55; }
+.gear { font-size: 17px; min-width: 40px; min-height: 36px; padding: 4px 10px; border-radius: 10px; }
+.fld { padding: 9px 20px; font-size: 15px; }
+.fld small { font-size: 12px; line-height: 1.45; margin-top: 2px; }
+.fld .top { min-height: 32px; }
+.fld input[type=number], .ma-row input, .hex, .isearch input, .tplrow input { border-radius: 10px; background: #12151C; border-color: rgba(255, 255, 255, .1); }
+.fld input[type=number] { height: 36px; font-size: 15px; }
+.seg { gap: 6px; margin-top: 8px; }
+.seg button { min-height: 34px; padding: 6px 13px; border-radius: 17px; border-color: rgba(255, 255, 255, .12); font-size: 13px; color: #B2B5BE; }
+.seg button.on { font-weight: 600; }
+.reset { padding: 14px; font-size: 15px; font-weight: 600; }
+.isearch { padding: 2px 20px 8px; }
+.isearch input { padding: 10px 14px; font-size: 15px; }
+.tplbox { padding: 6px 20px 10px; }
+.tplbox .drow { flex-wrap: wrap; row-gap: 6px; }
+.tplbox .drow > span { flex: 1 1 150px !important; }
+.tplbox .tplb { max-width: 100%; min-height: 36px; padding: 7px 12px; border-radius: 10px; border-color: rgba(255, 255, 255, .12); font-size: 13px; font-weight: 600; text-align: left; }
+.tplmenu { border-radius: 12px; border-color: rgba(255, 255, 255, .1); }
+.tplrow, .tplmenu button { border-color: rgba(255, 255, 255, .07); }
+.tplrow .ap { padding: 12px 14px; font-size: 14px; line-height: 1.4; }
+.dtabs { padding: 2px 20px 0; top: 50px; background: #1C2029; }
+.dfoot { background: #1C2029; border-top-color: rgba(255, 255, 255, .07); padding: 10px 20px 12px; }
+.drow button { height: 44px; padding: 0 18px; border-radius: 12px; font-size: 15px; }
+.drow .ok { background: var(--accent); color: #fff; }
+.tplbox .drow button { height: auto; }
+.help { padding: 6px 20px 18px; }
+.help .hp { font-size: 14px; line-height: 1.7; }
+.help .hp.title { font-size: 16px; }
 </style>
 <script src="lightweight-charts.js"></script>
 </head>

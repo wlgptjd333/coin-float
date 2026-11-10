@@ -227,16 +227,29 @@ object AlertEngine {
         val back = if (low) (last.close - last.low) / rng else 0.0
         if (low && last.low < lo && back >= wick) {
             return Signal(last.openTime, "exh-low-${last.openTime}", "투매 소진 · 반등 후보",
-                "거래량 평균의 ${fmt1(ratio)}배로 ${len}봉 신저가 ${fmtP(last.low)} 찍고 꼬리 ${Math.round(back * 100)}% 회복해 ${fmtP(last.close)}에서 마감",
+                "거래량 평균의 ${fmt1(ratio)}배로 ${len}봉 신저가 ${fmtP(last.low)} 찍고 꼬리 ${Math.round(back * 100)}% 회복해 ${fmtP(last.close)}에서 마감\n" +
+                    pullbackZone(last.close, last.low),
                 "소진↑", dir = 1)
         }
         val down = if (high) (last.high - last.close) / rng else 0.0
         if (high && last.high > hi && down >= wick) {
             return Signal(last.openTime, "exh-high-${last.openTime}", "과열 소진 · 반락 후보",
-                "거래량 평균의 ${fmt1(ratio)}배로 ${len}봉 신고가 ${fmtP(last.high)} 찍고 꼬리 ${Math.round(down * 100)}% 밀려 ${fmtP(last.close)}에서 마감",
+                "거래량 평균의 ${fmt1(ratio)}배로 ${len}봉 신고가 ${fmtP(last.high)} 찍고 꼬리 ${Math.round(down * 100)}% 밀려 ${fmtP(last.close)}에서 마감\n" +
+                    pullbackZone(last.close, last.high),
                 "소진↓", dir = -1)
         }
         return null
+    }
+
+    /**
+     * Where the price is half to three quarters of the way back from the close to the candle's extreme. In the backtest
+     * (180 days, 7 coins) the extreme was revisited often (broken within 4 h 47 % of the time), and entries that waited for
+     * this zone did better than entries at the close; the notification names the zone so it does not have to be worked out.
+     */
+    fun pullbackZone(close: Double, extreme: Double): String {
+        val half = close + (extreme - close) * 0.5
+        val deep = close + (extreme - close) * 0.75
+        return "되돌림 구간(꼬리의 50~75%) ${fmtP(half)} ~ ${fmtP(deep)} · 꼬리 끝 ${fmtP(extreme)}"
     }
 
     /** Close beyond the highest high (lowest low) of the `len` candles before it, when the candle before had not broken out. */

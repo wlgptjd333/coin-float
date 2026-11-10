@@ -19,8 +19,13 @@ var VOL_GUIDE = '하루에 몇 번 울리나 (실측, BTC · ETH 기준 / 알트
 var SRC_LABEL = { rsi: 'RSI', macd: 'MACD', cvd: 'CVD', vol: '거래량' };
 // filled in from the backtest (see the profile below)
 var EXH_NOTE = '떨어지는 칼날을 잡지 않도록, 투매(과열)가 끝난 흔적(신저가·신고가 + 거래량 폭발 + 되돌린 꼬리)이 봉 마감으로 확인된 뒤에만 울립니다. 그래서 실시간이 없습니다.\n' +
-    '백테스트 (BTC·ETH·SOL 선물 180일, 15분봉 · 3배 · 0.8% · 꼬리 40%): 하루 0.4 · 0.9 · 0.8번. 알림 반대 방향으로 4시간 뒤 평균 +0.43 · +0.35 · +0.25%, 1% 익절/1% 손절 4시간 승률 62 · 57 · 59% (아무 때나 들어가면 45~47%). 24시간 넘게 들고 가는 쪽은 우위가 없었고, 4시간 안에 중간값 0.6~0.8% 반대로 흔들렸습니다. 1분 · 1시간봉 버전은 우위가 없었습니다.\n' +
-    '반등을 보장하지 않습니다. 손절 위치(이 봉의 꼬리 끝 너머)를 먼저 정하세요.';
+    '백테스트 (바이낸스 선물 1분봉 180일 · 7개 코인 · 수수료 왕복 0.1%)\n' +
+    '· 15분봉(3배 · 0.8% · 꼬리 40%): 코인당 하루 0.4~0.9번. 저점(투매) 알림 뒤 매수는 1시간 평균 +0.15%, 4시간 +0.31%로 우위가 뚜렷했고(마지막 60일만 따로 봐도 유지), 고점(과열) 알림 뒤 매도는 우위가 없었습니다(4시간 +0.08%, 오차 범위). 코인별 4시간 평균: BTC +0.43 · ETH +0.35 · SOL +0.26%, XRP · DOGE · BNB · HYPE는 오차 범위.\n' +
+    '· 3분봉 급소진(2배 · 1.2% · 꼬리 40%): 코인당 4~5일에 한 번. 저점 알림 뒤 15분 +0.25%, 1시간 +0.35%로 가장 빨리 반응했지만 흔들림도 가장 큽니다(4시간 안에 중간값 1.2% 반대로 갔다 옴).\n' +
+    '· 우위는 알림 뒤 1~4시간에 나오고 8시간 이후엔 사라집니다. 5~15분 안에 0.5%를 먹고 나오는 방식은 수수료를 빼면 손해였습니다.\n' +
+    '· 좁은 손절은 불리했습니다: 알림 봉의 꼬리 끝은 4시간 안에 47%가 다시 깨졌고, 1% 익절 / 0.6% 손절은 손해, 1% 익절 / 1.5% 손절(46% 익절 · 22% 손절)도 수수료를 빼면 본전이었습니다. 익절 · 손절 없이 4시간 뒤 정리한 쪽이 평균 +0.23%로 가장 나았습니다.\n' +
+    '· 바로 들어가는 것보다 되돌림을 기다린 쪽이 나았습니다: 30분 안에 가격이 알림 봉 꼬리의 절반~4분의 3까지 되돌아왔을 때 들어간 경우(알림 2~3번 중 1번) 4시간 평균이 +0.35~0.48%였습니다.\n' +
+    '반등을 보장하지 않고, 지난 180일(2026년 5~11월, BTC −6%의 약한 하락장)의 결과일 뿐 앞으로도 같다는 뜻이 아닙니다. 알림 뒤 극점을 한 번 더 찍는 경우가 절반 가까이 되니 버틸 수 있는 크기로만 들어가세요.';
 
 // ---- storage: the app (bridge); in a desktop browser a local copy so the page can be tried out -------------------------
 var B = window.AndroidBridge;
@@ -30,15 +35,16 @@ var ALERT_PROFILES = LS.get('alertProfiles', []); if (!Array.isArray(ALERT_PROFI
 var BUILTIN_ALERT_PROFILES = [
     {
         n: '🎯 역추세 · 저점/고점 잡기 (백테스트)',
-        d: '기본 추천 · ① 5분봉 거래량 4배 ⚡실시간 = "급변 중, 아직 들어가지 말 것" 주의 알림 (하루 4~6번) ② 15분봉 투매·과열 소진 = 진입 후보 (마감 확인, 하루 0.4~0.9번). 180일 백테스트 4시간 승률 BTC 62 · HYPE 64 · SOL 59 · ETH 57% (무작위 45~50%). XRP · DOGE는 소진 알람 우위가 없었어요',
+        d: '기본 추천 · ① 5분봉 거래량 4배 ⚡실시간 = "급변 중, 아직 들어가지 말 것" 주의 알림 (하루 4~6번) ② 3분봉 급소진 = 가장 빠른 반등 후보 (4~5일에 한 번) ③ 15분봉 투매·과열 소진 = 진입 후보 (하루 0.4~0.9번). 180일 · 7개 코인 백테스트: 저점 알림 뒤 매수가 1~4시간 동안 우위(15분봉 4시간 평균 +0.31%, BTC · ETH · SOL이 뚜렷), 고점 알림 뒤 매도는 우위 없음',
         rules: [
             { interval: '5m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
+            { interval: '3m', kind: 'exh', mult: 2, vlen: 20, range: 1.2, wick: 0.4, up: true, down: true },
             { interval: '15m', kind: 'exh', mult: 3, vlen: 20, range: 0.8, wick: 0.4, up: true, down: true }
         ]
     },
     {
         n: '추천 정예 · 실전 표준',
-        d: '추세 · 구조 · 15m 거래량 4배(몸통 0.2%) · 1h 20봉 돌파 · 1h RSI 다이버전스 · 4h EMA200 (하루 ~4.3회)',
+        d: '추세 · 구조 · 15m 거래량 4배(몸통 0.2%) · 1h 20봉 돌파 · 1h RSI 다이버전스 · 4h EMA200 (하루 ~4.3회). 180일 백테스트에서 방향 우위는 없었어요: 변동성을 알려 주는 호출기로 쓰세요',
         rules: [
             { interval: '15m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true },
             { interval: '1h', kind: 'brk', len: 20, volMult: 1.5, up: true, down: true },
@@ -58,7 +64,7 @@ var BUILTIN_ALERT_PROFILES = [
     },
     {
         n: '⚡ 초단타 · 추세 따라가기',
-        d: '봉 마감 전 즉시 알림 · 1m 거래량 10배(몸통 0.3%) · 5m 거래량 4배(몸통 0.2%) · 15m 거래량 4배 (BTC 하루 ~7번, ETH·SOL 8~11번). 11/9 06:45 급락 때 06:46, 20:16 급등 때 20:18에 울렸을 설정',
+        d: '봉 마감 전 즉시 알림 · 1m 거래량 10배(몸통 0.3%) · 5m 거래량 4배(몸통 0.2%) · 15m 거래량 4배 (BTC 하루 ~7번, ETH·SOL 8~11번). 빨리 알려 주지만, 알림 방향으로 따라가도 반대로 가도 180일 백테스트에서 수수료를 못 넘었어요',
         rules: [
             { interval: '1m', kind: 'vol', mult: 10, vlen: 20, minBody: 0.3, up: true, down: true, live: true },
             { interval: '5m', kind: 'vol', mult: 4, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
@@ -67,7 +73,7 @@ var BUILTIN_ALERT_PROFILES = [
     },
     {
         n: '단타 · 변동성 스캘핑',
-        d: '15분봉 집중 · ⚡ 실시간 · 거래량 3배(몸통 0.2%) · 20봉 돌파 · 볼린저 이탈 · CVD 다이버전스 (하루 6~8회)',
+        d: '15분봉 집중 · ⚡ 실시간 · 거래량 3배(몸통 0.2%) · 20봉 돌파 · 볼린저 이탈 · CVD 다이버전스 (하루 6~8회). 돌파 · 볼린저 · 다이버전스 모두 180일 백테스트에서 방향 우위가 없었어요',
         rules: [
             { interval: '15m', kind: 'vol', mult: 3, vlen: 20, minBody: 0.2, up: true, down: true, live: true },
             { interval: '15m', kind: 'brk', len: 20, volMult: 1.5, up: true, down: true, live: true },
@@ -139,6 +145,21 @@ function load() {
         } else {
             applyAlertProfile(BUILTIN_ALERT_PROFILES[0], [CF.symbol() || 'BTCUSDT'], true);
         }
+    }
+    // 1.39.0: the counter-trend profile gained the fast (3m) exhaustion rule. Coins that still carry that profile's two
+    // rules untouched get it once; anything the user changed is left alone.
+    if (!LS.get('alertFast139', false)) {
+        LS.set('alertFast139', true);
+        var fastTpl = BUILTIN_ALERT_PROFILES[0].rules[1], fastSyms = [], fastAdded = 0;
+        data.rules.forEach(function (r) { if (r.symbol && fastSyms.indexOf(r.symbol) < 0) fastSyms.push(r.symbol); });
+        fastSyms.forEach(function (s) {
+            var mine = data.rules.filter(function (r) { return r.symbol === s; });
+            var head = mine.some(function (r) { return r.kind === 'vol' && r.interval === '5m' && +r.mult === 4 && isLive(r); });
+            var exh = mine.some(function (r) { return r.kind === 'exh' && r.interval === '15m' && +r.mult === 3 && +r.range === 0.8; });
+            var fast = mine.some(function (r) { return r.kind === 'exh' && r.interval === '3m'; });
+            if (head && exh && !fast && data.rules.length < 100) { data.rules.push(makeRule(s, fastTpl)); fastAdded++; }
+        });
+        if (fastAdded) { store(); setTimeout(function () { CF.toast('🎯 역추세 알람에 3분봉 급소진이 추가됐어요 (🔔에서 끌 수 있어요)'); }, 2500); }
     }
     refreshBadge(); refreshMarkers();
 }
@@ -275,6 +296,13 @@ function openList() {
             '</small></span><span class="switch' + (so ? ' on' : '') + '"></span>');
         lr.onclick = function () { data.liveScreenOff = !so; action('liveScreenOff:' + (so ? '0' : '1')); openList(); };
         rows.push(lr);
+        // Doze cuts the network of every app that is not exempt, foreground service or not: a phone left still for an hour
+        // (overnight) loses the candle stream, and the close check comes minutes late
+        if (so && data.battOk === false) {
+            var br = el('div', 'row-opt', '<span style="flex:1;min-width:0">밤새 가만히 둔 폰에서도 바로 울리게<small>지금은 배터리 최적화 대상이라, 폰을 오래 가만히 두면 절전 모드가 실시간 연결을 끊고 마감 알람도 몇 분 늦어져요. 앱 정보 › 배터리 › "제한 없음"으로 바꾸면 해결됩니다 (배터리는 조금 더 씁니다)</small></span><button class="tag" style="color:var(--accent);white-space:nowrap">설정 열기</button>');
+            br.onclick = function () { action('battery'); };
+            rows.push(br);
+        }
     }
     rows.push(alertProfilesBox());
     var guideRow = el('div', 'row-opt', '<span style="flex:1">📖 알람 3단계 대응법 · 실측 빈도 설명서<small>알람이 울렸을 때 차트에서 확인하는 순서와 백테스트 결과</small></span><span style="color:var(--muted)">›</span>');
@@ -362,7 +390,11 @@ function renderForm() {
         rows.push(CF.noteRow('거래량만 크고 가격이 거의 안 움직인 봉(도지 · 흡수)을 거르려면 몸통 조건을 켜세요. 3배 신호의 약 3분의 1이 몸통 0.2% 미만이었습니다.'));
         rows.push(CF.noteRow(VOL_GUIDE));
     } else if (r.kind === 'exh') {
-        rows.push(seg('거래량이 평균의 몇 배 이상', [[2.5, '2.5배'], [3, '3배'], [4, '4배'], [6, '6배'], [8, '8배']], r.mult, function (m) { r.mult = m; rr(); }));
+        rows.push(seg('빠르기', [['3m', '3분봉 급소진 (빠름 · 드묾)'], ['15m', '15분봉 (표준)']], r.interval === '3m' && r.range >= 1.2 ? '3m' : r.interval === '15m' && r.range === 0.8 && r.mult === 3 ? '15m' : '', function (v) {
+            if (v === '3m') { r.interval = '3m'; r.mult = 2; r.range = 1.2; r.wick = 0.4; } else { r.interval = '15m'; r.mult = 3; r.range = 0.8; r.wick = 0.4; }
+            rr();
+        }));
+        rows.push(seg('거래량이 평균의 몇 배 이상', [[2, '2배'], [2.5, '2.5배'], [3, '3배'], [4, '4배'], [6, '6배'], [8, '8배']], r.mult, function (m) { r.mult = m; rr(); }));
         rows.push(seg('캔들 높이 (고가-저가) 최소', [[0.6, '0.6%'], [0.8, '0.8%'], [1, '1%'], [1.2, '1.2%'], [1.5, '1.5%']], r.range, function (v) { r.range = v; rr(); }));
         rows.push(seg('극단에서 되돌린 꼬리', [[0.3, '30%'], [0.4, '40%'], [0.5, '50%']], r.wick, function (v) { r.wick = v; rr(); }));
         rows.push(toggle('저점: 투매 소진 (반등 후보)', r.down, function (v) { r.down = v; if (!v && !r.up) r.up = true; rr(); }, '거래량 폭발로 20봉 신저가를 찍고 꼬리를 달고 마감'));

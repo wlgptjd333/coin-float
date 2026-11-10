@@ -49,3 +49,7 @@ keystore.properties
 *.keystore
 
 perm_watch.log
+
+# backtest candles (downloaded, ~15 MB a coin)
+tools/backtest/data/
+.claude/
