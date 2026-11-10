@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.39.0] - 2026-11-10
+
+Backtest behind this release: Binance futures 1m candles, 180 days (2026-05-14 to 2026-11-10), BTC / ETH / SOL / XRP /
+DOGE / HYPE / BNB, entries at the close of the minute the alert would have fired, 0.1 % round-trip fees, the last 60 days
+also read on their own.
+
+### Added
+- **Fast exhaustion alert (3분봉 급소진)** in the counter-trend profile and in a fresh install's defaults: a 3m candle at
+  least 1.2 % tall on 2x volume that made a new 20-candle low (high) and closed 40 % back. About once every 4-5 days per
+  coin. After a flush low the price was up +0.25 % on average 15 minutes later and +0.35 % after an hour, the earliest
+  reaction of everything tested, and the widest swings (median 1.2 % against the entry within 4 h). Coins that still
+  carry the profile's two rules unchanged get the new rule once; edited rules are left alone.
+- **The exhaustion notification names the pullback zone**: 50-75 % of the way back from the close to the candle's
+  extreme, and the extreme itself. In the backtest the extreme was broken again within 4 h 47 % of the time, and entries
+  that waited for that zone (filled on one alert in two or three) averaged +0.35 to +0.48 % after 4 h against +0.23 % at
+  the close.
+- **"🎯 역추세 단타 (깔끔)" indicator profile**, the default of a fresh install: candles, EMA 20 / 50 / 200, VWAP as one
+  line, volume, RSI, and liquidations folded to one line of numbers. Nothing is laid over the candles. Existing charts
+  are not changed; the profile is in 지표 › 지표 프로필.
+- Alert sheet: when real-time alerts are to keep watching with the screen off and the app is battery-optimized, a row
+  explains that a phone left still (overnight) loses the candle stream to the system's doze mode, and opens the app's
+  system page (battery › unrestricted). No permission is requested.
+
+### Changed
+- **What the backtest says, in the app** (exhaustion note, alert profiles, guide): the 15m exhaustion alert keeps its
+  settings (3x, 0.8 %, 40 %; a 384-combination grid put it in the best cluster, and the last 60 days agree). Its edge is
+  on flush lows (+0.15 % after 1 h, +0.31 % after 4 h, BTC / ETH / SOL clearest); blow-off highs had none. The edge sits
+  between 1 and 4 hours and is gone after 8; 0.5 % targets within the hour and stops tighter than 1 % lost to fees.
+  Volume spikes, breakouts, Bollinger breaks and RSI / CVD divergences had no edge followed or faded, and their profiles
+  now say so.
+- **Lower panes: the values no longer sit on the lines.** Each pane leaves room for its row of values (two rows when it
+  wraps). The liquidation values are short (`청산 롱 $1.2M 숏 $0`); the 1 h / 4 h totals and the sources show when the
+  tag is tapped. The "추정 청산맵(모델)" caption that covered the volume bars is gone (its legend row says 추정).
+- **Sheets** (indicators, alerts, settings): larger rows and switches, hairlines between rows, one accent color, a
+  profile button that no longer squeezes its caption into a column.
+
+### Fixed
+- **Full screen and the website on an upright phone: the interval buttons were squeezed to nothing and the settings
+  button hung off the edge** (coin, price and buttons took the whole row). Two rows now: coin and price on top, intervals
+  and buttons below.
+
 ## [1.38.3] - 2026-11-10
 
 ### Fixed

@@ -321,10 +321,11 @@ CF.registerSub('liq', {
         return o;
     },
     setData: function (o) { var d = liqSeriesData(); o.L.setData(d.longs); o.S.setData(d.shorts); },
-    legend: function (i) {
+    legend: function (i, c0, open) {
         var cs = CF.candles(), c = cs[i], b = c && liqBuckets()[c.time];
-        var h = '<span style="color:' + DOWN() + '">롱청산 ' + fmtUsd(b ? b.L : 0) + '</span> <span style="color:' + UP() + '">숏청산 ' + fmtUsd(b ? b.S : 0) + '</span>';
-        if (i === cs.length - 1) {                                                         // the newest candle: running totals too
+        var h = '<span style="color:#848E9C">청산</span> <span style="color:' + DOWN() + '">롱 ' + fmtUsd(b ? b.L : 0) + '</span> <span style="color:' + UP() + '">숏 ' + fmtUsd(b ? b.S : 0) + '</span>';
+        // the running totals and the sources are a tap away (the tag opens): next to the other values they ran off the pane
+        if (open) {
             var h1 = liqSum(3600), h4 = liqSum(14400);
             h += ' <span style="color:#848E9C">· 1시간 롱 ' + fmtUsd(h1.L) + ' / 숏 ' + fmtUsd(h1.S) + ' · 4시간 롱 ' + fmtUsd(h4.L) + ' / 숏 ' + fmtUsd(h4.S) + ' · ' + liqSrcText() + '</span>';
         }
@@ -1287,7 +1288,7 @@ function paintLiqMap(ctx, w, h) {
             used.push(t.y); tag(ctx, fmtUsd(t.v), t.bw + 5, t.y, t.col, 'left');   // just past the end of its bar
         });
     }
-    tag(ctx, '추정 청산맵(모델)', 4, h - 10, '#B2B5BE', 'left');
+    // (the "model, not data" caption that sat here covered the volume bars: the legend row says 청산맵(추정) instead)
 }
 function loadLiqMap() {
     var sym = CF.symbol(), seq = ++lmap.seq;

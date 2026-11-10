@@ -1147,6 +1147,10 @@ private class ChartBridge(
         // real-time alerts run inside the floating window's service; without it they are checked at the close only
         o.put("liveOk", com.coinfloat.app.alerts.LiveAlertMonitor.running)
         o.put("liveScreenOff", com.coinfloat.app.alerts.LiveAlertMonitor.screenOffAllowed(ctx))
+        // Doze cuts the network of apps that are battery-optimized, even with a foreground service running
+        o.put("battOk", runCatching {
+            (ctx.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(ctx.packageName)
+        }.getOrDefault(true))
         return o.toString()
     }
 
@@ -1177,6 +1181,10 @@ private class ChartBridge(
             "liveScreenOff:1", "liveScreenOff:0" -> com.coinfloat.app.alerts.LiveAlertMonitor.setScreenOffAllowed(ctx, arg == "liveScreenOff:1")
             "exact" -> if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) runCatching {
                 ctx.startActivity(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:" + ctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            // the app's own page in the system settings (battery > unrestricted); no permission is requested
+            "battery" -> runCatching {
+                ctx.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + ctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
             "notif" -> runCatching {
                 ctx.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

@@ -43,6 +43,8 @@ class AlertStore(context: Context) {
         return listOf(
             // heads-up: a 5m volume burst, the moment it happens (real-time)
             AlertRule(id = "$id-vol5m", symbol = s, interval = "5m", kind = "vol", mult = 4.0, vlen = 20, minBody = 0.2, live = true),
+            // the fastest entry candidate: a violent 3m flush / blow-off that was absorbed (rare: every 4-5 days per coin)
+            AlertRule(id = "$id-exh3m", symbol = s, interval = "3m", kind = "exh", mult = 2.0, vlen = 20, range = 1.2, wick = 0.4),
             // entry candidate: a 15m flush / blow-off that was absorbed (at the close)
             AlertRule(id = "$id-exh15m", symbol = s, interval = "15m", kind = "exh", mult = 3.0, vlen = 20, range = 0.8, wick = 0.4)
         )

@@ -228,6 +228,9 @@ class AlertEngineTest {
         val s = AlertEngine.exhaustion(quiet + flush, 8.0, 0.4, 0.4, low = true, high = true)
         assertNotNull(s)
         assertEquals(1, s!!.dir)                                     // a flush that was absorbed: a bounce candidate
+        // the notification names the pullback zone: half and three quarters of the way back from the close (99.2) to the low (98)
+        assertTrue(s.detail, s.detail.contains("98.6 ~ 98.3"))
+        assertTrue(s.detail, s.detail.contains("꼬리 끝 98"))
         // closed at the low: still falling, no signal (the knife is still dropping)
         assertNull(AlertEngine.exhaustion(quiet + flush.copy(close = 98.1), 8.0, 0.4, 0.4, low = true, high = true))
         // not enough volume
