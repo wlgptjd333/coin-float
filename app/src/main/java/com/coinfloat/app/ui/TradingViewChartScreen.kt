@@ -186,12 +186,17 @@ fun TradingViewChartScreen(
 
     // The page stops its sockets/timers (and the WebView itself is frozen) whenever the app is not in the foreground.
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
+        val observer = LifecycleEventObserver { source, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> webViewHolder.view?.let { view ->
                     view.evaluateJavascript("window.setActive && window.setActive(false);") {
-                        view.onPause()
-                        view.pauseTimers()
+                        // The answer comes back asynchronously. A quick pause -> resume (an alert notification or the
+                        // floating window opening the chart on another coin) has resumed the WebView by then; freezing
+                        // it now would leave the chart frozen in the foreground until the tab is switched.
+                        if (!source.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                            view.onPause()
+                            view.pauseTimers()
+                        }
                     }
                 }
                 Lifecycle.Event.ON_RESUME -> webViewHolder.view?.let { view ->
