@@ -61,7 +61,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
     #app.immersive #exit_btn { order: 5; }
     #app.immersive #topbar::after { content: ''; flex: 0 0 100%; height: 0; order: 6; }
     #app.immersive #intervals { order: 7; flex: 1 1 0; }
-    #app.immersive #type_btn, #app.immersive #ind_btn, #app.immersive #alert_btn, #app.immersive #cfg_btn { order: 8; }
+    #app.immersive #type_btn, #app.immersive #ind_btn, #app.immersive #brief_btn, #app.immersive #alert_btn, #app.immersive #cfg_btn { order: 8; }
     #app.immersive #sym_btn { font-size: 14.5px; }
     #app.immersive #top_price { font-size: 14.5px; }
 }
@@ -358,6 +358,25 @@ textarea.code:focus { border-color: var(--accent); }
 .help { padding: 6px 20px 18px; }
 .help .hp { font-size: 14px; line-height: 1.7; }
 .help .hp.title { font-size: 16px; }
+/* ---- market briefing (pro.js) ------------------------------------------------------------------------------------------ */
+.bf-head { margin: 4px 20px 12px; padding: 14px 16px; border-radius: 14px; background: rgba(255, 255, 255, .05); }
+.bf-head .t { display: flex; align-items: baseline; gap: 8px; font-size: 20px; font-weight: 700; color: #fff; }
+.bf-head .t small { font-size: 12px; font-weight: 500; color: var(--muted); }
+.bf-head .s { margin-top: 6px; font-size: 14px; line-height: 1.55; color: var(--text); }
+.bf-head .t2 { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, .07); font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.bf-head .t2 b { font-size: 13.5px; color: #fff; }
+.bf-head .up, .bf-head b.up { color: var(--up); } .bf-head .down, .bf-head b.down { color: var(--down); }
+.bf-grid { display: grid; grid-template-columns: 1.15fr 1fr 1fr 1fr; gap: 9px 6px; margin: 0 20px 6px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.bf-grid span { text-align: right; white-space: nowrap; }
+.bf-grid .n { text-align: left; color: var(--muted); }
+.bf-grid .h { color: var(--muted); font-size: 11.5px; }
+.bf-read { padding: 0 20px 2px; }
+.bf-read p { position: relative; padding: 5px 0 5px 14px; font-size: 14px; line-height: 1.55; color: var(--text); }
+.bf-read p::before { content: ''; position: absolute; left: 0; top: 13px; width: 5px; height: 5px; border-radius: 3px; background: var(--muted); }
+.bf-kv { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 20px; font-size: 14.5px; }
+.bf-kv .k small { display: block; margin-top: 2px; font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+.bf-kv .v { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
+.bf-kv .v small { font-weight: 400; color: var(--muted); font-size: 12px; }
 </style>
 <script src="lightweight-charts.js"></script>
 </head>
@@ -371,6 +390,7 @@ textarea.code:focus { border-color: var(--accent); }
         <div id="intervals"></div>
         <button id="type_btn" class="tb-btn" aria-label="차트 종류"></button>
         <button id="ind_btn" class="tb-btn" aria-label="지표">지표</button>
+        <button id="brief_btn" class="tb-btn" aria-label="시장 브리핑"><svg viewBox="0 0 24 24"><path d="M4 18V11M9 18V6M14 18v-5M19 18V9"/></svg></button>
         <button id="alert_btn" class="tb-btn" aria-label="알람"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><i class="dot"></i></button>
         <button id="cfg_btn" class="tb-btn" aria-label="차트 설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4.4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4.4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg></button>
         <button id="exit_btn" class="tb-btn imm" aria-label="닫기"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -399,6 +419,7 @@ textarea.code:focus { border-color: var(--accent); }
 <script src="chart.js"></script>
 <script src="flow.js"></script>
 <script src="orderflow.js"></script>
+<script src="pro.js"></script>
 <script src="help.js"></script>
 <script src="alerts.js"></script>
 <script src="pine.js"></script>

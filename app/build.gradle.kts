@@ -24,8 +24,8 @@ android {
         applicationId = (project.findProperty("playPackage") as String?)?.takeIf { it.isNotBlank() } ?: "com.coinfloat.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 80
-        versionName = "1.39.0"
+        versionCode = 81
+        versionName = "1.40.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

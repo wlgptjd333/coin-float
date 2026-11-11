@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.40.0] - 2026-11-11
+
+### Added
+- **CVD by order size (주문 크기별 CVD, "고래 CVD")**: the cumulative delta of market orders split by how big the order
+  was: under $1K, $1K-10K, $10K-100K, $100K-1M, $1M and up, one line each in a pane of its own. It shows whether the
+  large orders and the small ones are on the same side (large line rising while the small one falls: large buyers
+  absorbing). An order that walked several price levels arrives as several trades with one timestamp and side; they are
+  put back together before the size is taken. Each line can have its own scale (shapes and divergences, the default)
+  or share one (dollar sizes). Binance futures trades only; the last hours are fetched when it is switched on (the
+  footprint's "history" setting, 4 h by default) and it keeps collecting while the chart is open, so it is an
+  indicator for 1m to 15m charts.
+- **Market briefing (시장 브리핑)**, a button in the chart's top bar and a row in the indicator sheet: price, open
+  interest, perp CVD and spot CVD over 1 h / 4 h / 24 h, read by fixed rules into a headline (new longs, short covering,
+  new shorts, long liquidation, building, flat) and a few sentences (who was the aggressor, absorption, spot against
+  perp, large against small orders, crowded funding, RSI and volume of the forming 15m candle), then funding and time
+  to the next payment, perp against index, long account share, the order book within 1 %, the last hour's
+  liquidations and the nearest estimated liquidation levels when those indicators are on. It describes what happened
+  and says so; nothing in it is a forecast.
+
+### Changed
+- The trade store on the phone starts over once (IndexedDB `cf_orderflow` v2): stored minutes had no order sizes and
+  counted as already fetched. At most 48 hours of footprint history, refilled from the exchange as before.
+
 ## [1.39.0] - 2026-11-10
 
 Backtest behind this release: Binance futures 1m candles, 180 days (2026-05-14 to 2026-11-10), BTC / ETH / SOL / XRP /
