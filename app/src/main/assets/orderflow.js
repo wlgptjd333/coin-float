@@ -30,6 +30,38 @@ var E = {
     listeners: []                // fn(trade) for live consumers (tape, signals)
 };
 function minuteOf(T) { return Math.floor(T / 60000) * 60; }
+// ---- order sizes: who is trading, not only how much ----------------------------------------------------------------------
+// One market order that walks the book arrives as several aggTrades with the same timestamp and side; they are put back
+// together and the order's dollar size picks its class. Per minute and class: taker buys and sells in dollars
+// (m.sz[2 * class] = buys, [2 * class + 1] = sells). Binance only: the other exchanges' trades carry other id schemes.
+var SIZE_EDGES = [1e3, 1e4, 1e5, 1e6];           // < $1K | $1K-10K | $10K-100K | $100K-1M | $1M+
+var sizeChan = {};                               // 'l' live, 'h' history: the order being put together
+function sizeClass(usd) { for (var i = 0; i < SIZE_EDGES.length; i++) if (usd < SIZE_EDGES[i]) return i; return SIZE_EDGES.length; }
+function sizeFlush(chan) {
+    var p = sizeChan[chan]; if (!p) return;
+    sizeChan[chan] = null;
+    var mt = minuteOf(p.T), m = E.min.get(mt);
+    if (!m) { m = { ver: 0, src: {} }; E.min.set(mt, m); }
+    if (!m.sz) m.sz = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    m.sz[2 * sizeClass(p.usd) + (p.buy ? 0 : 1)] += p.usd;
+    m.ver++; E.szVer = (E.szVer || 0) + 1; E.dirty.add(mt);
+}
+function sizeFeed(chan, T, price, qty, buy) {
+    var p = sizeChan[chan];
+    if (p && p.T === T && p.buy === buy) { p.usd += price * qty; return; }
+    if (p) sizeFlush(chan);
+    sizeChan[chan] = { T: T, buy: buy, usd: price * qty };
+}
+// dollars per class over [t0, t1) seconds: [buy0, sell0, buy1, sell1 ...], or null when no minute of it is held
+function sizes(t0, t1) {
+    var out = null;
+    for (var mt = t0 - (t0 % 60); mt < t1; mt += 60) {
+        var m = E.min.get(mt); if (!m || !m.sz) continue;
+        if (!out) out = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        for (var i = 0; i < 10; i++) out[i] += m.sz[i];
+    }
+    return out;
+}
 function addTrade(src, T, price, qty, buy) {
     var mt = minuteOf(T), m = E.min.get(mt);
     if (!m) { m = { ver: 0, src: {} }; E.min.set(mt, m); }
@@ -73,7 +105,7 @@ function onAgg(d) {
     else if (id !== E.liveLast + 1) {                                   // a gap (reconnect, dropped frames): fetch it again
         queueIds(E.liveLast + 1, id - 1);
     }
-    addTrade('bn', T, price, qty, buy);
+    addTrade('bn', T, price, qty, buy); sizeFeed('l', T, price, qty, buy);
     if (E.liveR && E.liveR.a1 === id - 1) { E.liveR.a1 = id; E.liveR.t1 = T; }       // the usual case: extend the live range
     else { E.liveLast = id; addCov(id, id, T, T); }
     E.liveLast = id; E.liveT = T;
@@ -112,9 +144,10 @@ function pump() {
             var t0 = Infinity, t1 = -Infinity, n = 0;
             rows.forEach(function (d) {
                 if (d.a < job.from || d.a > job.to) return;
-                addTrade('bn', d.T, +d.p, +d.q, !d.m); n++;
+                addTrade('bn', d.T, +d.p, +d.q, !d.m); sizeFeed('h', d.T, +d.p, +d.q, !d.m); n++;
                 if (d.T < t0) t0 = d.T; if (d.T > t1) t1 = d.T;
             });
+            sizeFlush('h');
             if (n) addCov(job.from, job.to, t0, t1);
             bf.done += job.to - job.from + 1;
             CF.redraw(); CF.scheduleLegend();
@@ -149,8 +182,13 @@ function db() {
     if (dbP) return dbP;
     dbP = new Promise(function (res) {
         try {
-            var r = indexedDB.open('cf_orderflow', 1);
-            r.onupgradeneeded = function () { var d = r.result; d.createObjectStore('min'); d.createObjectStore('cov'); };
+            // v2: minutes carry the order-size classes. Minutes stored by v1 have none and their id ranges count as held,
+            // so they would never be fetched again: both stores start over (at most 48 hours, refilled from the exchange).
+            var r = indexedDB.open('cf_orderflow', 2);
+            r.onupgradeneeded = function () {
+                var d = r.result;
+                ['min', 'cov'].forEach(function (n) { if (d.objectStoreNames.contains(n)) r.transaction.objectStore(n).clear(); else d.createObjectStore(n); });
+            };
             r.onsuccess = function () { res(r.result); };
             r.onerror = function () { res(null); };
         } catch (e) { res(null); }
@@ -173,6 +211,7 @@ function save() {
     E.dirty.forEach(function (mt) {
         var m = E.min.get(mt); if (!m) return;
         var v = { tick: tick, src: {} }; Object.keys(m.src).forEach(function (k) { v.src[k] = enc(m.src[k]); });
+        if (m.sz) v.sz = m.sz.slice();
         rows.push([keyOf(sym, mt), v]);
     });
     E.dirty.clear();
@@ -243,7 +282,7 @@ function engineUse(history) {
     if (++E.users > 1) return;
     E.histStarted = false;
     var sym = CF.symbol(), gen = ++E.gen;
-    E.sym = sym; E.min = new Map(); E.cov = []; E.ver++; E.liveFirst = E.liveLast = 0; E.dirty = new Set();
+    E.sym = sym; E.min = new Map(); E.cov = []; E.ver++; E.liveFirst = E.liveLast = 0; E.dirty = new Set(); sizeChan = {};
     E.bf = { q: [], busy: false, timer: 0, done: 0, total: 0, pauseUntil: 0 };
     tickFor(sym).then(function (tick) {
         if (gen !== E.gen) return;
@@ -251,7 +290,11 @@ function engineUse(history) {
         return load(sym, tick).then(function (st) {
             if (gen !== E.gen) return;
             if (st) {
-                st.min.forEach(function (r) { var m = { ver: 1, src: {} }; Object.keys(r[1].src || {}).forEach(function (k) { m.src[k] = dec(r[1].src[k]); }); E.min.set(r[0], m); });
+                st.min.forEach(function (r) {
+                    var m = { ver: 1, src: {} }; Object.keys(r[1].src || {}).forEach(function (k) { m.src[k] = dec(r[1].src[k]); });
+                    if (Array.isArray(r[1].sz) && r[1].sz.length === 10) m.sz = r[1].sz.slice();
+                    E.min.set(r[0], m);
+                });
                 (st.cov || []).forEach(function (r) { addCov(r.a0, r.a1, r.t0, r.t1); });
                 E.ver++;
             }
@@ -1006,5 +1049,7 @@ CF.registerFeature('xex', {
     stop: function () { X.want = false; xStop(); xcChanged(); }
 });
 
-window.__of = { E: E, X: X, XC: XC, cells: cells, fp: fp, dom: dom, fpInspect: fpInspect, save: save, coverOf: coverOf };
+window.__of = { E: E, X: X, XC: XC, cells: cells, fp: fp, dom: dom, fpInspect: fpInspect, save: save, coverOf: coverOf,
+    // for pro.js (order-size CVD, briefing)
+    use: engineUse, release: engineRelease, sizes: sizes, sizeEdges: SIZE_EDGES, histHours: histHours };
 })();

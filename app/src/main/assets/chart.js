@@ -263,7 +263,7 @@ var chartType = LS.get('type', 'candle');                       // candle | ha |
 var DEFAULT_IND = {
     vol: true, ma: false, ema: true, boll: false, rsi: false, macd: false,
     cvd: true, oi: true, liq: true, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: true,
-    vwap: true, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false, bfx: false
+    vwap: true, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false, bfx: false, whale: false
 };
 var ind = Object.assign({}, DEFAULT_IND, LS.get('ind', {}));
 // indicators hidden with the eye in their chart legend row: off, but their row stays (dimmed) to bring them back
@@ -3030,7 +3030,7 @@ var IND_KW = {
     macd: 'moving average convergence divergence', cvd: 'cumulative volume delta 델타', oi: 'open interest 미결제', fund: 'funding rate 펀딩',
     lsr: 'long short ratio 롱숏', bfx: 'bitfinex whale 고래', liq: 'liquidation 청산', trades: 'large trades whale 고래 체결', fp: 'footprint 풋프린트',
     dom: 'depth of market order book ladder 호가', xex: 'bybit okx hyperliquid exchange 거래소', depth: 'order book wall 호가벽', heat: 'heatmap 히트맵',
-    liqmap: 'liquidation map heatmap 청산맵', bidask: 'bid ask spread 호가'
+    liqmap: 'liquidation map heatmap 청산맵', bidask: 'bid ask spread 호가', whale: 'whale cvd order size 고래 큰손 개미 크기 firecharts material indicators'
 };
 function switchRow(text, sub, key, gear) {
     var hasGear = gear && SCHEMA[key];
@@ -3426,9 +3426,13 @@ function openIndicators() {
     var cmpRow = document.createElement('div'); cmpRow.className = 'row-opt'; cmpRow.setAttribute('role', 'button');
     cmpRow.innerHTML = '<span style="flex:1">코인 비교<small>' + (cmpSyms().length ? cmpSyms().map(function (s) { return s.replace(/USDT$/, ''); }).join(' · ') : '다른 코인의 % 움직임을 겹쳐 보기') + '</small></span><span style="color:var(--muted)">›</span>';
     cmpRow.onclick = openCompare;
+    var briefRow = document.createElement('div'); briefRow.className = 'row-opt'; briefRow.setAttribute('role', 'button');
+    briefRow.innerHTML = '<span style="flex:1">시장 브리핑<small>가격 · OI · CVD · 펀딩 · 호가 · 청산을 한 화면에서 읽어 줍니다</small></span><span style="color:var(--muted)">›</span>';
+    briefRow.onclick = function () { if (CF.openBrief) CF.openBrief(); };
     openSheet('지표', [
         indSearchBox(),
         setsBox(),
+        briefRow,
         guideRow,
         cmpRow,
         sectionTitle('기본'),
@@ -3443,6 +3447,7 @@ function openIndicators() {
         switchRow('MACD', m.fast + ', ' + m.slow + ', ' + m.signal + ' · 별도 창', 'macd', true),
         sectionTitle('오더플로우'),
         switchRow('CVD · 델타', '누적 체결 델타 (매수-매도 체결량)', 'cvd', true),
+        switchRow('주문 크기별 CVD (고래 CVD)', '큰손과 소액이 각각 사는지 파는지 · 주문 금액대별 누적 델타', 'whale', true),
         switchRow('미결제약정 (OI)', 'Binance 선물 · 별도 창', 'oi', true),
         switchRow('펀딩비', '지난 펀딩 · 예상 펀딩 · 연환산', 'fund', true),
         switchRow('롱 · 숏 비율', '전체 계정 · 상위 트레이더 · 시장가 체결 (최근 30일)', 'lsr', true),
