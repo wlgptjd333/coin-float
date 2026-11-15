@@ -114,6 +114,7 @@ defineSettings('chart', {
         { k: 'hilo', t: 'bool', label: '화면 최고가 · 최저가 표시', def: true },
         { k: 'legend', t: 'sel', label: '상단 수치 표시', def: 'full', opts: [['full', '시세 + 지표 (탭하면 펼침)'], ['ohlc', '시세만'], ['off', '숨김']] },
         { k: 'legendFold', t: 'sel', label: '상단 수치를 접었을 때 (▴)', def: 'all', opts: [['all', '지표 줄까지 모두 숨김'], ['values', '지표 이름은 남기고 수치만 숨김']] },
+        { k: 'legendHover', t: 'bool', label: '접어 둔 상태에서도 십자선을 올리면 펼치기', sub: '끄면 접어 둔 수치는 마우스 · 손가락을 올려도 계속 숨겨집니다', def: false, showIf: function (c) { return c.legend === 'full'; } },
         { t: 'sec', label: '하단 지표 창' },
         { k: 'merge', t: 'bool', label: '하단 지표를 한 창에 합치기', sub: 'RSI · MACD · CVD · OI · 청산을 한 창에 겹쳐 보여줍니다', def: false }
     ],
@@ -3556,7 +3557,9 @@ function renderLegend() {
     if (mode === 'off') { setLegend(''); fillPaneValues(i); return; }
     var c = candles[i], b = chartType === 'ha' && haBars[i] ? haBars[i] : c;
     var cls = c.close >= c.open ? 'up' : 'down', chg = c.open ? (c.close - c.open) / c.open * 100 : 0;
-    var open = mode === 'full' && (legendOpen || crossTime != null);
+    // folded stays folded: the crosshair (a mouse over the chart, a finger on it) used to unfold the rows for as long as it
+    // was there, so they flickered in and out over the candles. Unfolding on the crosshair is now a setting, off by default.
+    var open = mode === 'full' && (legendOpen || (crossTime != null && S('chart').legendHover));
     var l1 = 'O <span class="' + cls + '">' + fmtPrice(b.open) + '</span> H <span class="' + cls + '">' + fmtPrice(b.high) +
         '</span> L <span class="' + cls + '">' + fmtPrice(b.low) + '</span> C <span class="' + cls + '">' + fmtPrice(b.close) + '</span> <span class="' + cls + '">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</span>';
     if (ind.vol) l1 += ' &nbsp;Vol <b>' + fmtVol(c.volume) + '</b>';
