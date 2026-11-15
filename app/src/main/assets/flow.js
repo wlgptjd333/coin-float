@@ -20,6 +20,11 @@ function fmtUsd(v) {
     if (a >= 1e3) return '$' + (v / 1e3).toFixed(1) + 'K';
     return '$' + v.toFixed(0);
 }
+// amounts drawn on the chart itself: just the number (12.3M), the color and the place say the rest
+function fmtAmt(v) {
+    var a = Math.abs(v);
+    return a >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : a >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : a >= 1e3 ? Math.round(v / 1e3) + 'K' : v.toFixed(0);
+}
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 // open time (seconds) of the loaded candle that contains t; null when t is outside the loaded candles.
 // (Binance weekly candles start on Mondays, so plain floor(t / interval) would not line up.)
@@ -359,7 +364,7 @@ function paintLiqLabels(ctx, w, h) {
     ctx.font = '700 10px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.lineJoin = 'round';
     liqItems(w, h, function (e, x, y, r, fade, cfg) {
         if (e.usd < cfg.labelMin) return;
-        var t = (e.side === 'L' ? '롱 ' : '숏 ') + fmtUsd(e.usd);
+        var t = fmtAmt(e.usd);
         ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(11,14,17,' + (0.75 * fade).toFixed(2) + ')'; ctx.strokeText(t, x, y);
         ctx.fillStyle = 'rgba(255,255,255,' + (0.35 + 0.65 * fade).toFixed(2) + ')'; ctx.fillText(t, x, y);
     });
@@ -540,7 +545,7 @@ function paintBigLabels(ctx, w, h) {
     ctx.font = '700 10px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.lineJoin = 'round';
     bigItems(w, h, function (e, x, y, r, fade) {
         if (r < 9) return;
-        var t = fmtUsd(e.usd);
+        var t = fmtAmt(e.usd);
         ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(11,14,17,' + (0.75 * fade).toFixed(2) + ')'; ctx.strokeText(t, x, y);
         ctx.fillStyle = 'rgba(255,255,255,' + (0.45 + 0.55 * fade).toFixed(2) + ')'; ctx.fillText(t, x, y);
     });
@@ -999,7 +1004,7 @@ function paintDepth(ctx, w, h) {
         var xr = w - near - 5, xl = xr;
         if (cfg.labels && Math.abs(y - lastLabelY) >= size + 3) {                        // label sits left of the bar: it never covers it
             // the color already says buy or sell and the axis gives the price: by default just the size, quietly
-            var dist = last ? (wl.p / last - 1) * 100 : 0, amt = wl.v >= 1e9 ? (wl.v / 1e9).toFixed(2) + 'B' : wl.v >= 1e6 ? (wl.v / 1e6).toFixed(1) + 'M' : Math.round(wl.v / 1e3) + 'K', pct = (dist >= 0 ? '+' : '') + dist.toFixed(1) + '%';
+            var dist = last ? (wl.p / last - 1) * 100 : 0, amt = fmtAmt(wl.v), pct = (dist >= 0 ? '+' : '') + dist.toFixed(1) + '%';
             var text = cfg.lstyle === 'full' ? (wl.bid ? '매수벽 ' : '매도벽 ') + fmtUsd(wl.v) + ' · ' + CF.fmtPrice(wl.p) + ' (' + pct + ')'
                 : cfg.lstyle === 'dist' ? amt + ' ' + pct : amt;
             ctx.font = (wl.top ? '700 ' : '600 ') + size + 'px -apple-system, Roboto, sans-serif';
@@ -1038,12 +1043,15 @@ CF.registerFeature('depth', {
     legend: function () {
         var cfg = CF.S('depth'); if (!cfg.summary) return '';
         var bands = bookBands(); if (!bands) return '<span style="color:#848E9C">호가 불러오는 중…</span>';
-        var h = bands.map(function (x, i) {
+        // one short line: bid / ask within ±0.5 % and ±2 % (green / red say which is which), who leads near the price.
+        // The three-band version with words and exchange names wrapped onto two lines over the candles on a phone.
+        var h = bands.filter(function (x, i) { return i !== 1; }).map(function (x, i) {
             var tot = x.a + x.b, share = tot ? x.b / tot : 0.5, buy = share >= 0.5;
-            return '<span style="color:#B2B5BE">±' + (x.pct * 100) + '%</span> <span style="color:' + UP() + '">매수 ' + fmtUsd(x.b) + '</span>/<span style="color:' + DOWN() + '">매도 ' + fmtUsd(x.a) + '</span>' +
+            return '<span style="color:#B2B5BE">±' + (x.pct * 100) + '%</span> <span style="color:' + UP() + '">' + fmtAmt(x.b) + '</span>/<span style="color:' + DOWN() + '">' + fmtAmt(x.a) + '</span>' +
                 (i === 0 ? ' <b style="color:' + (buy ? UP() : DOWN()) + '">' + (buy ? '매수' : '매도') + ' ' + Math.round(Math.max(share, 1 - share) * 100) + '%</b>' : '');
         }).join(' · ');
-        return h + ' <span style="color:#848E9C">· ' + XB.names() + '</span>';
+        var names = XB.names();
+        return h + (names.indexOf('+') < 0 && cfg.xex ? ' <span style="color:#848E9C">· ' + names + '만</span>' : '');
     },
     start: function () { walls.map.clear(); walls.step = 0; depthView.max = 1; depthView.t = 0; depthView.bins = null; Book.start(); depthOff = CF.layer('top', paintDepth); },
     stop: function () { if (depthOff) { depthOff(); depthOff = null; } walls.map.clear(); Book.stop(); }
@@ -1293,7 +1301,7 @@ function paintLiqMap(ctx, w, h) {
         var used = [];
         tops.slice(0, cfg.count * 2).forEach(function (t) {
             if (used.length >= cfg.count || used.some(function (y) { return Math.abs(y - t.y) < 12; })) return;
-            used.push(t.y); tag(ctx, fmtUsd(t.v), t.bw + 5, t.y, t.col, 'left');   // just past the end of its bar
+            used.push(t.y); tag(ctx, fmtAmt(t.v), t.bw + 5, t.y, t.col, 'left');   // just past the end of its bar
         });
     }
     // (the "model, not data" caption that sat here covered the volume bars: the legend row says 청산맵(추정) instead)

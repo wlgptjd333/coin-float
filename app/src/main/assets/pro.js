@@ -291,9 +291,10 @@ function renderBrief(d, base) {
     if (d.bands) {
         var b1 = d.bands[1], ratio = b1.a > 0 ? b1.b / b1.a : 0;
         rows.push(kv('호가 ±1%', '<span class="up">$' + CF.fmtVol(b1.b) + '</span> / <span class="down">$' + CF.fmtVol(b1.a) + '</span>',
-            '매수 대기 / 매도 대기' + (ratio ? ' · ' + (ratio >= 1 ? '매수가 ' + ratio.toFixed(1) + '배' : '매도가 ' + (1 / ratio).toFixed(1) + '배') + ' 두꺼움' : '')));
+            // within 5 % of each other is "about the same", not "1.0 times thicker"
+            '매수 대기 / 매도 대기' + (!ratio ? '' : ratio >= 0.95 && ratio <= 1.05 ? ' · 거의 같음' : ' · ' + (ratio > 1 ? '매수가 ' + ratio.toFixed(1) + '배' : '매도가 ' + (1 / ratio).toFixed(1) + '배') + ' 두꺼움')));
     } else rows.push(kv('호가 ±1%', '<span style="color:var(--muted)">꺼짐</span>', '지표에서 "호가 벽"을 켜면 나와요'));
-    if (d.liq) rows.push(kv('청산 (1시간)', '<span class="down">롱 $' + CF.fmtVol(d.liq.L) + '</span> · <span class="up">숏 $' + CF.fmtVol(d.liq.S) + '</span>', '차트를 켜 둔 동안 받은 것만'));
+    if (d.liq) rows.push(kv('청산 (1시간)', d.liq.L || d.liq.S ? '<span class="down">롱 $' + (d.liq.L ? CF.fmtVol(d.liq.L) : '0') + '</span> · <span class="up">숏 $' + (d.liq.S ? CF.fmtVol(d.liq.S) : '0') + '</span>' : '<span style="color:var(--muted)">없음</span>', '차트를 켜 둔 동안 받은 것만'));
     else rows.push(kv('청산 (1시간)', '<span style="color:var(--muted)">꺼짐</span>', '지표에서 "실시간 청산"을 켜면 나와요'));
     if (d.lmap) {
         if (d.lmap.below) rows.push(kv('아래 롱 청산 추정', CF.fmtPrice(d.lmap.below.p) + ' <small>(' + pctS(d.lmap.below.dist, 1) + ')</small>', '추정 $' + CF.fmtVol(d.lmap.below.v) + ' · 모델 값'));

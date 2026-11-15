@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.40.2] - 2026-11-15
+
+### Changed
+- **Unfolded indicator rows are readable over the chart**: their backing is darker, so candles, wall amounts and the
+  POC label no longer show through the text.
+- **The order-book row is one short line** (`±0.5% 84.7M/75.2M 매수 53% · ±2% 106M/98M`) instead of three bands with
+  words and exchange names that wrapped onto two lines on a phone. The exchange is named only when just one is feeding.
+- **Amounts drawn on the chart are just the number** (`10.1M`): the estimated liquidation map, big trades and
+  liquidation bubbles no longer carry `$` or 롱 / 숏, like the wall labels.
+
+### Fixed
+- Market briefing: with no liquidations in the hour it said "롱 $0.00 · 숏 $0.00" (now "없음"), and with bids and asks
+  within 5 % of each other it said "매수가 1.0배 두꺼움" (now "거의 같음").
+
 ## [1.40.1] - 2026-11-15
 
 ### Fixed
