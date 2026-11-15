@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.40.1] - 2026-11-15
+
+### Fixed
+- **Folded indicator values kept popping back over the chart**: with the values at the top folded (▾), a mouse over
+  the chart or a finger on it (the crosshair) unfolded every indicator row for as long as it was there, so the rows
+  flickered in and out over the candles. Folded now stays folded. The old behaviour is a chart setting, off by
+  default ("접어 둔 상태에서도 십자선을 올리면 펼치기").
+- **Order-book wall amounts were unreadable on top of depth bars of their own color**: a label only cleared its own
+  wall, not the longer depth bars beside it. It now sits left of whatever is longest at its height.
+
 ## [1.40.0] - 2026-11-11
 
 ### Added

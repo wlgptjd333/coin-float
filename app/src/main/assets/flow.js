@@ -988,7 +988,15 @@ function paintDepth(ctx, w, h) {
         var col = wl.bid ? upC : dnC, thick = wl.top ? 4 : 3;
         len = Math.max(6, Math.min(1, wl.v / ref) * maxW);
         ctx.fillStyle = CF.hexA(col, wl.top ? 1 : 0.85); ctx.fillRect(w - len, y - thick / 2, len, thick);     // the wall itself, drawn solid
-        var xr = w - len - 5, xl = xr, size = cfg.font || 11;
+        // the label clears the depth bars beside it too, not just its own wall: on a bar of its own color it was unreadable
+        var size = cfg.font || 11, near = len;
+        if (cfg.bars) {
+            var pa = CF.priceAt(y - size / 2 - 2), pb = CF.priceAt(y + size / 2 + 2);
+            if (pa != null && pb != null) for (k = Math.max(0, Math.floor(pb / step) - i0); k <= Math.min(n - 1, Math.floor(pa / step) - i0); k++) {
+                var bv = Math.max(bid[k], ask[k]); if (bv > 0) near = Math.max(near, Math.min(1, bv / ref) * maxW);
+            }
+        }
+        var xr = w - near - 5, xl = xr;
         if (cfg.labels && Math.abs(y - lastLabelY) >= size + 3) {                        // label sits left of the bar: it never covers it
             // the color already says buy or sell and the axis gives the price: by default just the size, quietly
             var dist = last ? (wl.p / last - 1) * 100 : 0, amt = wl.v >= 1e9 ? (wl.v / 1e9).toFixed(2) + 'B' : wl.v >= 1e6 ? (wl.v / 1e6).toFixed(1) + 'M' : Math.round(wl.v / 1e3) + 'K', pct = (dist >= 0 ? '+' : '') + dist.toFixed(1) + '%';
