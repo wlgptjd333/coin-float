@@ -359,7 +359,7 @@ private fun LiveChartHeader(
     // flips direction several times a second), and every one of them redrew the whole window, the chart WebView included.
     ChartHeader(
         symbol = title,
-        livePrice = currentPrice,
+        livePrice = currentPrice?.toDouble(),
         formattedPrice = formattedPrice,
         priceColor = priceColor,
         changePercent = liveChange,
