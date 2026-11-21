@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.42.0] - 2026-11-21
+
+### Added
+- **소진 마커 (역추세)** (지표 › 반전 · 흐름): the counter-trend "소진" alert rule drawn as a small gold triangle on every
+  closed candle where it held (climax volume, a new 20-candle low or high, a wick that took much of it back). The
+  backtested values are used per interval (3m 2x/1.2 %, 5m 3x/0.8 %/50 %, otherwise 3x/0.8 %/40 %), or your own.
+  The crosshair on a marker shows that marker's volume multiple, wick, the move 1 h and 4 h later and whether the
+  wick's end broke again; otherwise the legend sums up every marker on the loaded candles. Flush lows are on,
+  blow-off highs off by default (no edge in the backtest). Works on every venue.
+- **닮은 흐름**: finds the stretches of the loaded history whose shape is closest to the last 30 candles and draws what
+  came after them ahead of the last candle: the middle path (dashed) and the 25-75 % band, scaled to today's
+  volatility, with short bars under the matched stretches. The legend says how many rose, and how often the same
+  method pointed the right way on this chart before next to always naming the more common side. A record of the past,
+  not a forecast.
+
 ## [1.41.0] - 2026-11-21
 
 ### Added
