@@ -30,6 +30,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -357,6 +359,7 @@ private fun LiveChartHeader(
     // flips direction several times a second), and every one of them redrew the whole window, the chart WebView included.
     ChartHeader(
         symbol = title,
+        livePrice = currentPrice,
         formattedPrice = formattedPrice,
         priceColor = priceColor,
         changePercent = liveChange,
@@ -379,6 +382,7 @@ private fun LiveChartHeader(
 @Composable
 internal fun ChartHeader(
     symbol: String,
+    livePrice: Double? = null,
     formattedPrice: String,
     priceColor: Color,
     changePercent: Float?,
@@ -395,13 +399,14 @@ internal fun ChartHeader(
     // The one-line header is dense by design; a large system font scale would truncate the symbol.
     val density = LocalDensity.current
     CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = minOf(density.fontScale, 1.0f))) {
-        ChartHeaderContent(symbol, formattedPrice, priceColor, changePercent, ticker24h, fundingInfo, tickSize, statsExpanded, onToggleStats, candleClose, onSymbolClick, onRotate, onFullscreen)
+        ChartHeaderContent(symbol, livePrice, formattedPrice, priceColor, changePercent, ticker24h, fundingInfo, tickSize, statsExpanded, onToggleStats, candleClose, onSymbolClick, onRotate, onFullscreen)
     }
 }
 
 @Composable
 private fun ChartHeaderContent(
     symbol: String,
+    livePrice: Double?,
     formattedPrice: String,
     priceColor: Color,
     changePercent: Float?,
@@ -484,7 +489,7 @@ private fun ChartHeaderContent(
             }
             AnimatedVisibility(visible = statsExpanded) {
                 Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 6.dp)) {
-                    StatsRow(ticker24h = ticker24h, fundingInfo = fundingInfo, tickSize = tickSize)
+                    StatsRow(ticker24h = ticker24h, fundingInfo = fundingInfo, tickSize = tickSize, livePrice = livePrice)
                 }
             }
         }
@@ -561,7 +566,7 @@ private fun ChangeText(changePercent: Float) {
 }
 
 @Composable
-private fun StatsRow(ticker24h: Ticker24h?, fundingInfo: FundingInfo?, tickSize: String?) {
+private fun StatsRow(ticker24h: Ticker24h?, fundingInfo: FundingInfo?, tickSize: String?, livePrice: Double?) {
     if (ticker24h == null && fundingInfo == null) return
     Row(
         modifier = Modifier
@@ -573,8 +578,14 @@ private fun StatsRow(ticker24h: Ticker24h?, fundingInfo: FundingInfo?, tickSize:
     ) {
         if (ticker24h != null) {
             // Hyperliquid reports no 24 h high / low
-            if (ticker24h.highPrice > 0f) Stat("24h 고가", PriceFormatter.formatPrice(ticker24h.highPrice.toBigDecimal(), tickSize))
-            if (ticker24h.lowPrice > 0f) Stat("24h 저가", PriceFormatter.formatPrice(ticker24h.lowPrice.toBigDecimal(), tickSize))
+            val low = ticker24h.lowPrice
+            val high = ticker24h.highPrice
+            if (low > 0f && high > low && livePrice != null && livePrice > 0.0) {
+                RangeStat(low, high, livePrice, tickSize)
+            } else {
+                if (high > 0f) Stat("24h 고가", PriceFormatter.formatPrice(high.toBigDecimal(), tickSize))
+                if (low > 0f) Stat("24h 저가", PriceFormatter.formatPrice(low.toBigDecimal(), tickSize))
+            }
             if (ticker24h.quoteVolume > 0f) {
                 val unit = if (com.coinfloat.app.market.Exchange.of(ticker24h.symbol) == com.coinfloat.app.market.Exchange.BINANCE) " USDT" else " USD"
                 Stat("거래대금", PriceFormatter.formatCompactVolume(ticker24h.quoteVolume) + unit)
@@ -599,6 +610,28 @@ private fun Stat(label: String, value: String) {
         )
     }
 }
+
+/** 24 h low and high with a dot where the live price sits between them (near the low after a flush, near the high after a spike). */
+@Composable
+private fun RangeStat(low: Float, high: Float, price: Double, tickSize: String?) {
+    val pos = ((price - low) / (high - low)).toFloat().coerceIn(0f, 1f)
+    Column {
+        Text("24h 범위", color = MutedText, fontSize = 10.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(PriceFormatter.formatPrice(low.toBigDecimal(), tickSize), color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Monospace)
+            Box(
+                modifier = Modifier.padding(horizontal = 6.dp).width(48.dp).height(8.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(RangeTrack))
+                Box(Modifier.offset(x = 40.dp * pos).size(8.dp).clip(CircleShape).background(MainText))
+            }
+            Text(PriceFormatter.formatPrice(high.toBigDecimal(), tickSize), color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
+private val RangeTrack = Color(0xFF3A3F4B)
 
 /** Funding rate with its own 1 s countdown so the rest of the screen does not recompose every second. */
 @Composable
@@ -630,6 +663,14 @@ private fun FundingStat(info: FundingInfo) {
                 fontWeight = FontWeight.Medium,
                 fontFamily = FontFamily.Monospace
             )
+            // who pays whom at the next settlement: a positive rate is paid by longs to shorts
+            if (ratePct != 0f) {
+                Text(
+                    text = if (positive) " 롱 지급" else " 숏 지급",
+                    color = MutedText,
+                    fontSize = 11.sp
+                )
+            }
             if (info.nextFundingTime > 0L) {
                 Text(
                     text = " / $countdown",

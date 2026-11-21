@@ -92,7 +92,7 @@ function lineDef(arr, type, width) { return arr.map(function (d) { return { p: d
 var calcChanged = function () { scheduleRefresh(true); }, styleChanged = function () { scheduleRefresh(false); };
 
 defineSettings('chart', {
-    title: '차트 설정', onChange: function (c, k) { scheduleChartCfg(); if (k === 'tz') chart.applyOptions({ timeScale: { tickMarkFormatter: tickFmt } }); },
+    title: '차트 설정', onChange: function (c, k) { scheduleChartCfg(); if (k === 'tz') chart.applyOptions({ timeScale: { tickMarkFormatter: tickFmt } }); if (k === 'stats' || k == null) syncStrip(); },
     fields: [
         { t: 'sec', label: '캔들' },
         { k: 'palette', t: 'sel', label: '상승 / 하락 색', def: 'gr', opts: [['gr', '초록 / 빨강'], ['kr', '빨강 / 파랑'], ['custom', '직접 지정']] },
@@ -112,6 +112,7 @@ defineSettings('chart', {
         { k: 'tz', t: 'sel', label: '시간대', def: 'local', opts: [['local', '휴대폰 시간'], ['utc', 'UTC']] },
         { k: 'sep', t: 'bool', label: '날짜 구분선', sub: '분 · 시간봉은 하루, 일봉은 한 주가 바뀌는 곳에 세로선', def: false },
         { k: 'hilo', t: 'bool', label: '화면 최고가 · 최저가 표시', def: true },
+        { k: 'stats', t: 'bool', label: '시세 요약 줄 (웹 · 전체 화면)', sub: '24시간 범위 안의 현재 위치, 펀딩, 미결제약정, 거래대금. 가격을 탭해도 접고 펼 수 있어요', def: true },
         { k: 'legend', t: 'sel', label: '상단 수치 표시', def: 'full', opts: [['full', '시세 + 지표 (탭하면 펼침)'], ['ohlc', '시세만'], ['off', '숨김']] },
         { k: 'legendFold', t: 'sel', label: '상단 수치를 접었을 때 (▴)', def: 'all', opts: [['all', '지표 줄까지 모두 숨김'], ['values', '지표 이름은 남기고 수치만 숨김']] },
         { k: 'legendHover', t: 'bool', label: '접어 둔 상태에서도 십자선을 올리면 펼치기', sub: '끄면 접어 둔 수치는 마우스 · 손가락을 올려도 계속 숨겨집니다', def: false, showIf: function (c) { return c.legend === 'full'; } },
@@ -3697,7 +3698,7 @@ function checkConn() {
     pill.textContent = navigator.onLine === false ? '오프라인 · 네트워크를 확인하세요' : '실시간 연결 끊김 · 재연결 중…';
     pill.className = 'show';
 }
-function startTimers() { stopTimers(); cdTimer = setInterval(function () { updateCountdown(); checkConn(); }, 1000); }
+function startTimers() { stopTimers(); cdTimer = setInterval(function () { updateCountdown(); checkConn(); stripClock(); }, 1000); }
 function stopTimers() { if (cdTimer) { clearInterval(cdTimer); cdTimer = null; } }
 
 function showPrice(p, dir) {
@@ -4098,7 +4099,7 @@ window.loadSymbol = function (sym, defaultInterval, force) {
     if (started && next === symbol && candles.length) return;
     started = true;
     if (RP) replayEnd(true);
-    symbol = next; $('sym_name').textContent = symLabel(next); syncDayTicker();
+    symbol = next; $('sym_name').textContent = symLabel(next); syncDayTicker(); syncStrip();
     if (venueOf(next) === 'hl') hlCoin(next).then(function () { if (symbol === next) $('sym_name').textContent = symLabel(next); });
     DR.load(); reload(true);
 };
@@ -4111,7 +4112,7 @@ window.setActive = function (on) {
     } else {
         stopTimers(); streams.market.shutdown(false); streams.pub.shutdown(false); hlShutdown(false); syncFeatures();
     }
-    syncDayTicker();
+    syncDayTicker(); syncStrip();
 };
 // 24h change next to the price in the full-screen / landscape bar (otherwise the app's header shows it). The 24h
 // ticker stream (one message a second) is only subscribed while that bar is on screen.
@@ -4132,12 +4133,93 @@ function syncDayTicker() {
             hlSub(dayHl, function (d) {
                 var c = d && d.ctx, prev = c && +c.prevDayPx, now = c && (+c.midPx || +c.markPx);
                 if (d.coin === coin && prev > 0 && now > 0) setDayChange((now - prev) / prev * 100);
+                if (d.coin === coin && c) stripHl(c, now);
             });
         });
         return;
     }
-    streams.market.sub(sym.toLowerCase() + '@miniTicker', function (d) { if (d && d.s === sym && +d.o > 0) setDayChange((+d.c - +d.o) / +d.o * 100); });
+    streams.market.sub(sym.toLowerCase() + '@miniTicker', function (d) {
+        if (d && d.s === sym && +d.o > 0) { setDayChange((+d.c - +d.o) / +d.o * 100); stripDay(+d.l, +d.h, +d.c, +d.q); }
+    });
 }
+
+// ---- market summary strip under the full-screen / web bar ------------------------------------------------------------
+// Where the price sits in its 24h range (the figure a counter-trend trader looks at first), funding with who pays it and
+// when, open interest and 24h turnover. The range and turnover ride on the 24h ticker above; funding and open interest are
+// asked for once a minute (Binance) or come with Hyperliquid's asset context. Values only: no reading, no colours by verdict.
+var ms = { sym: null, timer: 0, next: 0, fr: null, lo: 0, hi: 0 };
+function stripWanted() { return immersive && active && started && S('chart').stats && venueOf(symbol) !== 'var'; }
+function msSet(id, txt) { var e = $(id); if (e && e.textContent !== txt) e.textContent = txt; }
+function msShow(id, on) { var e = $(id); if (e) e.classList.toggle('off', !on); }
+function syncStrip() {
+    var app = $('app'), want = stripWanted();
+    app.classList.toggle('ms-off', !want);
+    var sym = want ? symbol : null;
+    if (sym === ms.sym) return;
+    clearTimeout(ms.timer); ms.timer = 0;
+    ms.sym = sym; ms.next = 0; ms.fr = null; ms.lo = ms.hi = 0;
+    ['ms_rng', 'ms_fund', 'ms_oi', 'ms_vol'].forEach(function (id) { msShow(id, false); });
+    if (sym && venueOf(sym) === 'bn') stripPoll(sym);
+    else if (sym) stripRangeHl(sym);
+}
+// Hyperliquid's asset context has no 24h high / low: take them from the last 24 hourly candles, once a minute
+function stripRangeHl(sym) {
+    hlCoin(sym).then(function (coin) {
+        var end = Date.now();
+        return hlPost({ type: 'candleSnapshot', req: { coin: coin, interval: '1h', startTime: end - 24 * 3600000, endTime: end } });
+    }).then(function (a) {
+        if (ms.sym !== sym || !Array.isArray(a) || !a.length) return;
+        var lo = Infinity, hi = 0;
+        a.forEach(function (c) { lo = Math.min(lo, +c.l); hi = Math.max(hi, +c.h); });
+        if (hi > lo && lo > 0) { ms.lo = lo; ms.hi = hi; }
+    }, function () { /* keep the last range */ });
+    ms.timer = setTimeout(function () { if (ms.sym === sym) stripRangeHl(sym); }, 60000);
+}
+function stripPoll(sym) {
+    var get = function (u) { return fetch('https://fapi.binance.com' + u).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }); };
+    Promise.all([get('/fapi/v1/premiumIndex?symbol=' + sym), get('/fapi/v1/openInterest?symbol=' + sym)]).then(function (r) {
+        if (ms.sym !== sym) return;
+        stripFund(+r[0].lastFundingRate, +r[0].nextFundingTime);
+        stripOi(+r[1].openInterest * (+r[0].markPrice || 0));
+    }, function () { /* the strip keeps the last values; the next poll tries again */ });
+    ms.timer = setTimeout(function () { if (ms.sym === sym) stripPoll(sym); }, 60000);
+}
+function stripDay(lo, hi, last, quote) {
+    if (!ms.sym) return;
+    if (lo > 0 && hi > lo && last > 0) {
+        msSet('ms_lo', fmtPrice(lo)); msSet('ms_hi', fmtPrice(hi));
+        var pct = Math.max(0, Math.min(100, (last - lo) / (hi - lo) * 100)), dot = $('ms_dot');
+        if (dot) dot.style.left = pct.toFixed(1) + '%';
+        msShow('ms_rng', true);
+    }
+    if (quote > 0) { msSet('ms_q', fmtVol(quote)); msShow('ms_vol', true); }
+}
+function stripHl(c, now) {
+    if (!ms.sym) return;
+    var fr = +c.funding, oi = +c.openInterest, q = +c.dayNtlVlm;
+    if (isFinite(fr) && c.funding != null) stripFund(fr, (Math.floor(Date.now() / 3600000) + 1) * 3600000);   // hourly, on the hour
+    if (oi > 0 && now > 0) stripOi(oi * now);
+    if (now > 0 && ms.lo) stripDay(Math.min(ms.lo, now), Math.max(ms.hi, now), now, q);
+    else if (q > 0) { msSet('ms_q', fmtVol(q)); msShow('ms_vol', true); }
+}
+function stripFund(rate, next) {
+    if (!isFinite(rate)) return;
+    ms.fr = rate; ms.next = next > 0 ? next : 0;
+    var p = rate * 100, el = $('ms_fr');
+    msSet('ms_fr', (p > 0 ? '+' : '') + p.toFixed(4) + '%');
+    if (el) el.style.color = p > 0 ? C.up : p < 0 ? C.down : '';
+    msSet('ms_who', p > 0 ? '롱 지급' : p < 0 ? '숏 지급' : '');
+    msShow('ms_fund', true);
+    stripClock();
+}
+function stripOi(usd) { if (usd > 0) { msSet('ms_oiv', fmtVol(usd)); msShow('ms_oi', true); } }
+function stripClock() {
+    if (!ms.sym || !ms.next) return;
+    var s = Math.max(0, Math.floor((ms.next - Date.now()) / 1000));
+    msSet('ms_fcd', pad2(Math.floor(s / 3600)) + ':' + pad2(Math.floor(s / 60) % 60) + ':' + pad2(s % 60));
+}
+function toggleStrip() { setCfg('chart', 'stats', !S('chart').stats); }
+['top_price', 'top_chg'].forEach(function (id) { var e = $(id); if (e) e.onclick = toggleStrip; });
 function setDayChange(pct) {
     var el = $('top_chg'); if (!el) return;
     var ok = pct != null && isFinite(pct), txt = ok ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '';
@@ -4147,7 +4229,7 @@ function setDayChange(pct) {
 window.setImmersive = function (on) {
     immersive = !!on;
     $('app').classList.toggle('immersive', immersive);
-    updateCountdown(); syncDayTicker();
+    updateCountdown(); syncDayTicker(); syncStrip();
     scheduleLegend();
 };
 document.addEventListener('visibilitychange', function () { window.setActive(!document.hidden); });

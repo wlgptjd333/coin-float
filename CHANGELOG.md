@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.41.0] - 2026-11-21
+
+### Added
+- **Market summary strip on the website and in full screen** (under the top bar): where the price sits in its 24h
+  range (low, a dot on a short bar, high), funding with who pays it (`롱 지급` / `숏 지급`) and the time to the next
+  settlement, open interest and 24h turnover. Binance and Hyperliquid coins; Hyperliquid's range comes from the last 24
+  hourly candles. Tap the price to fold or unfold it, or turn it off in 차트 설정 (`시세 요약 줄`). Values only, no reading.
+- **Website coin picker: rankings and favorites.** Tabs for ★ 관심, 거래대금, 상승 and 하락 (risers and fallers skip
+  coins with under $100K turnover, like the app), a ☆ on every row to keep a coin in 관심, and prices with thousands
+  separators. Favorites follow the account like the chart settings; the chosen tab stays on the device.
+- **App: 24h range bar in the market info row** (tap the price above the chart): the 24h low and high now have a dot
+  showing where the live price sits between them, and funding says who pays (`롱 지급` / `숏 지급`).
+- Website: icon buttons say what they do when a mouse hovers them.
+
 ## [1.40.2] - 2026-11-15
 
 ### Changed
