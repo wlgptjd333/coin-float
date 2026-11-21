@@ -265,7 +265,8 @@ var chartType = LS.get('type', 'candle');                       // candle | ha |
 var DEFAULT_IND = {
     vol: true, ma: false, ema: true, boll: false, rsi: false, macd: false,
     cvd: true, oi: true, liq: true, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: true,
-    vwap: true, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false, bfx: false, whale: false
+    vwap: true, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false, bfx: false, whale: false,
+    exh: false, analog: false
 };
 var ind = Object.assign({}, DEFAULT_IND, LS.get('ind', {}));
 // indicators hidden with the eye in their chart legend row: off, but their row stays (dimmed) to bring them back
@@ -3032,7 +3033,8 @@ var IND_KW = {
     macd: 'moving average convergence divergence', cvd: 'cumulative volume delta 델타', oi: 'open interest 미결제', fund: 'funding rate 펀딩',
     lsr: 'long short ratio 롱숏', bfx: 'bitfinex whale 고래', liq: 'liquidation 청산', trades: 'large trades whale 고래 체결', fp: 'footprint 풋프린트',
     dom: 'depth of market order book ladder 호가', xex: 'bybit okx hyperliquid exchange 거래소', depth: 'order book wall 호가벽', heat: 'heatmap 히트맵',
-    liqmap: 'liquidation map heatmap 청산맵', bidask: 'bid ask spread 호가', whale: 'whale cvd order size 고래 큰손 개미 크기 firecharts material indicators'
+    liqmap: 'liquidation map heatmap 청산맵', bidask: 'bid ask spread 호가', whale: 'whale cvd order size 고래 큰손 개미 크기 firecharts material indicators',
+    exh: 'exhaustion capitulation climax reversal 반전 투매 바닥 고점 신호 마커', analog: 'similar pattern fractal analog projection scan 예측 프랙탈 스캔 패턴 경로'
 };
 function switchRow(text, sub, key, gear) {
     var hasGear = gear && SCHEMA[key];
@@ -3447,6 +3449,9 @@ function openIndicators() {
         switchRow('볼륨 프로파일 (매물대)', '가격대별 거래량 · POC · 가치 영역', 'vp', true),
         switchRow('RSI', r.period + ' · 별도 창', 'rsi', true),
         switchRow('MACD', m.fast + ', ' + m.slow + ', ' + m.signal + ' · 별도 창', 'macd', true),
+        sectionTitle('반전 · 흐름'),
+        switchRow('소진 마커 (역추세)', '거래량이 터지며 신저가·신고가를 찍고 꼬리로 되돌린 봉 · 마커마다 그 뒤 결과', 'exh', true),
+        switchRow('닮은 흐름', '지금과 모양이 닮은 과거 구간 뒤에 실제로 일어난 일 · 예측 아님', 'analog', true),
         sectionTitle('오더플로우'),
         switchRow('CVD · 델타', '누적 체결 델타 (매수-매도 체결량)', 'cvd', true),
         switchRow('주문 크기별 CVD (고래 CVD)', '큰손과 소액이 각각 사는지 파는지 · 주문 금액대별 누적 델타', 'whale', true),
@@ -4257,7 +4262,8 @@ window.CF = {
     legend: function (fn) { legendHooks.push(fn); }, legendItems: function (fn) { legendItemHooks.push(fn); }, indicatorSearch: function (fn) { indSearchHooks.push(fn); }, searchBox: function (ph) { return indSearchBox(ph, true); }, openSheet: openSheet, closeSheet: closeSheet, sectionTitle: sectionTitle,
     noteRow: noteRow, colorStrip: colorStrip, openIndicators: function () { openIndicators(); }, bridge: bridge,
     backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); },
-    barTint: setBarTint, openSettings: function (k) { openSettings(k); }, HELP: HELP, helpBox: helpBox,
+    barTint: setBarTint, openSettings: function (k) { openSettings(k); }, HELP: HELP, helpBox: helpBox, builtinItem: builtinItem,
+    isHidden: function (k) { return !!hiddenInd[k]; },
     drawingBusy: function () { return DR.sel != null || !!DR.tool; },
     addHline: function (p) {
         if (!candles.length) return;
