@@ -53,6 +53,18 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 #alert_btn .dot { display: none; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: #F0B90B; }
 #alert_btn.has .dot { display: block; }
 #ind_btn.on { color: var(--gold); }
+/* market summary strip (full screen and the website): one quiet line, scrolls sideways when it does not fit */
+#mstrip { flex: 0 0 24px; align-items: center; gap: 14px; padding: 0 10px; overflow-x: auto; scrollbar-width: none; white-space: nowrap;
+    border-bottom: 1px solid var(--line); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#mstrip::-webkit-scrollbar { display: none; }
+#app #mstrip.imm { display: none !important; }
+#app.immersive:not(.ms-off) #mstrip.imm { display: flex !important; }
+.ms-it { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; }
+.ms-it.off { display: none; }
+.ms-it b { color: var(--text); font-weight: 600; }
+.ms-bar { position: relative; display: inline-block; width: 52px; height: 3px; border-radius: 2px; background: #3A3F4B; margin: 0 1px; }
+.ms-bar i { position: absolute; top: -2.5px; left: 50%; width: 8px; height: 8px; margin-left: -4px; border-radius: 4px; background: #D1D4DC; box-shadow: 0 0 0 2px var(--bg); }
+#app.immersive #top_price, #app.immersive #top_chg { cursor: pointer; }
 /* Full screen (and the website) on a phone held upright: coin, price and the buttons took the whole row, the intervals were
    squeezed to nothing and the settings button hung off the edge. Two rows: what it is on top, what to do with it below. */
 @media (max-width: 560px) {
@@ -394,6 +406,12 @@ textarea.code:focus { border-color: var(--accent); }
         <button id="alert_btn" class="tb-btn" aria-label="알람"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><i class="dot"></i></button>
         <button id="cfg_btn" class="tb-btn" aria-label="차트 설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4.4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4.4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg></button>
         <button id="exit_btn" class="tb-btn imm" aria-label="닫기"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div id="mstrip" class="imm">
+        <span id="ms_rng" class="ms-it off" title="24시간 저가 ~ 고가 사이에서 현재가의 위치"><span class="ms-k">24h</span><b id="ms_lo"></b><i class="ms-bar"><i id="ms_dot"></i></i><b id="ms_hi"></b></span>
+        <span id="ms_fund" class="ms-it off" title="펀딩비: 양수면 롱이 숏에게, 음수면 숏이 롱에게 냅니다. 옆 시간은 다음 정산까지"><span class="ms-k">펀딩</span><b id="ms_fr"></b><span id="ms_who"></span><span id="ms_fcd" class="ms-k"></span></span>
+        <span id="ms_oi" class="ms-it off" title="미결제약정 (달러 환산)"><span class="ms-k">미결제</span><b id="ms_oiv"></b></span>
+        <span id="ms_vol" class="ms-it off" title="24시간 거래대금"><span class="ms-k">거래대금</span><b id="ms_q"></b></span>
     </div>
     <div id="main">
         <div id="rail"></div>
