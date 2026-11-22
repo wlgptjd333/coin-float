@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.43.0] - 2026-11-22
+
+### Added
+- **주요 레벨** (지표 › 기본): the previous day's and week's high and low and today's open as thin dashed lines with
+  small names at the right edge, from the exchange's own daily and weekly candles (00:00 UTC, weeks from Monday).
+  The legend row gives each level and how far it is from the price. This week's open is a setting.
+- **김프 in the market summary strip**: the coin's Upbit won price against the price here at the day's exchange rate
+  (European Central Bank reference rate). The tooltip also gives it at Upbit's own USDT price. Coins Upbit does not
+  list in won show nothing; 1000x contracts (1000PEPE, kPEPE) are converted.
+
+### Fixed
+- **CVD pane: the futures and spot lines were both nearly flat.** They shared one axis, and the spot line (hundreds of
+  millions) and the futures line (billions) squeezed each other. The spot line now has a scale of its own by default, so
+  both use the pane's height; "같은 축" in the CVD settings brings back the shared axis for comparing sizes.
+- Stocks and commodities (SOXL, gold ...) asked Binance for spot candles that do not exist on every load; the failed
+  request is now made once per coin and remembered on the device.
+- The liquidation pane tag says "청산 없음" for a candle without liquidations instead of "롱 $0 숏 $0".
+
 ## [1.42.0] - 2026-11-21
 
 ### Added

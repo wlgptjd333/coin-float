@@ -328,7 +328,8 @@ CF.registerSub('liq', {
     setData: function (o) { var d = liqSeriesData(); o.L.setData(d.longs); o.S.setData(d.shorts); },
     legend: function (i, c0, open) {
         var cs = CF.candles(), c = cs[i], b = c && liqBuckets()[c.time];
-        var h = '<span style="color:#848E9C">청산</span> <span style="color:' + DOWN() + '">롱 ' + fmtUsd(b ? b.L : 0) + '</span> <span style="color:' + UP() + '">숏 ' + fmtUsd(b ? b.S : 0) + '</span>';
+        // a candle without liquidations says so in one word instead of "롱 $0 숏 $0"
+        var h = '<span style="color:#848E9C">청산</span> ' + (b && (b.L || b.S) ? '<span style="color:' + DOWN() + '">롱 ' + fmtUsd(b.L) + '</span> <span style="color:' + UP() + '">숏 ' + fmtUsd(b.S) + '</span>' : '<span style="color:#848E9C">없음</span>');
         // the running totals and the sources are a tap away (the tag opens): next to the other values they ran off the pane
         if (open) {
             var h1 = liqSum(3600), h4 = liqSum(14400);

@@ -112,7 +112,7 @@ defineSettings('chart', {
         { k: 'tz', t: 'sel', label: '시간대', def: 'local', opts: [['local', '휴대폰 시간'], ['utc', 'UTC']] },
         { k: 'sep', t: 'bool', label: '날짜 구분선', sub: '분 · 시간봉은 하루, 일봉은 한 주가 바뀌는 곳에 세로선', def: false },
         { k: 'hilo', t: 'bool', label: '화면 최고가 · 최저가 표시', def: true },
-        { k: 'stats', t: 'bool', label: '시세 요약 줄 (웹 · 전체 화면)', sub: '24시간 범위 안의 현재 위치, 펀딩, 미결제약정, 거래대금. 가격을 탭해도 접고 펼 수 있어요', def: true },
+        { k: 'stats', t: 'bool', label: '시세 요약 줄 (웹 · 전체 화면)', sub: '24시간 범위 안의 현재 위치, 펀딩, 미결제약정, 김프, 거래대금. 가격을 탭해도 접고 펼 수 있어요', def: true },
         { k: 'legend', t: 'sel', label: '상단 수치 표시', def: 'full', opts: [['full', '시세 + 지표 (탭하면 펼침)'], ['ohlc', '시세만'], ['off', '숨김']] },
         { k: 'legendFold', t: 'sel', label: '상단 수치를 접었을 때 (▴)', def: 'all', opts: [['all', '지표 줄까지 모두 숨김'], ['values', '지표 이름은 남기고 수치만 숨김']] },
         { k: 'legendHover', t: 'bool', label: '접어 둔 상태에서도 십자선을 올리면 펼치기', sub: '끄면 접어 둔 수치는 마우스 · 손가락을 올려도 계속 숨겨집니다', def: false, showIf: function (c) { return c.legend === 'full'; } },
@@ -247,8 +247,9 @@ defineSettings('cvd', {
         { k: 'unit', t: 'sel', label: '단위', def: 'usd', opts: [['usd', '금액 ($)'], ['coin', '수량 (코인)']] },
         { k: 'reset', t: 'sel', label: '누적 초기화', def: 'none', opts: [['none', '안 함'], ['day', '매일'], ['week', '매주'], ['month', '매월']] },
         { t: 'sec', label: '현물 CVD 비교' },
-        { k: 'spot', t: 'bool', label: '바이낸스 현물 CVD 함께 보기', sub: '같은 축에 겹쳐 그립니다. 선물만 오르면 레버리지 주도, 현물이 같이 오르면 실수요 주도로 봅니다', def: true, showIf: function (c) { return c.unit === 'usd'; } },
+        { k: 'spot', t: 'bool', label: '바이낸스 현물 CVD 함께 보기', sub: '같은 창에 겹쳐 그립니다. 선물만 오르면 레버리지 주도, 현물이 같이 오르면 실수요 주도로 봅니다', def: true, showIf: function (c) { return c.unit === 'usd'; } },
         { k: 'spotColor', t: 'color', label: '현물 CVD 선 색', def: '#F0B90B', showIf: function (c) { return c.unit === 'usd' && c.spot; } },
+        { k: 'spotAxis', t: 'sel', label: '현물 CVD 세로축', def: 'own', opts: [['own', '따로 (모양 비교)'], ['shared', '선물과 같은 축 (크기 비교)']], showIf: function (c) { return c.unit === 'usd' && c.spot; } },
         { t: 'sec', label: '거래소 합산' },
         { k: 'xex', t: 'bool', label: '다른 거래소 체결도 더하기', sub: '"다른 거래소 체결 합산" 지표가 켜져 있으면 Bybit · OKX · Hyperliquid · Bitfinex 선물 체결을 CVD · 델타에 더합니다', def: true },
         { t: 'note', label: '다른 거래소의 과거 체결은 받아 오지 않아서, 합산은 켜 둔 동안 받은 체결부터 쌓입니다(폰에 48시간 보관). 범례에 "합산"이 보이면 그 봉에 다른 거래소 체결이 들어간 것입니다.' },
@@ -266,7 +267,7 @@ var DEFAULT_IND = {
     vol: true, ma: false, ema: true, boll: false, rsi: false, macd: false,
     cvd: true, oi: true, liq: true, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: true,
     vwap: true, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false, bfx: false, whale: false,
-    exh: false, analog: false
+    exh: false, analog: false, levels: false
 };
 var ind = Object.assign({}, DEFAULT_IND, LS.get('ind', {}));
 // indicators hidden with the eye in their chart legend row: off, but their row stays (dimmed) to bring them back
@@ -945,13 +946,18 @@ SUBS.cvd = {
         return {
             delta: chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceScaleId: sid ? sid + '_d' : '' }, pane),
             spot: chart.addSeries(LW.LineSeries, Object.assign({ color: '#F0B90B', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: COMPACT }, sidOpt(sid)), pane),
-            line: chart.addSeries(LW.LineSeries, Object.assign({ color: '#00BCD4', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: COMPACT }, sidOpt(sid)), pane)
+            line: chart.addSeries(LW.LineSeries, Object.assign({ color: '#00BCD4', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, priceFormat: COMPACT }, sidOpt(sid)), pane),
+            sid: sid || ''
         };
     },
     style: function (o) {
         var c = S('cvd');
         o.line.applyOptions({ color: c.color, lineWidth: c.width }); o.delta.applyOptions({ visible: c.delta });
-        o.spot.applyOptions({ color: c.spotColor, lineWidth: Math.max(1, c.width - 0.5), visible: spotOn() });
+        // On one axis the spot line (a few hundred million) and the futures line (billions) squeezed each other flat; by
+        // default the spot line gets a scale of its own, so both use the pane's height and their shapes can be compared.
+        var own = c.spotAxis !== 'shared', sidS = own ? (o.sid || 'cvd') + '_spot' : (o.sid || 'right');
+        o.spot.applyOptions({ color: c.spotColor, lineWidth: Math.max(1, c.width - 0.5), visible: spotOn(), priceScaleId: sidS, lastValueVisible: !own });
+        if (own) { try { o.spot.priceScale().applyOptions({ visible: false, scaleMargins: { top: 0.1, bottom: 0.1 } }); } catch (e) { /* older engine */ } }
     },
     setData: function (o) {
         o.delta.priceScale().applyOptions({ scaleMargins: { top: 0.55, bottom: 0 } });
@@ -987,19 +993,22 @@ function spotCvd() {
     }
     return out;
 }
+// coins found without a Binance spot market, kept on this device so the failing request is made once, not on every load
+function noSpot() { var o = LS.get('noSpot', {}); return o && typeof o === 'object' ? o : {}; }
+function markNoSpot(sym) { var o = noSpot(); if (o[sym] !== 1) { o[sym] = 1; LS.set('noSpot', o); } }
 function spotRefresh() { if (subLive.cvd) { SUBS.cvd.setData(subLive.cvd); scheduleLegend(); } }
 // fetch what the loaded candles need (older pages too), 1,000 spot candles a request
 function spotFill() {
     if (!ind.cvd || !spotOn() || !candles.length || !active) return;
     var sym = spotSymbol(); if (!sym) { spot.none = true; return; }
-    if (spot.sym !== sym || spot.iv !== interval) { spot.sym = sym; spot.iv = interval; spot.map = new Map(); spot.from = 0; spot.none = false; spot.seq++; }
+    if (spot.sym !== sym || spot.iv !== interval) { spot.sym = sym; spot.iv = interval; spot.map = new Map(); spot.from = 0; spot.none = noSpot()[sym] === 1; spot.seq++; }
     if (spot.none || spot.busy) return;
     var first = candles[0].time;
     if (spot.from && spot.from <= first) return;
     var end = spot.from ? spot.from * 1000 - 1 : Date.now(), seq = spot.seq;
     spot.busy = true;
     fetch('https://api.binance.com/api/v3/klines?symbol=' + sym + '&interval=' + interval + '&endTime=' + end + '&limit=1000').then(function (r) {
-        if (r.status === 400) { spot.none = true; return null; }               // no spot market for this coin
+        if (r.status === 400) { spot.none = true; markNoSpot(sym); return null; }   // no spot market for this coin (stocks, commodities ...)
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
     }).then(function (rows) {
@@ -3034,7 +3043,8 @@ var IND_KW = {
     lsr: 'long short ratio 롱숏', bfx: 'bitfinex whale 고래', liq: 'liquidation 청산', trades: 'large trades whale 고래 체결', fp: 'footprint 풋프린트',
     dom: 'depth of market order book ladder 호가', xex: 'bybit okx hyperliquid exchange 거래소', depth: 'order book wall 호가벽', heat: 'heatmap 히트맵',
     liqmap: 'liquidation map heatmap 청산맵', bidask: 'bid ask spread 호가', whale: 'whale cvd order size 고래 큰손 개미 크기 firecharts material indicators',
-    exh: 'exhaustion capitulation climax reversal 반전 투매 바닥 고점 신호 마커', analog: 'similar pattern fractal analog projection scan 예측 프랙탈 스캔 패턴 경로'
+    exh: 'exhaustion capitulation climax reversal 반전 투매 바닥 고점 신호 마커', analog: 'similar pattern fractal analog projection scan 예측 프랙탈 스캔 패턴 경로',
+    levels: 'key levels pdh pdl pwh pwl previous day week high low open 전일 전주 고가 저가 시가 레벨'
 };
 function switchRow(text, sub, key, gear) {
     var hasGear = gear && SCHEMA[key];
@@ -3446,6 +3456,7 @@ function openIndicators() {
         switchRow('볼린저 밴드', b.period + ', ' + b.mult, 'boll', true),
         switchRow('VWAP', '거래량 가중 평균가 · ' + ({ day: '매일', week: '매주', month: '매월' })[S('vwap').anchor] + ' 초기화', 'vwap', true),
         switchRow('슈퍼트렌드', 'ATR ' + S('st').period + ', ' + S('st').factor, 'st', true),
+        switchRow('주요 레벨', '전일 · 전주 고가와 저가, 오늘 시가 (UTC 0시 기준)', 'levels', true),
         switchRow('볼륨 프로파일 (매물대)', '가격대별 거래량 · POC · 가치 영역', 'vp', true),
         switchRow('RSI', r.period + ' · 별도 창', 'rsi', true),
         switchRow('MACD', m.fast + ', ' + m.slow + ', ' + m.signal + ' · 별도 창', 'macd', true),
@@ -4163,9 +4174,69 @@ function syncStrip() {
     if (sym === ms.sym) return;
     clearTimeout(ms.timer); ms.timer = 0;
     ms.sym = sym; ms.next = 0; ms.fr = null; ms.lo = ms.hi = 0;
-    ['ms_rng', 'ms_fund', 'ms_oi', 'ms_vol'].forEach(function (id) { msShow(id, false); });
+    ['ms_rng', 'ms_fund', 'ms_oi', 'ms_vol', 'ms_kp'].forEach(function (id) { msShow(id, false); });
+    clearTimeout(kp.timer); kp.timer = 0; kp.sym = sym; ms.last = 0;
     if (sym && venueOf(sym) === 'bn') stripPoll(sym);
     else if (sym) stripRangeHl(sym);
+    // first round once the 24h ticker has given a price to compare with
+    if (sym) kp.timer = setTimeout(function () { if (kp.sym === sym) kimchi(sym); }, 2500);
+}
+// ---- kimchi premium: the coin's Upbit won price against the price here in won at the day's exchange rate ------------------
+// Rate: the European Central Bank's reference rate (once a day, cached for 30 min), with a second public source as the
+// fallback. Coins Upbit does not list in won show nothing; the tooltip also gives the premium at Upbit's own USDT price.
+var kp = { sym: null, timer: 0, fx: 0, fxAt: 0, mk: null, mkAt: 0 };
+var KP_MULT = { '1000000': 1e6, '1M': 1e6, '10000': 1e4, '1000': 1e3, '100': 100 };
+// the coin's plain name and how many coins one contract price is for (1000PEPEUSDT, Hyperliquid's kPEPE = 1000 PEPE)
+function kpBase(sym) {
+    if (venueOf(sym) === 'hl') {
+        return hlCoin(sym).then(function (name) {
+            if (!name || name.indexOf(':') >= 0) return null;               // HIP-3 markets (stocks, commodities): not on Upbit
+            var k = /^k[A-Z]/.test(name);
+            return { coin: (k ? name.slice(1) : name).toUpperCase(), mult: k ? 1000 : 1 };
+        });
+    }
+    var m = /^(1000000|10000|1000|100|1M)?([A-Z0-9]+?)USDT$/.exec(sym);
+    return Promise.resolve(m ? { coin: m[2], mult: KP_MULT[m[1]] || 1 } : null);
+}
+function kpFx() {
+    if (kp.fx && Date.now() - kp.fxAt < 1800000) return Promise.resolve(kp.fx);
+    var j = function (u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }); };
+    return j('https://api.frankfurter.dev/v1/latest?base=USD&symbols=KRW').then(function (d) { return +(d && d.rates && d.rates.KRW); })
+        .catch(function () { return j('https://open.er-api.com/v6/latest/USD').then(function (d) { return +(d && d.rates && d.rates.KRW); }); })
+        .then(function (v) { if (v > 0) { kp.fx = v; kp.fxAt = Date.now(); } return kp.fx; });
+}
+function kimchi(sym) {
+    kpBase(sym).then(function (b) { if (kp.sym === sym) kimchiWith(sym, b); }, function () { /* no name, no premium */ });
+}
+// Upbit's won markets, asked for once an hour, so a coin it does not list is known without a failing request
+function kpMarkets() {
+    if (kp.mk && Date.now() - kp.mkAt < 3600000) return Promise.resolve(kp.mk);
+    return fetch('https://api.upbit.com/v1/market/all').then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (a) {
+        var s = {};
+        (Array.isArray(a) ? a : []).forEach(function (m) { if (m && /^KRW-/.test(m.market)) s[m.market] = 1; });
+        kp.mk = s; kp.mkAt = Date.now();
+        return s;
+    });
+}
+function kimchiWith(sym, b) {
+    if (!b || b.coin === 'USDT' || b.coin === 'USDC') return;
+    var up = kpMarkets().then(function (mk) {
+        if (!mk['KRW-' + b.coin]) return null;                          // not listed in won on Upbit: stop asking
+        return fetch('https://api.upbit.com/v1/ticker?markets=KRW-' + b.coin + ',KRW-USDT').then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+    });
+    Promise.all([up, kpFx()]).then(function (r) {
+        if (kp.sym !== sym) return;
+        if (!r[0]) { kp.sym = null; return; }
+        var coin = r[0].filter(function (t) { return t.market === 'KRW-' + b.coin; })[0], usdt = r[0].filter(function (t) { return t.market === 'KRW-USDT'; })[0];
+        var here = ms.last > 0 ? ms.last / b.mult : 0, krw = coin && +coin.trade_price, fx = r[1];
+        if (!(here > 0 && krw > 0 && fx > 0)) return;
+        var p = (krw / (here * fx) - 1) * 100, el = $('ms_kp');
+        msSet('ms_kpv', (p >= 0 ? '+' : '') + p.toFixed(2) + '%');
+        if (el) el.title = '업비트 원화 가격과 해외 가격 × 환율 ' + Math.round(fx).toLocaleString('en-US') + '원의 차이' +
+            (usdt && +usdt.trade_price > 0 ? ' · 업비트 테더(' + Math.round(+usdt.trade_price).toLocaleString('en-US') + '원) 기준 ' + ((krw / (here * +usdt.trade_price) - 1) * 100).toFixed(2) + '%' : '');
+        msShow('ms_kp', true);
+    }, function () { /* keep the last value; the next round tries again */ });
+    kp.timer = setTimeout(function () { if (kp.sym === sym) kimchi(sym); }, 30000);
 }
 // Hyperliquid's asset context has no 24h high / low: take them from the last 24 hourly candles, once a minute
 function stripRangeHl(sym) {
@@ -4191,6 +4262,7 @@ function stripPoll(sym) {
 }
 function stripDay(lo, hi, last, quote) {
     if (!ms.sym) return;
+    if (last > 0) ms.last = last;
     if (lo > 0 && hi > lo && last > 0) {
         msSet('ms_lo', fmtPrice(lo)); msSet('ms_hi', fmtPrice(hi));
         var pct = Math.max(0, Math.min(100, (last - lo) / (hi - lo) * 100)), dot = $('ms_dot');
@@ -4202,6 +4274,7 @@ function stripDay(lo, hi, last, quote) {
 function stripHl(c, now) {
     if (!ms.sym) return;
     var fr = +c.funding, oi = +c.openInterest, q = +c.dayNtlVlm;
+    if (now > 0) ms.last = now;
     if (isFinite(fr) && c.funding != null) stripFund(fr, (Math.floor(Date.now() / 3600000) + 1) * 3600000);   // hourly, on the hour
     if (oi > 0 && now > 0) stripOi(oi * now);
     if (now > 0 && ms.lo) stripDay(Math.min(ms.lo, now), Math.max(ms.hi, now), now, q);
@@ -4263,7 +4336,7 @@ window.CF = {
     noteRow: noteRow, colorStrip: colorStrip, openIndicators: function () { openIndicators(); }, bridge: bridge,
     backState: function () { backState(); }, indexOfTime: function (t) { return indexOfTime(t); },
     barTint: setBarTint, openSettings: function (k) { openSettings(k); }, HELP: HELP, helpBox: helpBox, builtinItem: builtinItem,
-    isHidden: function (k) { return !!hiddenInd[k]; },
+    isHidden: function (k) { return !!hiddenInd[k]; }, venue: function () { return venueOf(symbol); }, hlCoin: hlCoin, hlPost: hlPost,
     drawingBusy: function () { return DR.sel != null || !!DR.tool; },
     addHline: function (p) {
         if (!candles.length) return;
