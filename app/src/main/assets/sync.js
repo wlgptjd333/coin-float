@@ -35,7 +35,7 @@ function collect() {
 // device neither reloads nor overwrites another; keys in a stable order, so "unchanged" compares equal.
 // "liq.<coin>" is not a setting at all but the recent liquidations, rewritten every few seconds: synced, it made the devices
 // overwrite each other non-stop.
-var DEVICE_KEYS = { interval: 1, barSpacing: 1, railCur: 1, rail: 1, legendOpen: 1, domTab: 1, domShut: 1, ofBin: 1, heatIdx: 1, 'web.last': 1, 'web.sort': 1 };
+var DEVICE_KEYS = { interval: 1, barSpacing: 1, railCur: 1, rail: 1, legendOpen: 1, domTab: 1, domShut: 1, ofBin: 1, heatIdx: 1, 'web.last': 1, 'web.sort': 1, noSpot: 1 };
 function isDeviceKey(name) { return !!DEVICE_KEYS[name] || name.indexOf('liq.') === 0; }
 function collectSync() {
     var all = collect(), ls = {};

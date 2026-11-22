@@ -1,4 +1,5 @@
-// Two overlays on the price chart, built from the candles alone (so they work on every venue):
+// Overlays on the price chart. The first two are built from the candles alone (so they work on every venue); the third,
+// key levels, reads the exchange's daily and weekly candles:
 //  1. Exhaustion markers: the counter-trend alert rule ("소진") drawn on every closed candle where it held, with what the
 //     price did afterwards, one marker at a time and summed up. The rule and its defaults are the ones the 180-day backtest
 //     kept (tools/backtest, 2026-11-10).
@@ -275,18 +276,108 @@ function anSync() {
     CF.scheduleLegend();
 }
 
+// =====================================================================================================
+// 3. Key levels: the previous day's and week's high and low, today's (and this week's) open
+// =====================================================================================================
+// Sweeps of these levels and the turn back from them are what a counter-trend trade often waits for. Days and weeks are
+// the exchange's own (00:00 UTC, weeks from Monday), read from its daily and weekly candles every 10 minutes.
+CF.defineSettings('levels', {
+    title: '주요 레벨 설정', onChange: function () { CF.redrawNow(); CF.scheduleLegend(); },
+    fields: [
+        { k: 'day', t: 'bool', label: '전일 고가 · 저가', def: true },
+        { k: 'week', t: 'bool', label: '전주 고가 · 저가', def: true },
+        { k: 'dopen', t: 'bool', label: '오늘 시가', def: true },
+        { k: 'wopen', t: 'bool', label: '이번 주 시가', def: false },
+        { k: 'labels', t: 'bool', label: '선 위에 이름 표시', def: true },
+        { k: 'cDay', t: 'color', label: '전일 색', def: '#9598A1' },
+        { k: 'cWeek', t: 'color', label: '전주 색', def: '#E0B04A' },
+        { t: 'note', label: '하루는 UTC 0시(한국 오전 9시), 한 주는 월요일 UTC 0시에 바뀝니다. 거래소의 일봉 · 주봉 값을 그대로 씁니다.' }
+    ]
+});
+var lv = { sym: '', at: 0, day: '', d: null, w: null, off: null, seq: 0 };
+function lvBars(iv) {
+    var sym = CF.symbol(), v = CF.venue();
+    if (v === 'bn') {
+        return fetch('https://fapi.binance.com/fapi/v1/klines?symbol=' + sym + '&interval=' + iv + '&limit=2').then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function (a) { return a.map(function (k) { return { t: k[0], o: +k[1], h: +k[2], l: +k[3] }; }); });
+    }
+    if (v === 'hl') {
+        var span = iv === '1w' ? 15 * 86400000 : 3 * 86400000, end = Date.now();
+        return CF.hlCoin(sym).then(function (coin) { return CF.hlPost({ type: 'candleSnapshot', req: { coin: coin, interval: iv, startTime: end - span, endTime: end } }); })
+            .then(function (a) { return (Array.isArray(a) ? a : []).slice(-2).map(function (k) { return { t: k.t, o: +k.o, h: +k.h, l: +k.l }; }); });
+    }
+    return Promise.resolve([]);
+}
+function lvLoad() {
+    var sym = CF.symbol(), today = new Date().toISOString().slice(0, 10);
+    if (lv.sym === sym && lv.day === today && Date.now() - lv.at < 600000) return;
+    if (lv.sym !== sym) lv.d = lv.w = null;                           // another coin: never draw the last one's levels
+    var seq = ++lv.seq;
+    lv.sym = sym; lv.day = today; lv.at = Date.now();
+    if (CF.venue() === 'var') { lv.d = lv.w = null; return; }
+    Promise.all([lvBars('1d'), lvBars('1w')]).then(function (r) {
+        if (seq !== lv.seq) return;
+        // [previous, current] of each
+        lv.d = r[0].length === 2 ? { prev: r[0][0], cur: r[0][1] } : null;
+        lv.w = r[1].length === 2 ? { prev: r[1][0], cur: r[1][1] } : null;
+        CF.redrawNow(); CF.scheduleLegend();
+    }, function () { lv.at = 0; });
+}
+function lvList() {
+    var c = CF.S('levels'), out = [];
+    if (lv.d && c.day) { out.push({ p: lv.d.prev.h, n: '전일 고', col: c.cDay }); out.push({ p: lv.d.prev.l, n: '전일 저', col: c.cDay }); }
+    if (lv.w && c.week) { out.push({ p: lv.w.prev.h, n: '전주 고', col: c.cWeek }); out.push({ p: lv.w.prev.l, n: '전주 저', col: c.cWeek }); }
+    if (lv.d && c.dopen) out.push({ p: lv.d.cur.o, n: '오늘 시가', col: c.cDay, dot: true });
+    if (lv.w && c.wopen) out.push({ p: lv.w.cur.o, n: '주 시가', col: c.cWeek, dot: true });
+    return out;
+}
+function lvPaint(ctx, w, h) {
+    var c = CF.S('levels'), list = lvList();
+    if (!list.length) return;
+    ctx.font = '10px -apple-system, "Segoe UI", Roboto, sans-serif'; ctx.textBaseline = 'bottom';
+    list.forEach(function (l) {
+        var y = CF.yOf(l.p); if (y == null || y < -2 || y > h + 2) return;
+        y = Math.round(y) + 0.5;
+        ctx.strokeStyle = CF.hexA(l.col, 0.75); ctx.lineWidth = 1; ctx.setLineDash(l.dot ? [1, 3] : [6, 4]);
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        if (c.labels) {
+            var tw = ctx.measureText(l.n).width;
+            ctx.fillStyle = CF.hexA(l.col, 0.95); ctx.fillText(l.n, w - tw - 6, y - 2);
+        }
+    });
+    ctx.setLineDash([]);
+}
+function lvLegend(i) {
+    var c = CF.S('levels'), cs = CF.candles(), cl = cs[i] && cs[i].close, parts = [];
+    if (CF.venue() === 'var') return muted('이 거래소는 일봉을 주지 않아요');
+    if (!lv.d && !lv.w) return muted('불러오는 중');
+    var dist = function (p) { return cl ? ' ' + muted('(' + pctS((p - cl) / cl * 100, 1) + ')') : ''; };
+    if (lv.d && c.day) parts.push(span(c.cDay, '전일 고 ' + CF.fmtPrice(lv.d.prev.h)) + dist(lv.d.prev.h) + ' ' + span(c.cDay, '저 ' + CF.fmtPrice(lv.d.prev.l)) + dist(lv.d.prev.l));
+    if (lv.w && c.week) parts.push(span(c.cWeek, '전주 고 ' + CF.fmtPrice(lv.w.prev.h)) + dist(lv.w.prev.h) + ' ' + span(c.cWeek, '저 ' + CF.fmtPrice(lv.w.prev.l)) + dist(lv.w.prev.l));
+    if (lv.d && c.dopen) parts.push(span(c.cDay, '오늘 시가 ' + CF.fmtPrice(lv.d.cur.o)));
+    if (lv.w && c.wopen) parts.push(span(c.cWeek, '주 시가 ' + CF.fmtPrice(lv.w.cur.o)));
+    return parts.join(' ' + muted('·') + ' ');
+}
+function lvSync() {
+    if (CF.ind.levels) {
+        lvLoad();
+        if (!lv.off) lv.off = CF.layer('bottom', lvPaint);
+    } else if (lv.off) { lv.off(); lv.off = null; }
+}
+
 // ---- wiring --------------------------------------------------------------------------------------------------------
 CF.onData(function (kind) {
+    if (kind === 'new' && CF.ind.levels) lvLoad();                     // a new day or week starts on a candle open
     if (kind === 'last') {
         // the forming candle moved: the band starts at its close, so only the drawing and the analog's end point follow
         if (an.res && CF.ind.analog) { an.key = ''; anCompute(); CF.redraw(); }
         return;
     }
-    exhSync(); anSync();
+    exhSync(); anSync(); lvSync();
 });
 CF.legendItems(function (i) {
     var out = [];
-    [['exh', '소진', exhLegend], ['analog', '닮은 흐름', anLegend]].forEach(function (x) {
+    [['levels', '레벨', lvLegend], ['exh', '소진', exhLegend], ['analog', '닮은 흐름', anLegend]].forEach(function (x) {
         var k = x[0];
         if (!CF.ind[k] && !CF.isHidden(k)) return;
         var v = CF.ind[k] ? x[2](i) : '';
@@ -294,5 +385,5 @@ CF.legendItems(function (i) {
     });
     return out;
 });
-window.__sig = { exh: exh, an: an };
+window.__sig = { exh: exh, an: an, lv: lv };
 })();
