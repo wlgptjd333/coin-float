@@ -64,6 +64,13 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; strok
 .ms-it b { color: var(--text); font-weight: 600; }
 .ms-bar { position: relative; display: inline-block; width: 52px; height: 3px; border-radius: 2px; background: #3A3F4B; margin: 0 1px; }
 .ms-bar i { position: absolute; top: -2.5px; left: 50%; width: 8px; height: 8px; margin-left: -4px; border-radius: 4px; background: #D1D4DC; box-shadow: 0 0 0 2px var(--bg); }
+/* more to the right: the line fades out at the edge, so it reads as "swipe for more" */
+#mstrip.more { -webkit-mask-image: linear-gradient(to right, #000 82%, transparent); mask-image: linear-gradient(to right, #000 82%, transparent); }
+@media (max-width: 480px) {
+    #mstrip { gap: 10px; padding: 0 8px; }
+    .ms-bar { width: 34px; }
+    #ms_who { display: none; }                                    /* the rate's sign and colour already say who pays */
+}
 #app.immersive #top_price, #app.immersive #top_chg { cursor: pointer; }
 /* Full screen (and the website) on a phone held upright: coin, price and the buttons took the whole row, the intervals were
    squeezed to nothing and the settings button hung off the edge. Two rows: what it is on top, what to do with it below. */

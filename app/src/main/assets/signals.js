@@ -263,11 +263,12 @@ function anSync() {
     if (CF.ind.analog) {
         anCompute();
         if (!an.off) an.off = CF.layer('top', anPaint);
-        // room on the right for the band, but never more than a third of what is on screen
-        var vr = ts.getVisibleLogicalRange(), shown = vr ? vr.to - vr.from : 60;
-        var want = Math.min(CF.S('analog').ahead + 4, Math.max(6, Math.floor(shown / 3))), cur = ts.options().rightOffset;
-        if (anOffset == null) anOffset = cur;
-        if (cur < want) ts.applyOptions({ rightOffset: want });
+        // room on the right for the band, but never more than a third of the width: counted from the width and bar spacing,
+        // since the visible range already includes the empty room (and is not known yet on the first call)
+        var o = ts.options(), w = ts.width(), slots = w > 0 && o.barSpacing > 0 ? w / o.barSpacing : 60;
+        if (anOffset == null) anOffset = o.rightOffset;
+        var want = Math.max(anOffset, Math.min(CF.S('analog').ahead + 4, Math.max(6, Math.floor(slots / 3))));
+        if (o.rightOffset !== want) ts.applyOptions({ rightOffset: want });
         CF.redrawNow();
     } else if (an.off) {
         an.off(); an.off = null; an.res = null; an.key = '';
@@ -334,18 +335,24 @@ function lvList() {
 function lvPaint(ctx, w, h) {
     var c = CF.S('levels'), list = lvList();
     if (!list.length) return;
-    ctx.font = '10px -apple-system, "Segoe UI", Roboto, sans-serif'; ctx.textBaseline = 'bottom';
+    var used = CF.pocY != null ? [CF.pocY] : [];                       // centres of the tags already on screen
+    var clear = function (ty) { return used.every(function (u) { return Math.abs(u - ty) >= 12; }); };
     list.forEach(function (l) {
         var y = CF.yOf(l.p); if (y == null || y < -2 || y > h + 2) return;
         y = Math.round(y) + 0.5;
         ctx.strokeStyle = CF.hexA(l.col, 0.75); ctx.lineWidth = 1; ctx.setLineDash(l.dot ? [1, 3] : [6, 4]);
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-        if (c.labels) {
-            var tw = ctx.measureText(l.n).width;
-            ctx.fillStyle = CF.hexA(l.col, 0.95); ctx.fillText(l.n, w - tw - 6, y - 2);
-        }
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); ctx.setLineDash([]);
+        if (!c.labels) return;
+        // above the line, or below it when that spot is taken; with a dark halo so it stays readable over the profile,
+        // walls and heatmap at the right edge; left out when both spots are taken (the legend still lists it)
+        var ty = clear(y - 7) ? y - 7 : clear(y + 8) ? y + 8 : null;
+        if (ty == null) return;
+        used.push(ty);
+        ctx.font = '600 10px -apple-system, "Segoe UI", Roboto, sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.92)'; ctx.strokeText(l.n, w - 6, ty);
+        ctx.fillStyle = CF.hexA(l.col, 0.95); ctx.fillText(l.n, w - 6, ty);
+        ctx.textAlign = 'start';
     });
-    ctx.setLineDash([]);
 }
 function lvLegend(i) {
     var c = CF.S('levels'), cs = CF.candles(), cl = cs[i] && cs[i].close, parts = [];

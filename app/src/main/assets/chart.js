@@ -1707,6 +1707,7 @@ function vpCompute() {
     return res;
 }
 addLayer('bottom', function (ctx, w, h) {
+    CF.pocY = null;                                                       // where the POC tag sits, so other tags keep clear of it
     if (!ind.vp) return;
     var c = S('vp'), vp = vpCompute(); if (!vp || !vp.max) return;
     var maxW = w * c.width / 100, right = c.side === 'right', base = c.opacity / 100;
@@ -1733,6 +1734,7 @@ addLayer('bottom', function (ctx, w, h) {
             ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.9)'; ctx.textAlign = right ? 'right' : 'left';
             var tx = right ? w - maxW - 6 : maxW + 6;
             ctx.strokeText('POC', tx, py - 8); ctx.fillStyle = '#F0B90B'; ctx.fillText('POC', tx, py - 8); ctx.textAlign = 'start';
+            CF.pocY = py - 8;
         }
     }
 });
@@ -4166,7 +4168,16 @@ function syncDayTicker() {
 var ms = { sym: null, timer: 0, next: 0, fr: null, lo: 0, hi: 0 };
 function stripWanted() { return immersive && active && started && S('chart').stats && venueOf(symbol) !== 'var'; }
 function msSet(id, txt) { var e = $(id); if (e && e.textContent !== txt) e.textContent = txt; }
-function msShow(id, on) { var e = $(id); if (e) e.classList.toggle('off', !on); }
+function msShow(id, on) { var e = $(id); if (e) e.classList.toggle('off', !on); msFade(); }
+function msFade() {
+    var m = $('mstrip'); if (!m) return;
+    m.classList.toggle('more', m.scrollWidth - m.scrollLeft - m.clientWidth > 4);
+}
+(function () {
+    var m = $('mstrip'); if (!m) return;
+    m.addEventListener('scroll', msFade, { passive: true });
+    window.addEventListener('resize', msFade);
+})();
 function syncStrip() {
     var app = $('app'), want = stripWanted();
     app.classList.toggle('ms-off', !want);
@@ -4294,7 +4305,7 @@ function stripOi(usd) { if (usd > 0) { msSet('ms_oiv', fmtVol(usd)); msShow('ms_
 function stripClock() {
     if (!ms.sym || !ms.next) return;
     var s = Math.max(0, Math.floor((ms.next - Date.now()) / 1000));
-    msSet('ms_fcd', pad2(Math.floor(s / 3600)) + ':' + pad2(Math.floor(s / 60) % 60) + ':' + pad2(s % 60));
+    msSet('ms_fcd', Math.floor(s / 3600) + ':' + pad2(Math.floor(s / 60) % 60) + ':' + pad2(s % 60));
 }
 function toggleStrip() { setCfg('chart', 'stats', !S('chart').stats); }
 ['top_price', 'top_chg'].forEach(function (id) { var e = $(id); if (e) e.onclick = toggleStrip; });

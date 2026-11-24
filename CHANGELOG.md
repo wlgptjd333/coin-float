@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.43.1] - 2026-11-24
+
+### Fixed
+- **닮은 흐름** no longer pushes the candles into the left third on a phone: the room kept on the right is counted from
+  the chart's width and bar spacing (at most a third of it), not from the visible range that already included the room.
+- **Market summary strip** on narrow screens: tighter spacing, a shorter range bar, the "롱 지급 / 숏 지급" word left out
+  (the rate's sign and colour say it), and the line fades out at the right edge while more items are off screen.
+- **Key level names** get a dark halo so they stay readable over the volume profile, walls and heatmap, move below their
+  line when the spot above is taken (by the POC tag or another level), and are left out when both are taken.
+
 ## [1.43.0] - 2026-11-22
 
 ### Added
