@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.44.0] - 2026-11-25
+
+### Added
+- **닮은 흐름 · 찾을 곳**: besides this chart's own candles, "이 코인 1분~4시간 모두" also searches the coin's 1m, 5m, 15m,
+  1h and 4h candles (1,500 each from Binance or Hyperliquid, refreshed every 5 minutes), each look-alike's move scaled to
+  the size of today's bars.
+- **Numbered lines**: with "구간마다 이어진 선" on, each look-alike gets its own colour and #number at the line's end.
+- **List of look-alikes** (⚙ on the 닮은 흐름 legend row): interval, where it ended, how alike, what followed it as it was
+  and at today's size, the highest / lowest point on the way, the up / down count, and the backtest below. A row found
+  on this chart's interval scrolls the chart to it.
+
+### Changed
+- Default number of look-alikes 8 → 20: with few of them the band came out narrower than the real moves.
+- The size scaling is no longer clamped to 0.5–2×; across intervals that clamp made the band far too narrow.
+
+### Backtest
+- `tools/backtest/Analog.java` (`results-2026-11-25-analog.txt`): 10 Binance coins, last 90 days, about 15,000 points
+  per search scope on 5m / 15m / 1h. The median look-alike pointed the right way 50–55 % of the time, below always taking
+  the side that was more common in that period (54–57 %), whether searching this chart, all intervals of the coin or all
+  ten coins, and also when 70 %+ of the look-alikes agreed. The real move landed inside the middle-half band 41–48 % of
+  the time (50 % would be exact) and inside the full range 80–93 %: the band shows the size of the swing, not its side.
+
 ## [1.43.1] - 2026-11-24
 
 ### Fixed

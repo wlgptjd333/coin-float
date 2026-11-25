@@ -1,0 +1,78 @@
+﻿BTCUSDT 259200 1m bars, 2026-05-29 .. 2026-11-25
+ETHUSDT 259200 1m bars, 2026-05-29 .. 2026-11-25
+SOLUSDT 259200 1m bars, 2026-05-29 .. 2026-11-25
+XRPUSDT 259200 1m bars, 2026-05-29 .. 2026-11-25
+DOGEUSDT 259200 1m bars, 2026-05-29 .. 2026-11-25
+HYPEUSDT 259200 1m bars, 2026-05-29 .. 2026-11-25
+BNBUSDT 259200 1m bars, 2026-05-29 .. 2026-11-25
+ADAUSDT 259200 1m bars, 2026-05-29 .. 2026-11-25
+LINKUSDT 259200 1m bars, 2026-05-29 .. 2026-11-25
+SUIUSDT 259200 1m bars, 2026-05-29 .. 2026-11-25
+L=40 H=30 eval last 90 days, up to 500 points per coin and interval
+
+same K=10 5m   n= 5037  hit  50.0%  (majority  53.8%, momentum  48.1%, reverse  51.9%)  corr +0.016  err/zero 1.061  in-middle-half 40.7%  in-range 80.6%  agree>=70%: 35.6% of time, hit  51.0%  sim>=.95: n=572 hit  48.8%
+  first half   n= 2528  hit  49.3%  (majority  50.3%, momentum  47.0%, reverse  53.0%)  corr +0.038  err/zero 1.073  in-middle-half 42.4%  in-range 82.1%  agree>=70%: 36.2% of time, hit  50.8%  sim>=.95: n=264 hit  49.6%
+  second half  n= 2509  hit  50.7%  (majority  57.9%, momentum  49.2%, reverse  50.8%)  corr +0.001  err/zero 1.052  in-middle-half 38.9%  in-range 79.1%  agree>=70%: 35.0% of time, hit  51.3%  sim>=.95: n=308 hit  48.1%
+same K=30 5m   n= 5022  hit  50.0%  (majority  53.8%, momentum  48.1%, reverse  51.9%)  corr +0.007  err/zero 1.021  in-middle-half 45.6%  in-range 93.1%  agree>=70%:  6.9% of time, hit  51.0%  sim>=.95: n=309 hit  45.0%
+  first half   n= 2519  hit  48.8%  (majority  50.2%, momentum  47.0%, reverse  53.0%)  corr +0.005  err/zero 1.029  in-middle-half 47.6%  in-range 94.1%  agree>=70%:  7.7% of time, hit  44.3%  sim>=.95: n=147 hit  41.5%
+  second half  n= 2503  hit  51.2%  (majority  57.9%, momentum  49.2%, reverse  50.8%)  corr +0.014  err/zero 1.014  in-middle-half 43.7%  in-range 92.1%  agree>=70%:  6.1% of time, hit  59.5%  sim>=.95: n=162 hit  48.1%
+  (1 s)
+same K=10 15m  n= 5058  hit  50.5%  (majority  54.0%, momentum  47.9%, reverse  52.1%)  corr +0.016  err/zero 1.064  in-middle-half 40.8%  in-range 80.1%  agree>=70%: 35.1% of time, hit  51.7%  sim>=.95: n=387 hit  48.8%
+  first half   n= 2545  hit  51.8%  (majority  51.9%, momentum  49.6%, reverse  50.4%)  corr +0.046  err/zero 1.053  in-middle-half 41.7%  in-range 80.4%  agree>=70%: 35.0% of time, hit  52.5%  sim>=.95: n=166 hit  47.6%
+  second half  n= 2513  hit  49.1%  (majority  60.0%, momentum  46.2%, reverse  53.8%)  corr -0.007  err/zero 1.074  in-middle-half 39.9%  in-range 79.7%  agree>=70%: 35.1% of time, hit  51.0%  sim>=.95: n=221 hit  49.8%
+same K=30 15m  n= 5047  hit  50.4%  (majority  54.0%, momentum  48.0%, reverse  52.0%)  corr -0.019  err/zero 1.028  in-middle-half 45.4%  in-range 92.4%  agree>=70%:  7.0% of time, hit  55.4%  sim>=.95: n=91 hit  36.3%
+  first half   n= 2540  hit  49.9%  (majority  51.9%, momentum  49.6%, reverse  50.4%)  corr -0.050  err/zero 1.033  in-middle-half 45.6%  in-range 92.9%  agree>=70%:  7.1% of time, hit  54.1%  sim>=.95: n=35 hit  31.4%
+  second half  n= 2507  hit  50.9%  (majority  60.0%, momentum  46.3%, reverse  53.7%)  corr +0.015  err/zero 1.023  in-middle-half 45.3%  in-range 91.8%  agree>=70%:  6.8% of time, hit  56.7%  sim>=.95: n=56 hit  39.3%
+  (0 s)
+same K=10 1h   n= 5322  hit  51.2%  (majority  57.2%, momentum  45.7%, reverse  54.3%)  corr +0.048  err/zero 1.060  in-middle-half 41.4%  in-range 80.7%  agree>=70%: 36.2% of time, hit  50.4%  sim>=.95: n=31 hit  38.7%
+  first half   n= 2705  hit  53.4%  (majority  50.1%, momentum  39.7%, reverse  60.3%)  corr +0.028  err/zero 1.051  in-middle-half 40.6%  in-range 81.3%  agree>=70%: 37.7% of time, hit  51.4%  sim>=.95: n=18 hit  44.4%
+  second half  n= 2617  hit  48.9%  (majority  64.7%, momentum  51.9%, reverse  48.1%)  corr +0.056  err/zero 1.070  in-middle-half 42.3%  in-range 80.2%  agree>=70%: 34.7% of time, hit  49.2%  sim>=.95: n=13 hit  30.8%
+same K=30 1h   n= 5321  hit  54.8%  (majority  57.2%, momentum  45.7%, reverse  54.3%)  corr +0.114  err/zero 1.008  in-middle-half 48.2%  in-range 93.3%  agree>=70%: 17.9% of time, hit  59.2%  sim>=.95: n=0 hit   0.0%
+  first half   n= 2705  hit  58.3%  (majority  50.1%, momentum  39.7%, reverse  60.3%)  corr +0.109  err/zero 0.990  in-middle-half 49.8%  in-range 93.8%  agree>=70%: 21.0% of time, hit  60.4%  sim>=.95: n=0 hit   0.0%
+  second half  n= 2616  hit  51.3%  (majority  64.7%, momentum  51.8%, reverse  48.2%)  corr +0.144  err/zero 1.027  in-middle-half 46.7%  in-range 92.7%  agree>=70%: 14.8% of time, hit  57.4%  sim>=.95: n=0 hit   0.0%
+  (0 s)
+
+tf K=10 5m     n= 5032  hit  50.7%  (majority  53.7%, momentum  48.1%, reverse  51.9%)  corr -0.010  err/zero 1.066  in-middle-half 42.5%  in-range 81.7%  agree>=70%: 35.0% of time, hit  50.6%  sim>=.95: n=985 hit  49.4%
+  first half   n= 2524  hit  50.8%  (majority  50.4%, momentum  46.9%, reverse  53.1%)  corr +0.024  err/zero 1.071  in-middle-half 44.7%  in-range 82.8%  agree>=70%: 35.9% of time, hit  50.1%  sim>=.95: n=479 hit  49.9%
+  second half  n= 2508  hit  50.6%  (majority  57.8%, momentum  49.2%, reverse  50.8%)  corr -0.043  err/zero 1.062  in-middle-half 40.4%  in-range 80.6%  agree>=70%: 34.1% of time, hit  51.2%  sim>=.95: n=506 hit  49.0%
+tf K=30 5m     n= 5002  hit  51.1%  (majority  53.8%, momentum  48.0%, reverse  52.0%)  corr -0.002  err/zero 1.025  in-middle-half 47.3%  in-range 92.8%  agree>=70%:  5.4% of time, hit  50.0%  sim>=.95: n=740 hit  49.2%
+  first half   n= 2507  hit  51.3%  (majority  50.3%, momentum  47.0%, reverse  53.0%)  corr +0.039  err/zero 1.028  in-middle-half 49.7%  in-range 93.5%  agree>=70%:  5.4% of time, hit  47.8%  sim>=.95: n=347 hit  48.7%
+  second half  n= 2495  hit  51.0%  (majority  57.8%, momentum  49.0%, reverse  51.0%)  corr -0.037  err/zero 1.022  in-middle-half 44.9%  in-range 92.1%  agree>=70%:  5.3% of time, hit  52.3%  sim>=.95: n=393 hit  49.6%
+  (7 s)
+tf K=10 15m    n= 5047  hit  50.3%  (majority  54.1%, momentum  47.9%, reverse  52.1%)  corr -0.014  err/zero 1.066  in-middle-half 41.1%  in-range 79.9%  agree>=70%: 36.8% of time, hit  52.6%  sim>=.95: n=1139 hit  47.1%
+  first half   n= 2539  hit  51.9%  (majority  51.8%, momentum  49.6%, reverse  50.4%)  corr -0.017  err/zero 1.056  in-middle-half 42.9%  in-range 80.3%  agree>=70%: 36.6% of time, hit  54.4%  sim>=.95: n=520 hit  51.7%
+  second half  n= 2508  hit  48.8%  (majority  60.0%, momentum  46.3%, reverse  53.7%)  corr -0.002  err/zero 1.075  in-middle-half 39.4%  in-range 79.5%  agree>=70%: 36.9% of time, hit  50.9%  sim>=.95: n=619 hit  43.3%
+tf K=30 15m    n= 5003  hit  51.2%  (majority  54.1%, momentum  48.0%, reverse  52.0%)  corr +0.007  err/zero 1.024  in-middle-half 46.7%  in-range 92.1%  agree>=70%:  6.0% of time, hit  53.4%  sim>=.95: n=853 hit  49.5%
+  first half   n= 2514  hit  51.8%  (majority  51.9%, momentum  49.6%, reverse  50.4%)  corr -0.009  err/zero 1.021  in-middle-half 47.8%  in-range 92.6%  agree>=70%:  5.8% of time, hit  55.1%  sim>=.95: n=393 hit  52.4%
+  second half  n= 2489  hit  50.7%  (majority  60.1%, momentum  46.3%, reverse  53.7%)  corr +0.029  err/zero 1.026  in-middle-half 45.6%  in-range 91.6%  agree>=70%:  6.1% of time, hit  51.7%  sim>=.95: n=460 hit  47.0%
+  (7 s)
+tf K=10 1h     n= 5314  hit  50.8%  (majority  57.2%, momentum  45.7%, reverse  54.3%)  corr +0.021  err/zero 1.060  in-middle-half 40.2%  in-range 78.7%  agree>=70%: 35.4% of time, hit  51.9%  sim>=.95: n=1302 hit  50.2%
+  first half   n= 2702  hit  51.4%  (majority  50.1%, momentum  39.8%, reverse  60.2%)  corr +0.031  err/zero 1.051  in-middle-half 39.7%  in-range 78.0%  agree>=70%: 35.5% of time, hit  53.1%  sim>=.95: n=753 hit  51.0%
+  second half  n= 2612  hit  50.2%  (majority  64.7%, momentum  51.8%, reverse  48.2%)  corr +0.029  err/zero 1.069  in-middle-half 40.6%  in-range 79.5%  agree>=70%: 35.3% of time, hit  50.7%  sim>=.95: n=549 hit  49.2%
+tf K=30 1h     n= 5268  hit  53.4%  (majority  57.2%, momentum  45.7%, reverse  54.3%)  corr +0.042  err/zero 1.013  in-middle-half 45.5%  in-range 90.8%  agree>=70%:  5.7% of time, hit  55.9%  sim>=.95: n=1036 hit  52.5%
+  first half   n= 2673  hit  54.5%  (majority  50.1%, momentum  39.8%, reverse  60.2%)  corr +0.048  err/zero 1.004  in-middle-half 44.7%  in-range 90.7%  agree>=70%:  5.4% of time, hit  54.2%  sim>=.95: n=603 hit  52.6%
+  second half  n= 2595  hit  52.2%  (majority  64.7%, momentum  51.8%, reverse  48.2%)  corr +0.049  err/zero 1.024  in-middle-half 46.3%  in-range 90.9%  agree>=70%:  6.0% of time, hit  57.4%  sim>=.95: n=433 hit  52.4%
+  (7 s)
+
+all K=10 5m    n= 5037  hit  50.5%  (majority  53.7%, momentum  48.0%, reverse  52.0%)  corr -0.037  err/zero 1.107  in-middle-half 41.6%  in-range 82.4%  agree>=70%: 40.8% of time, hit  49.1%  sim>=.95: n=1645 hit  48.3%
+  first half   n= 2526  hit  51.5%  (majority  50.3%, momentum  46.9%, reverse  53.1%)  corr -0.054  err/zero 1.121  in-middle-half 43.0%  in-range 83.8%  agree>=70%: 41.5% of time, hit  50.0%  sim>=.95: n=802 hit  50.2%
+  second half  n= 2511  hit  49.5%  (majority  57.8%, momentum  49.1%, reverse  50.9%)  corr -0.023  err/zero 1.095  in-middle-half 40.3%  in-range 80.8%  agree>=70%: 40.1% of time, hit  48.2%  sim>=.95: n=843 hit  46.5%
+all K=30 5m    n= 5018  hit  50.9%  (majority  53.8%, momentum  48.1%, reverse  51.9%)  corr -0.021  err/zero 1.033  in-middle-half 47.8%  in-range 92.6%  agree>=70%:  9.5% of time, hit  51.4%  sim>=.95: n=1286 hit  49.1%
+  first half   n= 2517  hit  51.2%  (majority  50.3%, momentum  47.0%, reverse  53.0%)  corr -0.041  err/zero 1.039  in-middle-half 49.9%  in-range 93.1%  agree>=70%: 11.0% of time, hit  54.5%  sim>=.95: n=630 hit  52.5%
+  second half  n= 2501  hit  50.7%  (majority  58.0%, momentum  49.2%, reverse  50.8%)  corr -0.008  err/zero 1.027  in-middle-half 45.8%  in-range 92.1%  agree>=70%:  8.1% of time, hit  47.0%  sim>=.95: n=656 hit  45.9%
+  (71 s)
+all K=10 15m   n= 5057  hit  50.4%  (majority  54.0%, momentum  47.9%, reverse  52.1%)  corr +0.004  err/zero 1.101  in-middle-half 40.4%  in-range 80.7%  agree>=70%: 40.5% of time, hit  50.2%  sim>=.95: n=1828 hit  50.1%
+  first half   n= 2545  hit  50.9%  (majority  51.9%, momentum  49.6%, reverse  50.4%)  corr -0.010  err/zero 1.100  in-middle-half 39.6%  in-range 81.2%  agree>=70%: 41.5% of time, hit  51.0%  sim>=.95: n=851 hit  51.4%
+  second half  n= 2512  hit  50.0%  (majority  60.0%, momentum  46.2%, reverse  53.8%)  corr +0.026  err/zero 1.103  in-middle-half 41.2%  in-range 80.3%  agree>=70%: 39.5% of time, hit  49.3%  sim>=.95: n=977 hit  49.0%
+all K=30 15m   n= 5030  hit  49.6%  (majority  53.9%, momentum  47.9%, reverse  52.1%)  corr -0.017  err/zero 1.035  in-middle-half 45.2%  in-range 92.1%  agree>=70%:  9.6% of time, hit  49.9%  sim>=.95: n=1484 hit  48.9%
+  first half   n= 2532  hit  49.8%  (majority  52.0%, momentum  49.6%, reverse  50.4%)  corr -0.040  err/zero 1.039  in-middle-half 45.7%  in-range 92.2%  agree>=70%: 10.3% of time, hit  52.7%  sim>=.95: n=681 hit  50.7%
+  second half  n= 2498  hit  49.3%  (majority  59.9%, momentum  46.2%, reverse  53.8%)  corr +0.015  err/zero 1.032  in-middle-half 44.6%  in-range 92.0%  agree>=70%:  8.8% of time, hit  46.6%  sim>=.95: n=803 hit  47.4%
+  (69 s)
+all K=10 1h    n= 5317  hit  50.1%  (majority  57.1%, momentum  45.7%, reverse  54.3%)  corr +0.025  err/zero 1.101  in-middle-half 40.6%  in-range 80.0%  agree>=70%: 40.2% of time, hit  51.8%  sim>=.95: n=2067 hit  50.2%
+  first half   n= 2704  hit  52.2%  (majority  50.2%, momentum  39.8%, reverse  60.2%)  corr +0.008  err/zero 1.066  in-middle-half 42.0%  in-range 81.4%  agree>=70%: 37.9% of time, hit  54.7%  sim>=.95: n=1106 hit  52.4%
+  second half  n= 2613  hit  47.9%  (majority  64.7%, momentum  51.9%, reverse  48.1%)  corr +0.079  err/zero 1.138  in-middle-half 39.2%  in-range 78.6%  agree>=70%: 42.6% of time, hit  49.2%  sim>=.95: n=961 hit  47.7%
+all K=30 1h    n= 5294  hit  52.2%  (majority  57.1%, momentum  45.7%, reverse  54.3%)  corr +0.035  err/zero 1.030  in-middle-half 45.6%  in-range 92.2%  agree>=70%:  9.8% of time, hit  51.3%  sim>=.95: n=1650 hit  51.3%
+  first half   n= 2693  hit  53.6%  (majority  50.1%, momentum  39.8%, reverse  60.2%)  corr +0.012  err/zero 1.017  in-middle-half 45.7%  in-range 92.8%  agree>=70%:  9.2% of time, hit  59.0%  sim>=.95: n=917 hit  51.1%
+  second half  n= 2601  hit  50.9%  (majority  64.6%, momentum  51.8%, reverse  48.2%)  corr +0.101  err/zero 1.043  in-middle-half 45.6%  in-range 91.5%  agree>=70%: 10.4% of time, hit  44.3%  sim>=.95: n=733 hit  51.6%
+  (73 s)
+

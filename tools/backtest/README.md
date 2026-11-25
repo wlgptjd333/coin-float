@@ -27,6 +27,21 @@ Modes of `Bt.java`:
 Columns: mean return in the trade's direction after 5 m / 15 m / 1 h / 4 h with its t-statistic, then two races
 (A: 0.5 % / 0.5 % within 1 h, B: 1 % / 1 % within 4 h) as win % / loss % and the mean result after fees.
 
+## Pattern scan (`Analog.java`)
+
+The "닮은 흐름" method, and the wider scan some sites offer (look-alikes from every interval of the coin, or from many
+coins): at up to 500 points per coin and interval in the last 90 days, the last `L` closes are compared with every earlier
+stretch (correlation of log prices), the `K` most alike whose next `H` bars had closed before that point are taken, and the
+median of what followed them (scaled to today's bar-to-bar size) is compared with what really followed.
+
+```powershell
+& $java -Xmx3g "-Dpools=same,tf,all" "-Dclamp=0" Analog.java data BTCUSDT ETHUSDT SOLUSDT ...   # -DL=40 -DH=30 by default
+```
+
+Pools: `same` (this coin and interval), `tf` (this coin, 1m 5m 15m 1h 4h), `all` (every coin given, every interval).
+`clamp=0` scales the look-alike's move by the plain ratio of bar-to-bar spreads (needed across intervals); without it the
+ratio is clamped to 0.5–2. `results-2026-11-25-analog.txt` is the run behind 1.44.0.
+
 `results-2026-11-10-*.txt` are the runs behind 1.39.0 (2026-05-14 to 2026-11-10). The `data/` folder is not committed.
 
 Read the results as descriptions of that period, not as a forecast: one 180-day window, seven coins, many rules tried.

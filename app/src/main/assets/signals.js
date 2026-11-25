@@ -11,6 +11,7 @@
 var CF = window.CF;
 if (!CF) return;
 var GOLD = '#F0B90B', VIOLET = '#B388FF';
+var AN_PAL = ['#B388FF', '#FF8A80', '#80D8FF', '#FFD180', '#A7FFEB', '#F48FB1', '#CCFF90', '#FFE57F', '#82B1FF', '#EA80FC'];
 function pctS(v, d) { return (v >= 0 ? '+' : '') + v.toFixed(d == null ? 2 : d) + '%'; }
 function col(v) { return v > 0 ? CF.C.up : v < 0 ? CF.C.down : '#B2B5BE'; }
 function span(c, t) { return '<span style="color:' + c + '">' + t + '</span>'; }
@@ -133,13 +134,16 @@ CF.defineSettings('analog', {
         { t: 'sec', label: '비교' },
         { k: 'len', t: 'num', label: '비교할 최근 봉 수', def: 30, min: 10, max: 120, step: 1 },
         { k: 'ahead', t: 'num', label: '이어 볼 봉 수', def: 20, min: 5, max: 100, step: 1 },
-        { k: 'k', t: 'num', label: '찾을 닮은 구간 수', def: 8, min: 3, max: 20, step: 1 },
+        { k: 'k', t: 'num', label: '찾을 닮은 구간 수', def: 20, min: 3, max: 30, step: 1 },
+        { k: 'pool', t: 'sel', label: '찾을 곳', def: 'same', opts: [['same', '이 차트 봉만'], ['tf', '이 코인 1분~4시간 모두']] },
+        { t: 'note', label: '"1분~4시간 모두"는 거래소에서 1분 · 5분 · 15분 · 1시간 · 4시간 봉을 1,500개씩 더 받아 와 함께 찾습니다 (바이낸스 · 하이퍼리퀴드). 다른 봉에서 찾은 구간도 지금 차트의 봉 수만큼 이어 그립니다.', showIf: function (c) { return c.pool === 'tf'; } },
         { t: 'sec', label: '표시' },
         { k: 'band', t: 'bool', label: '범위 띠 (중간 절반)', sub: '닮은 구간들 뒤 움직임의 25~75% 범위', def: true },
-        { k: 'paths', t: 'bool', label: '구간마다 이어진 선', def: false },
+        { k: 'paths', t: 'bool', label: '구간마다 이어진 선 (번호)', sub: '범례의 ⚙ 를 누르면 구간 목록이 나와요', def: false },
         { k: 'marks', t: 'bool', label: '닮은 과거 구간 위치 표시', sub: '차트 아래쪽에 짧은 막대로', def: true },
         { k: 'color', t: 'color', label: '색', def: VIOLET },
-        { t: 'note', label: '최근 봉들의 모양(로그 가격을 평균 0, 크기 1로 맞춘 것)과 가장 닮은 과거 구간을 불러온 봉 안에서 찾고, 그 구간들 바로 뒤에 실제로 움직인 비율을 지금 가격에 이어 그립니다. 변동성이 다른 구간은 최근 변동성에 맞춰 키우거나 줄입니다(0.5~2배).' },
+        { t: 'note', label: '최근 봉들의 모양(로그 가격을 평균 0, 크기 1로 맞춘 것)과 가장 닮은 과거 구간을 불러온 봉 안에서 찾고, 그 구간들 바로 뒤에 실제로 움직인 비율을 지금 가격에 이어 그립니다. 움직임 크기가 다른 구간(다른 봉 길이 포함)은 지금 봉의 움직임 크기에 맞춰 키우거나 줄입니다.' },
+        { t: 'note', label: '백테스트(바이낸스 10개 코인, 최근 90일)에서 방향은 맞히지 못했고, 띠의 폭은 실제 흔들림과 대체로 맞았습니다. 닮은 구간이 적으면 띠가 실제보다 좁아져서 기본값을 20개로 두었습니다.' },
         { t: 'note', label: '과거에 닮은 모양이 있었다는 기록일 뿐, 앞으로 그렇게 간다는 뜻이 아닙니다. 범례의 "같은 방법으로 과거에 방향 맞춘 비율"이 50% 근처면 이 차트에서는 동전 던지기와 다르지 않다는 뜻입니다.' }
     ]
 });
@@ -169,21 +173,89 @@ function matches(p, S1, S2, q, L, H, K, limit) {
     return out;
 }
 function quant(a, q) { var s = a.slice().sort(function (x, y) { return x - y; }), i = (s.length - 1) * q, lo = Math.floor(i); return s[lo] + (s[Math.min(s.length - 1, lo + 1)] - s[lo]) * (i - lo); }
+// ---- the other intervals of this coin (pool "tf"): closed candles only, refreshed every few minutes --------------------
+var AN_IVS = [['1m', 60], ['5m', 300], ['15m', 900], ['1h', 3600], ['4h', 14400]];
+var anPool = { sym: '', at: 0, busy: false, list: [], seq: 0 };
+function anFetch(iv, sec) {
+    var sym = CF.symbol(), v = CF.venue();
+    var keep = function (a) { return a.filter(function (k) { return isFinite(k.c) && k.c > 0; }).slice(0, -1); };   // the last one is still forming
+    if (v === 'bn') {
+        return fetch('https://fapi.binance.com/fapi/v1/klines?symbol=' + sym + '&interval=' + iv + '&limit=1500').then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function (a) { return keep(a.map(function (k) { return { t: k[0] / 1000, c: +k[4] }; })); });
+    }
+    if (v === 'hl') {
+        var end = Date.now();
+        return CF.hlCoin(sym).then(function (coin) { return CF.hlPost({ type: 'candleSnapshot', req: { coin: coin, interval: iv, startTime: end - 1500 * sec * 1000, endTime: end } }); })
+            .then(function (a) { return keep((Array.isArray(a) ? a : []).map(function (k) { return { t: k.t / 1000, c: +k.c }; })); });
+    }
+    return Promise.resolve([]);
+}
+function anPoolLoad() {
+    var sym = CF.symbol(), v = CF.venue();
+    if (CF.S('analog').pool !== 'tf' || (v !== 'bn' && v !== 'hl')) return;
+    if (anPool.busy || (anPool.sym === sym && Date.now() - anPool.at < 300000)) return;
+    if (anPool.sym !== sym) anPool.list = [];
+    var seq = ++anPool.seq;
+    anPool.busy = true; anPool.sym = sym;
+    Promise.all(AN_IVS.map(function (x) { return anFetch(x[0], x[1]).then(null, function () { return []; }); })).then(function (rs) {
+        anPool.busy = false;
+        if (seq !== anPool.seq || CF.symbol() !== sym) return;
+        anPool.list = rs.map(function (a, j) { return { iv: AN_IVS[j][0], sec: AN_IVS[j][1], t: a.map(function (k) { return k.t; }), c: a.map(function (k) { return k.c; }) }; })
+            .filter(function (s) { return s.t.length > 0; });
+        anPool.at = anPool.list.length ? Date.now() : Date.now() - 240000;  // nothing came: try again in a minute
+        an.key = ''; anSync();
+    }, function () { anPool.busy = false; });
+}
+// a series to search: log closes with their prefix sums; `own` is this chart's, where matches must also end before the query
+function anSeries(iv, sec, t, closes, own) {
+    var n = closes.length, p = new Array(n), S1 = [0], S2 = [0];
+    for (var i = 0; i < n; i++) { p[i] = Math.log(closes[i]); S1.push(S1[i] + p[i]); S2.push(S2[i] + p[i] * p[i]); }
+    return { iv: iv, sec: sec, t: t, p: p, S1: S1, S2: S2, own: own };
+}
+// best K windows over all series, most alike first, apart from each other inside a series
+function anMatchAll(series, z, L, H, K) {
+    var cand = [];
+    series.forEach(function (s) {
+        var n = s.p.length, last = s.own ? Math.min(n - 1 - H, n - 1 - L) : n - 1 - H;
+        for (var e = L - 1; e <= last; e++) {
+            var se = stats(s.S1, s.S2, e, L); if (!(se[1] > 0)) continue;
+            var dot = 0, base = e - L + 1;
+            for (var j = 0; j < L; j++) dot += z[j] * s.p[base + j];
+            cand.push({ s: s, e: e, r: dot / (L * se[1]) });
+        }
+    });
+    cand.sort(function (a, b) { return b.r - a.r; });
+    var out = [], gap = Math.max(3, Math.floor(L / 2));
+    for (var c = 0; c < cand.length && out.length < K; c++) {
+        var x = cand[c];
+        if (out.some(function (o) { return o.s === x.s && Math.abs(o.e - x.e) < gap; })) continue;
+        out.push(x);
+    }
+    return out;
+}
 function anCompute() {
-    var cs = CF.candles(), n = cs.length, c = CF.S('analog'), L = c.len, H = c.ahead, K = c.k;
-    var key = n + '|' + (n ? cs[n - 1].time + '|' + cs[n - 1].close : 0) + '|' + L + '|' + H + '|' + K;
+    var cs = CF.candles(), n = cs.length, c = CF.S('analog'), L = c.len, H = c.ahead, K = c.k, iv = CF.interval();
+    var usePool = c.pool === 'tf' && anPool.sym === CF.symbol() && anPool.list.length > 0;
+    var key = n + '|' + (n ? cs[n - 1].time + '|' + cs[n - 1].close : 0) + '|' + L + '|' + H + '|' + K + '|' + c.pool + '|' + (usePool ? anPool.at : 0);
     if (key === an.key) return;
     an.key = key; an.res = null;
     if (n < L * 3 + H) return;
-    var p = logs(cs), S1 = [0], S2 = [0], i;
-    for (i = 0; i < n; i++) { S1.push(S1[i] + p[i]); S2.push(S2[i] + p[i] * p[i]); }
-    var q = n - 1, ms = matches(p, S1, S2, q, L, H, K, n - 1);
+    var own = anSeries(iv, CF.secs(), cs.map(function (k) { return k.time; }), cs.map(function (k) { return k.close; }), true);
+    var p = own.p, S1 = own.S1, S2 = own.S2;
+    var q = n - 1, st = stats(S1, S2, q, L); if (!(st[1] > 0)) return;
+    var z = new Array(L), j;
+    for (j = 0; j < L; j++) z[j] = (p[q - L + 1 + j] - st[0]) / st[1];
+    var series = [own];
+    if (usePool) anPool.list.forEach(function (s) { if (s.iv !== iv && s.c.length >= L + H + 1) series.push(anSeries(s.iv, s.sec, s.t, s.c, false)); });
+    var ms = anMatchAll(series, z, L, H, K);
     if (!ms.length) return;
     var vq = retSd(p, q, L);
     var paths = ms.map(function (m) {
-        var vc = retSd(p, m.e, L), k = vc > 0 ? Math.max(0.5, Math.min(2, vq / vc)) : 1, path = [];
-        for (var h = 1; h <= H; h++) path.push((p[m.e + h] - p[m.e]) * k);          // log move, scaled to today's volatility
-        return { e: m.e, r: m.r, t0: cs[m.e - L + 1].time, t1: cs[m.e].time, path: path };
+        // to today's size: the move times (today's bar-to-bar spread / the match's); a 1-minute look-alike moves far less per
+        // bar than a 4-hour one, so across intervals the ratio is wide, clamped only against freak values
+        var sp = m.s.p, vc = retSd(sp, m.e, L), k = vc > 0 ? Math.max(0.05, Math.min(20, vq / vc)) : 1, path = [], hi = -Infinity, lo = Infinity;
+        for (var h = 1; h <= H; h++) { var v = (sp[m.e + h] - sp[m.e]) * k; path.push(v); if (v > hi) hi = v; if (v < lo) lo = v; }
+        return { e: m.e, r: m.r, iv: m.s.iv, own: m.s.own, t0: m.s.t[m.e - L + 1], t1: m.s.t[m.e], path: path, raw: sp[m.e + H] - sp[m.e], hi: hi, lo: lo };
     });
     var med = [], lo = [], hi = [];
     for (var h = 0; h < H; h++) {
@@ -192,7 +264,7 @@ function anCompute() {
     }
     var ends = paths.map(function (x) { return x.path[H - 1]; });
     an.res = {
-        last: cs[n - 1], paths: paths, med: med, lo: lo, hi: hi, H: H,
+        last: cs[n - 1], paths: paths, med: med, lo: lo, hi: hi, H: H, L: L, pool: usePool,
         up: ends.filter(function (v) { return v > 0; }).length, k: paths.length,
         r: paths.reduce(function (a, x) { return a + x.r; }, 0) / paths.length
     };
@@ -228,11 +300,26 @@ function anPaint(ctx, w, h) {
         ctx.closePath(); ctx.fillStyle = CF.hexA(color, 0.14); ctx.fill();
     }
     if (c.paths) {
-        ctx.lineWidth = 1; ctx.strokeStyle = CF.hexA(color, 0.35);
-        r.paths.forEach(function (x) {
-            ctx.beginPath(); ctx.moveTo(x0, y0);
-            x.path.forEach(function (v, k) { var q = pt(k, v); if (q.x != null && q.y != null) ctx.lineTo(q.x, q.y); });
+        // one colour and number per look-alike (the same numbers as the list), the most alike drawn last, on top
+        var ends = [];
+        ctx.lineWidth = 1.2;
+        for (var pi = r.paths.length - 1; pi >= 0; pi--) {
+            var x = r.paths[pi], pc = AN_PAL[pi % AN_PAL.length], q2 = null;
+            ctx.strokeStyle = CF.hexA(pc, 0.7); ctx.beginPath(); ctx.moveTo(x0, y0);
+            // the number goes where the line leaves the screen (or ends), not where the off-screen end would be
+            x.path.forEach(function (v, k) { var q = pt(k, v); if (q.x != null && q.y != null) { ctx.lineTo(q.x, q.y); if (q.x <= w - 4) q2 = q; } });
             ctx.stroke();
+            if (q2) ends.push({ x: q2.x, y: q2.y, n: pi + 1, c: pc });
+        }
+        // the number at each line's end, nudged apart so they do not sit on each other
+        ends.sort(function (a, b) { return a.y - b.y; });
+        var lastY = -1e9;
+        ctx.font = '600 9px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.lineJoin = 'round';
+        ends.forEach(function (e) {
+            var y = Math.max(e.y, lastY + 10); lastY = y;
+            var t = '#' + e.n, tx = Math.min(e.x + 3, w - ctx.measureText(t).width - 2);
+            ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.92)'; ctx.strokeText(t, tx, y);
+            ctx.fillStyle = e.c; ctx.fillText(t, tx, y);
         });
     }
     ctx.setLineDash([5, 4]); ctx.lineWidth = 1.6; ctx.strokeStyle = color;
@@ -242,6 +329,7 @@ function anPaint(ctx, w, h) {
     if (c.marks) {
         ctx.fillStyle = CF.hexA(color, 0.55);
         r.paths.forEach(function (x) {
+            if (!x.own) return;                                              // found on another interval: not on this chart
             var a = CF.xOf(x.t0), b = CF.xOf(x.t1);
             if (a == null || b == null || b < 0 || a > w) return;
             ctx.fillRect(a, h - 5, Math.max(2, b - a), 3);
@@ -251,16 +339,65 @@ function anPaint(ctx, w, h) {
 function anLegend() {
     var r = an.res, c = CF.S('analog');
     if (!r) return muted(CF.candles().length ? '비교할 봉이 모자라요 (봉 ' + (c.len * 3 + c.ahead) + '개 이상)' : '');
-    var end = Math.exp(r.med[r.H - 1]) - 1, h = span(c.color, '닮은 구간 ' + r.k + '개') + ' ' + muted('· 유사도 ' + r.r.toFixed(2) + ' · ' + r.H + '봉 뒤 중간값') + ' ' +
+    var where = r.pool ? '1분~4시간' : c.pool === 'tf' && anPool.busy ? '이 차트 (다른 봉 받는 중)' : '';
+    var end = Math.exp(r.med[r.H - 1]) - 1, h = span(c.color, '닮은 구간 ' + r.k + '개') + ' ' + muted((where ? '· ' + where + ' ' : '') + '· 유사도 ' + r.r.toFixed(2) + ' · ' + r.H + '봉 뒤 중간값') + ' ' +
         span(col(end), pctS(end * 100)) + ' ' + muted('· 오른 구간 ' + r.up + '/' + r.k);
     // next to the plain baseline: always naming the side that was more common in that stretch would have scored this much
     if (an.test) h += ' ' + muted('· 같은 방법으로 과거에 방향 맞춘 비율 ' + Math.round(an.test.hit) + '% (' + an.test.n + '번, 늘 많았던 쪽만 골랐으면 ' + Math.round(Math.max(an.test.up, 100 - an.test.up)) + '%)');
     return h;
 }
+// the look-alikes one by one: where each was found, how alike, what followed it as it was and at today's size
+function anWhen(t) { var d = new Date(t * 1000); return CF.pad2(d.getMonth() + 1) + '.' + CF.pad2(d.getDate()) + ' ' + CF.pad2(d.getHours()) + ':' + CF.pad2(d.getMinutes()); }
+function anPct(v) { var x = (Math.exp(v) - 1) * 100; return span(col(x), pctS(x, Math.abs(x) >= 10 ? 1 : 2)); }
+function anOpen() {
+    var r = an.res, c = CF.S('analog'), rows = [];
+    var cfg = document.createElement('button'); cfg.className = 'row-opt';
+    cfg.innerHTML = '<span>⚙ 닮은 흐름 설정<small>비교할 봉 수 · 찾을 곳 · 표시</small></span><span style="color:var(--muted)">›</span>';
+    cfg.onclick = function () { CF.openSettings('analog'); };
+    if (!r) {
+        rows.push(CF.noteRow(CF.candles().length ? '아직 닮은 구간이 없어요. 불러온 봉이 ' + (c.len * 3 + c.ahead) + '개 이상이어야 찾아요.' : '봉을 불러오는 중이에요.'), cfg);
+        CF.openSheet('닮은 흐름', rows); return;
+    }
+    var ends = r.paths.map(function (x) { return x.path[r.H - 1]; }), up = ends.filter(function (v) { return v > 0; }).length;
+    var sum = document.createElement('div'); sum.className = 'note'; sum.style.lineHeight = '1.6';
+    sum.innerHTML = '최근 ' + r.L + '봉과 닮은 구간 ' + r.k + '개 (' + (r.pool ? '이 코인 1분~4시간' : '이 차트 봉') + ') · ' + r.H + '봉 뒤 ' +
+        span(CF.C.up, '오름 ' + up) + ' / ' + span(CF.C.down, '내림 ' + (r.k - up)) + ' · 중간값 ' + anPct(r.med[r.H - 1]) +
+        ' · 중간 절반 ' + anPct(r.lo[r.H - 1]) + ' ~ ' + anPct(r.hi[r.H - 1]) +
+        (an.test ? '<br>이 차트에서 같은 방법으로 과거에 방향을 맞춘 비율 ' + Math.round(an.test.hit) + '% (' + an.test.n + '번 · 늘 많았던 쪽만 골랐으면 ' + Math.round(Math.max(an.test.up, 100 - an.test.up)) + '%)' : '');
+    rows.push(sum);
+    rows.push(CF.noteRow(AN_BT));
+    var tb = document.createElement('div'); tb.style.cssText = 'overflow-x:auto;margin:4px 0 8px';
+    var th = 'style="text-align:right;padding:4px 5px;font-weight:500;color:var(--muted);white-space:nowrap"', td = 'style="text-align:right;padding:5px;white-space:nowrap"';
+    var h = '<table style="width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums">' +
+        '<tr><th ' + th + '>#</th><th ' + th + '>봉</th><th ' + th + '>구간 끝</th><th ' + th + '>닮음</th><th ' + th + '>이후 ' + r.H + '봉</th><th ' + th + '>지금 크기로</th><th ' + th + '>중간 최고 / 최저</th></tr>';
+    r.paths.forEach(function (x, i) {
+        h += '<tr data-i="' + i + '" style="border-top:1px solid var(--line)' + (x.own ? ';cursor:pointer' : '') + '">' +
+            '<td ' + td + '><b style="color:' + AN_PAL[i % AN_PAL.length] + '">#' + (i + 1) + '</b></td><td ' + td + '>' + x.iv + '</td><td ' + td + '>' + anWhen(x.t1) + '</td>' +
+            '<td ' + td + '>' + Math.round(x.r * 100) + '%</td><td ' + td + '>' + anPct(x.raw) + '</td><td ' + td + '>' + anPct(x.path[r.H - 1]) + '</td>' +
+            '<td ' + td + '>' + anPct(x.hi) + ' / ' + anPct(x.lo) + '</td></tr>';
+    });
+    tb.innerHTML = h + '</table>';
+    tb.onclick = function (e) {
+        var tr = e.target.closest('tr[data-i]'); if (!tr) return;
+        var x = r.paths[+tr.getAttribute('data-i')]; if (!x || !x.own) return;
+        var i1 = CF.indexOfTime(x.t1); if (i1 == null || i1 < 0) return;
+        CF.closeSheet();
+        CF.chart.timeScale().setVisibleLogicalRange({ from: i1 - r.L - 15, to: i1 + r.H + 15 });
+    };
+    rows.push(tb);
+    rows.push(CF.noteRow('"지금 크기로"는 그 구간 뒤 움직임을 지금 봉의 움직임 크기에 맞춘 값이고, 차트의 선과 띠는 이 값으로 그립니다. 이 차트 봉에서 찾은 줄을 누르면 그 자리로 갑니다.'));
+    rows.push(cfg);
+    CF.openSheet('닮은 흐름 · 닮은 구간', rows);
+}
+// tools/backtest/Analog.java, results-2026-11-25-analog.txt: 10 Binance coins, last 90 days, 5m / 15m / 1h, ~15,000 points per pool
+var AN_BT = '백테스트 (바이낸스 10개 코인 · 최근 90일 · 5분 · 15분 · 1시간봉 약 1만 5천 번): 닮은 구간의 중간값이 방향을 맞힌 비율은 50~55%로, ' +
+    '그 기간에 늘 더 많았던 쪽만 고른 54~57%보다 낮았어요. 닮은 구간이 70% 넘게 한쪽으로 몰려도, 1분~4시간이나 여러 코인에서 찾아도 같았어요. ' +
+    '실제 움직임이 띠(중간 절반) 안에 든 비율은 41~48%(이론상 50%)라, 방향보다는 흔들릴 폭을 보는 데 맞아요.';
 var anOffset = null;
 function anSync() {
     var ts = CF.chart.timeScale();
     if (CF.ind.analog) {
+        anPoolLoad();
         anCompute();
         if (!an.off) an.off = CF.layer('top', anPaint);
         // room on the right for the band, but never more than a third of the width: counted from the width and bar spacing,
@@ -388,9 +525,11 @@ CF.legendItems(function (i) {
         var k = x[0];
         if (!CF.ind[k] && !CF.isHidden(k)) return;
         var v = CF.ind[k] ? x[2](i) : '';
-        out.push(CF.builtinItem(k, '<b>' + x[1] + '</b>' + (v ? ' ' + v : '')));
+        var it = CF.builtinItem(k, '<b>' + x[1] + '</b>' + (v ? ' ' + v : ''));
+        if (k === 'analog') it.settings = anOpen;                       // ⚙ opens the list of look-alikes (with the settings in it)
+        out.push(it);
     });
     return out;
 });
-window.__sig = { exh: exh, an: an, lv: lv };
+window.__sig = { exh: exh, an: an, lv: lv, pool: anPool };
 })();
