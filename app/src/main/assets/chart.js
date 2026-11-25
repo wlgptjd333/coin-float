@@ -267,7 +267,7 @@ var DEFAULT_IND = {
     vol: true, ma: false, ema: true, boll: false, rsi: false, macd: false,
     cvd: true, oi: true, liq: true, trades: false, depth: false, heat: false, liqmap: false, bidask: false, vp: true,
     vwap: true, st: false, fp: false, dom: false, xex: false, fund: false, lsr: false, bfx: false, whale: false,
-    exh: false, analog: false, levels: false
+    exh: false, levels: false, bstat: false
 };
 var ind = Object.assign({}, DEFAULT_IND, LS.get('ind', {}));
 // indicators hidden with the eye in their chart legend row: off, but their row stays (dimmed) to bring them back
@@ -3045,7 +3045,7 @@ var IND_KW = {
     lsr: 'long short ratio 롱숏', bfx: 'bitfinex whale 고래', liq: 'liquidation 청산', trades: 'large trades whale 고래 체결', fp: 'footprint 풋프린트',
     dom: 'depth of market order book ladder 호가', xex: 'bybit okx hyperliquid exchange 거래소', depth: 'order book wall 호가벽', heat: 'heatmap 히트맵',
     liqmap: 'liquidation map heatmap 청산맵', bidask: 'bid ask spread 호가', whale: 'whale cvd order size 고래 큰손 개미 크기 firecharts material indicators',
-    exh: 'exhaustion capitulation climax reversal 반전 투매 바닥 고점 신호 마커', analog: 'similar pattern fractal analog projection scan 예측 프랙탈 스캔 패턴 경로',
+    exh: 'exhaustion capitulation climax reversal 반전 투매 바닥 고점 신호 마커', bstat: 'bar stats statistics delta trades count liquidation oi mmt 봉 통계 델타 체결 수 청산 미결제',
     levels: 'key levels pdh pdl pwh pwl previous day week high low open 전일 전주 고가 저가 시가 레벨'
 };
 function switchRow(text, sub, key, gear) {
@@ -3464,7 +3464,7 @@ function openIndicators() {
         switchRow('MACD', m.fast + ', ' + m.slow + ', ' + m.signal + ' · 별도 창', 'macd', true),
         sectionTitle('반전 · 흐름'),
         switchRow('소진 마커 (역추세)', '거래량이 터지며 신저가·신고가를 찍고 꼬리로 되돌린 봉 · 마커마다 그 뒤 결과', 'exh', true),
-        switchRow('닮은 흐름', '지금과 모양이 닮은 과거 구간 뒤에 실제로 일어난 일 · 예측 아님', 'analog', true),
+        switchRow('봉 통계', '봉마다 매수 · 매도 · 델타 · 체결 수 · 청산 · OI 변화를 색 칸으로 · 별도 창', 'bstat', true),
         sectionTitle('오더플로우'),
         switchRow('CVD · 델타', '누적 체결 델타 (매수-매도 체결량)', 'cvd', true),
         switchRow('주문 크기별 CVD (고래 CVD)', '큰손과 소액이 각각 사는지 파는지 · 주문 금액대별 누적 델타', 'whale', true),
@@ -3759,7 +3759,7 @@ function parseRows(raw) {
     var out = [], dec = 0;
     for (var i = 0; i < raw.length; i++) {
         var k = raw[i];
-        out.push({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5], buy: +k[9], qv: +k[7], qb: +k[10] });
+        out.push({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5], buy: +k[9], qv: +k[7], qb: +k[10], n: +k[8] });
         // decimals actually used, sampled from the closes and OHLC: Binance pads prices to the contract's precision
         // ("83043.60" for a 0.1 tick), and keeping the padding widened the price axis and every price label
         if (i < 100) for (var f = 1; f <= 4; f++) { var s = String(k[f]).replace(/0+$/, ''), dot = s.indexOf('.'); if (dot >= 0) dec = Math.max(dec, s.length - dot - 1); }
@@ -4032,7 +4032,7 @@ function subscribeKline() {
             hlSub(klineHl, function (c) {
                 if (c.s !== coin || c.i !== intv) return;
                 var vol = +c.v, qv = vol * +c.c;
-                onKline({ t: c.t, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v, V: vol / 2, q: qv, Q: qv / 2, x: false, s: sym, i: intv });
+                onKline({ t: c.t, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v, V: vol / 2, q: qv, Q: qv / 2, n: c.n, x: false, s: sym, i: intv });
             });
         });
         return;
@@ -4088,7 +4088,7 @@ function flushKline() {
 function applyKline(k) {
     klineLast = Date.now();
     var t = Math.floor(k.t / 1000), n = candles.length, last = candles[n - 1];
-    var bar = { time: t, open: +k.o, high: +k.h, low: +k.l, close: +k.c, volume: +k.v, buy: +k.V, qv: +k.q, qb: +k.Q };
+    var bar = { time: t, open: +k.o, high: +k.h, low: +k.l, close: +k.c, volume: +k.v, buy: +k.V, qv: +k.q, qb: +k.Q, n: +k.n };
     if (t === last.time) candles[n - 1] = bar;
     else if (t > last.time) candles.push(bar);
     else return;

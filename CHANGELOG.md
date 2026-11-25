@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.45.0] - 2026-11-26
+
+### Added
+- **봉 통계** (지표 → 반전 · 흐름, own pane): one thin colour row per measure, one cell per candle — taker buys, taker
+  sells, delta, delta share, volume (off by default), trade count, liquidations (long / short) and the change of open
+  interest in coins. A cell's strength is its size against the same row's large values on the loaded candles (the
+  95th percentile at the default sensitivity), so the pieces of a climax line up under the candle they belong to.
+  Binance coins get every row; Hyperliquid coins only trade count and liquidations (no buyer / seller split, no OI
+  history). Liquidations come from the live feed, or from what it saved on the phone when that feature is off.
+- Candles keep their trade count (`n`) from Binance and Hyperliquid.
+
+### Removed
+- **닮은 흐름** (the look-alike scan): the 1.44.0 backtest found no direction edge in it, so it is gone with its list.
+
 ## [1.44.0] - 2026-11-25
 
 ### Added
