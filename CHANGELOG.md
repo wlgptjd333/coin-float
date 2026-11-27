@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.46.0] - 2026-11-27
+
+### Added
+- **Themes** (차트 설정 → 화면 → 테마): the chart page in eight dark themes, shown as cards with each theme's background,
+  accent, rising and falling colour:
+  - 기본 and 블랙 (as before)
+  - Catppuccin Mocha, Tokyo Night, Nord, One Dark, Gruvbox Dark and Dracula, from those open palettes (MIT)
+  Each sets the chart, the price and time axes, the panes, the sheets and the menus. Picking one also switches the candles to its own colours, unless they are set to 빨강 / 파랑.
+- **직접 지정** theme: pick a background and an accent, and the panels, lines and sheets are made to match. A light background is darkened, because the labels on the chart are light text for now.
+- **상승 / 하락 색 → 테마 색**: candles in the theme's own colours.
+
+### Backtest
+- `tools/backtest/BarStats.java` (`results-2026-11-27-barstats.txt`) checks the delta rows of 봉 통계 for counter-trend use: 10 coins, 180 days.
+  - A plain new 20-bar low or high faded 52–55 % of the time, with moves smaller than fees.
+  - On 5m / 15m, a big delta, volume, absorption or delta divergence did not improve on that.
+  - Only 1h flush lows (bottom-decile delta % with 2x volume) were up 4 h later 61 % of the time, in both halves of the period. That rests on 398 cases from coins that move together.
+
 ## [1.45.0] - 2026-11-26
 
 ### Added

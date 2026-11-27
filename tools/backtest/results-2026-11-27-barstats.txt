@@ -1,0 +1,66 @@
+﻿=== 5m bars, 10 coins (move in the counter-trend direction, %, no fees) ===
+-- after a low (buy side)
+                                                             n |   1h avg 1h win |   4h avg 4h win | 4h win 1st/2nd half
+  all bars                                              517700 |   -0.004  49.2% |   -0.017  49.0% |  49.6% /  48.5%
+  new 20-bar extreme                                     50857 |   +0.027  53.9% |   +0.034  51.8% |  52.8% /  50.7%
+  + big delta (decile) with the move                     10798 |   +0.011  54.3% |   +0.007  51.0% |  52.1% /  49.8%
+  + big delta + volume 2x                                 5134 |   +0.014  55.0% |   +0.004  51.2% |  52.2% /  50.2%
+  + big delta + volume 2x + wick back                      910 |   +0.005  54.1% |   -0.024  48.4% |  49.2% /  47.5%
+  + delta against the move (absorption)                  10276 |   +0.020  52.8% |   +0.032  51.1% |  50.7% /  51.4%
+  + weaker delta than the last extreme (divergence)      17650 |   +0.018  53.6% |   +0.031  51.6% |  52.1% /  51.1%
+  + big delta + volume 2x, the NEXT bar's delta flips     2285 |   +0.004  52.3% |   -0.040  48.6% |  49.9% /  47.2%
+-- after a high (sell side)
+                                                             n |   1h avg 1h win |   4h avg 4h win | 4h win 1st/2nd half
+  all bars                                              517700 |   +0.004  49.9% |   +0.017  50.5% |  49.9% /  51.1%
+  new 20-bar extreme                                     50194 |   +0.018  54.3% |   +0.047  53.9% |  53.3% /  54.5%
+  + big delta (decile) with the move                      9526 |   +0.019  54.4% |   +0.043  54.4% |  53.6% /  55.3%
+  + big delta + volume 2x                                 4025 |   +0.011  54.9% |   +0.033  54.2% |  53.3% /  55.4%
+  + big delta + volume 2x + wick back                      688 |   +0.055  55.1% |   +0.061  52.9% |  52.7% /  53.2%
+  + delta against the move (absorption)                  12765 |   +0.015  53.9% |   +0.041  53.0% |  51.4% /  54.4%
+  + weaker delta than the last extreme (divergence)      17195 |   +0.013  54.2% |   +0.041  53.7% |  53.3% /  54.2%
+  + big delta + volume 2x, the NEXT bar's delta flips     1902 |   +0.016  53.0% |   +0.042  54.0% |  53.1% /  55.2%
+
+=== 15m bars, 10 coins (move in the counter-trend direction, %, no fees) ===
+-- after a low (buy side)
+                                                             n |   1h avg 1h win |   4h avg 4h win | 4h win 1st/2nd half
+  all bars                                              172420 |   -0.004  49.2% |   -0.017  49.0% |  49.6% /  48.5%
+  new 20-bar extreme                                     16431 |   +0.028  54.0% |   +0.040  51.7% |  52.9% /  50.6%
+  + big delta (decile) with the move                      3529 |   +0.009  54.7% |   -0.001  51.0% |  53.1% /  48.8%
+  + big delta + volume 2x                                 1750 |   +0.003  54.5% |   -0.009  51.7% |  55.2% /  47.8%
+  + big delta + volume 2x + wick back                      306 |   -0.009  51.0% |   -0.062  52.3% |  58.4% /  46.1%
+  + delta against the move (absorption)                   3308 |   +0.024  52.9% |   +0.038  50.9% |  49.5% /  52.2%
+  + weaker delta than the last extreme (divergence)       4865 |   +0.006  52.5% |   +0.021  50.1% |  49.7% /  50.5%
+  + big delta + volume 2x, the NEXT bar's delta flips      822 |   +0.020  54.9% |   +0.038  54.9% |  56.6% /  52.8%
+-- after a high (sell side)
+                                                             n |   1h avg 1h win |   4h avg 4h win | 4h win 1st/2nd half
+  all bars                                              172420 |   +0.004  49.8% |   +0.017  50.5% |  49.9% /  51.1%
+  new 20-bar extreme                                     16106 |   +0.015  54.8% |   +0.070  54.8% |  55.3% /  54.2%
+  + big delta (decile) with the move                      3137 |   +0.022  56.8% |   +0.060  55.3% |  55.3% /  55.3%
+  + big delta + volume 2x                                 1346 |   +0.018  57.7% |   -0.016  52.1% |  51.2% /  53.4%
+  + big delta + volume 2x + wick back                      219 |   +0.018  53.0% |   -0.020  49.3% |  50.8% /  47.5%
+  + delta against the move (absorption)                   4217 |   +0.026  53.9% |   +0.083  54.4% |  55.1% /  53.7%
+  + weaker delta than the last extreme (divergence)       4693 |   +0.012  54.5% |   +0.074  54.2% |  55.9% /  52.3%
+  + big delta + volume 2x, the NEXT bar's delta flips      694 |   +0.015  53.7% |   -0.018  50.3% |  49.1% /  51.9%
+
+=== 1h bars, 10 coins (move in the counter-trend direction, %, no fees) ===
+-- after a low (buy side)
+                                                             n |   1h avg 1h win |   4h avg 4h win | 4h win 1st/2nd half
+  all bars                                               42940 |   -0.004  49.2% |   -0.018  48.8% |  49.4% /  48.2%
+  new 20-bar extreme                                      3959 |   +0.041  54.7% |   +0.028  53.8% |  56.5% /  51.2%
+  + big delta (decile) with the move                       886 |   +0.069  58.0% |   +0.076  54.5% |  56.0% /  53.0%
+  + big delta + volume 2x                                  398 |   +0.083  57.0% |   +0.243  60.8% |  61.2% /  60.5%
+  + big delta + volume 2x + wick back                       61 |   +0.057  59.0% |   +0.014  52.5% |  57.7% /  48.6%
+  + delta against the move (absorption)                    640 |   -0.052  45.8% |   -0.138  47.5% |  50.8% /  44.6%
+  + weaker delta than the last extreme (divergence)        763 |   -0.024  48.4% |   -0.110  49.1% |  54.6% /  44.1%
+  + big delta + volume 2x, the NEXT bar's delta flips      175 |   -0.014  45.7% |   +0.292  61.1% |  65.0% /  57.9%
+-- after a high (sell side)
+                                                             n |   1h avg 1h win |   4h avg 4h win | 4h win 1st/2nd half
+  all bars                                               42940 |   +0.004  49.9% |   +0.018  50.7% |  50.0% /  51.4%
+  new 20-bar extreme                                      3825 |   -0.007  53.0% |   +0.037  55.4% |  56.7% /  54.0%
+  + big delta (decile) with the move                       765 |   -0.047  52.8% |   -0.041  55.0% |  54.1% /  56.5%
+  + big delta + volume 2x                                  282 |   -0.084  52.5% |   -0.083  54.3% |  54.0% /  54.7%
+  + big delta + volume 2x + wick back                       38 |   -0.033  47.4% |   -0.114  44.7% |  52.0% /  30.8%
+  + delta against the move (absorption)                   1130 |   -0.007  51.7% |   -0.028  51.9% |  54.1% /  50.0%
+  + weaker delta than the last extreme (divergence)        762 |   +0.024  53.3% |   +0.091  57.7% |  61.4% /  53.8%
+  + big delta + volume 2x, the NEXT bar's delta flips      166 |   -0.120  52.4% |   -0.026  51.8% |  53.0% /  50.0%
+
