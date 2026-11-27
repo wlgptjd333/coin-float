@@ -33,11 +33,11 @@ function candleStartOf(t) {
     while (lo <= hi) { var m = (lo + hi) >> 1; if (a[m].time <= t) { best = m; lo = m + 1; } else hi = m - 1; }
     return best >= 0 && t < (best + 1 < a.length ? a[best + 1].time : CF.nextOpen(a[best].time)) ? a[best].time : null;
 }
-// small text with a dark halo instead of a filled pill, so labels never hide the bars they describe
+// small text with a halo in the background colour instead of a filled pill, so labels never hide the bars they describe
 function tag(ctx, text, x, y, color, align, size) {
     ctx.font = '600 ' + (size || 10) + 'px -apple-system, Roboto, sans-serif';
     ctx.textAlign = align === 'right' ? 'right' : 'left'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.92)'; ctx.strokeText(text, x, y);
+    ctx.lineWidth = 3; ctx.strokeStyle = CF.C.halo; ctx.strokeText(text, x, y);
     ctx.fillStyle = color; ctx.fillText(text, x, y);
     ctx.textAlign = 'start';
 }
@@ -329,11 +329,11 @@ CF.registerSub('liq', {
     legend: function (i, c0, open) {
         var cs = CF.candles(), c = cs[i], b = c && liqBuckets()[c.time];
         // a candle without liquidations says so in one word instead of "롱 $0 숏 $0"
-        var h = '<span style="color:#848E9C">청산</span> ' + (b && (b.L || b.S) ? '<span style="color:' + DOWN() + '">롱 ' + fmtUsd(b.L) + '</span> <span style="color:' + UP() + '">숏 ' + fmtUsd(b.S) + '</span>' : '<span style="color:#848E9C">없음</span>');
+        var h = '<span style="color:' + CF.C.muted + '">청산</span> ' + (b && (b.L || b.S) ? '<span style="color:' + DOWN() + '">롱 ' + fmtUsd(b.L) + '</span> <span style="color:' + UP() + '">숏 ' + fmtUsd(b.S) + '</span>' : '<span style="color:' + CF.C.muted + '">없음</span>');
         // the running totals and the sources are a tap away (the tag opens): next to the other values they ran off the pane
         if (open) {
             var h1 = liqSum(3600), h4 = liqSum(14400);
-            h += ' <span style="color:#848E9C">· 1시간 롱 ' + fmtUsd(h1.L) + ' / 숏 ' + fmtUsd(h1.S) + ' · 4시간 롱 ' + fmtUsd(h4.L) + ' / 숏 ' + fmtUsd(h4.S) + ' · ' + liqSrcText() + '</span>';
+            h += ' <span style="color:' + CF.C.muted + '">· 1시간 롱 ' + fmtUsd(h1.L) + ' / 숏 ' + fmtUsd(h1.S) + ' · 4시간 롱 ' + fmtUsd(h4.L) + ' / 숏 ' + fmtUsd(h4.S) + ' · ' + liqSrcText() + '</span>';
         }
         return h;
     }
@@ -366,8 +366,8 @@ function paintLiqLabels(ctx, w, h) {
     liqItems(w, h, function (e, x, y, r, fade, cfg) {
         if (e.usd < cfg.labelMin) return;
         var t = fmtAmt(e.usd);
-        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(11,14,17,' + (0.75 * fade).toFixed(2) + ')'; ctx.strokeText(t, x, y);
-        ctx.fillStyle = 'rgba(255,255,255,' + (0.35 + 0.65 * fade).toFixed(2) + ')'; ctx.fillText(t, x, y);
+        ctx.lineWidth = 3; ctx.strokeStyle = CF.hexA(CF.C.bg, (0.8 * fade).toFixed(2)); ctx.strokeText(t, x, y);
+        ctx.fillStyle = CF.hexA(CF.C.inkHi, (0.35 + 0.65 * fade).toFixed(2)); ctx.fillText(t, x, y);
     });
     ctx.textAlign = 'start';
 }
@@ -547,8 +547,8 @@ function paintBigLabels(ctx, w, h) {
     bigItems(w, h, function (e, x, y, r, fade) {
         if (r < 9) return;
         var t = fmtAmt(e.usd);
-        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(11,14,17,' + (0.75 * fade).toFixed(2) + ')'; ctx.strokeText(t, x, y);
-        ctx.fillStyle = 'rgba(255,255,255,' + (0.45 + 0.55 * fade).toFixed(2) + ')'; ctx.fillText(t, x, y);
+        ctx.lineWidth = 3; ctx.strokeStyle = CF.hexA(CF.C.bg, (0.8 * fade).toFixed(2)); ctx.strokeText(t, x, y);
+        ctx.fillStyle = CF.hexA(CF.C.inkHi, (0.45 + 0.55 * fade).toFixed(2)); ctx.fillText(t, x, y);
     });
     ctx.textAlign = 'start';
 }
@@ -1043,16 +1043,16 @@ var depthOff = null;
 CF.registerFeature('depth', {
     legend: function () {
         var cfg = CF.S('depth'); if (!cfg.summary) return '';
-        var bands = bookBands(); if (!bands) return '<span style="color:#848E9C">호가 불러오는 중…</span>';
+        var bands = bookBands(); if (!bands) return '<span style="color:' + CF.C.muted + '">호가 불러오는 중…</span>';
         // one short line: bid / ask within ±0.5 % and ±2 % (green / red say which is which), who leads near the price.
         // The three-band version with words and exchange names wrapped onto two lines over the candles on a phone.
         var h = bands.filter(function (x, i) { return i !== 1; }).map(function (x, i) {
             var tot = x.a + x.b, share = tot ? x.b / tot : 0.5, buy = share >= 0.5;
-            return '<span style="color:#B2B5BE">±' + (x.pct * 100) + '%</span> <span style="color:' + UP() + '">' + fmtAmt(x.b) + '</span>/<span style="color:' + DOWN() + '">' + fmtAmt(x.a) + '</span>' +
+            return '<span style="color:' + CF.C.inkDim + '">±' + (x.pct * 100) + '%</span> <span style="color:' + UP() + '">' + fmtAmt(x.b) + '</span>/<span style="color:' + DOWN() + '">' + fmtAmt(x.a) + '</span>' +
                 (i === 0 ? ' <b style="color:' + (buy ? UP() : DOWN()) + '">' + (buy ? '매수' : '매도') + ' ' + Math.round(Math.max(share, 1 - share) * 100) + '%</b>' : '');
         }).join(' · ');
         var names = XB.names();
-        return h + (names.indexOf('+') < 0 && cfg.xex ? ' <span style="color:#848E9C">· ' + names + '만</span>' : '');
+        return h + (names.indexOf('+') < 0 && cfg.xex ? ' <span style="color:' + CF.C.muted + '">· ' + names + '만</span>' : '');
     },
     start: function () { walls.map.clear(); walls.step = 0; depthView.max = 1; depthView.t = 0; depthView.bins = null; Book.start(); depthOff = CF.layer('top', paintDepth); },
     stop: function () { if (depthOff) { depthOff(); depthOff = null; } walls.map.clear(); Book.stop(); }
@@ -1068,6 +1068,13 @@ var HEAT_PAL = {
     ice: [[0.04, 10, 25, 70, 60], [0.3, 25, 80, 190, 130], [0.6, 0, 185, 230, 180], [1, 235, 250, 255, 235]],
     mono: [[0.04, 255, 255, 255, 20], [1, 255, 255, 255, 215]]
 };
+// on a light background the palettes that end in white would hide the thickest orders: they end in a deep colour instead
+var HEAT_PAL_LIGHT = {
+    fire: [[0.04, 70, 110, 200, 60], [0.25, 40, 110, 220, 120], [0.5, 0, 165, 165, 165], [0.75, 235, 160, 0, 200], [1, 220, 40, 30, 235]],
+    ice: [[0.04, 140, 185, 235, 60], [0.3, 60, 130, 220, 130], [0.6, 20, 85, 195, 180], [1, 10, 35, 110, 235]],
+    mono: [[0.04, 30, 32, 45, 20], [1, 30, 32, 45, 215]]
+};
+function heatPal(cfg) { var set = CF.C.light ? HEAT_PAL_LIGHT : HEAT_PAL; return set[cfg.palette] || set.fire; }
 function heatInit(mid) {
     Heat.cv = document.createElement('canvas'); Heat.cv.width = Heat.COLS; Heat.cv.height = Heat.ROWS;
     Heat.cx = Heat.cv.getContext('2d', { willReadFrequently: true });
@@ -1091,7 +1098,7 @@ function heatPixel(q, pal, span, out, o) {
 }
 function heatRecolor() {
     if (!Heat.cx || !Heat.buf.length) return;
-    var cfg = CF.S('heat'), pal = HEAT_PAL[cfg.palette] || HEAT_PAL.fire, span = heatSpan(cfg.gain), rows = Heat.ROWS, n = Heat.buf.length;
+    var cfg = CF.S('heat'), pal = heatPal(cfg), span = heatSpan(cfg.gain), rows = Heat.ROWS, n = Heat.buf.length;
     var img = Heat.cx.createImageData(n, rows), c, r;
     for (c = 0; c < n; c++) for (r = 0; r < rows; r++) heatPixel(Heat.buf[c][rows - 1 - r], pal, span, img.data, (r * n + c) * 4);   // canvas row 0 = highest price
     Heat.cx.clearRect(0, 0, Heat.COLS, rows);
@@ -1122,7 +1129,7 @@ function heatSample() {
     if (nz.length) { nz.sort(function (a, b) { return a - b; }); var ref = nz[Math.floor(nz.length * 0.9)]; Heat.med = Heat.med ? Heat.med * 0.85 + ref * 0.15 : ref; }
     var base = Math.max(Heat.med || 1, 1), col = new Uint8Array(rows);
     for (i = 0; i < rows; i++) col[i] = Math.min(255, Math.round(vals[i] / base * 64));
-    var cfg = CF.S('heat'), pal = HEAT_PAL[cfg.palette] || HEAT_PAL.fire, span = heatSpan(cfg.gain), img = Heat.cx.createImageData(1, rows);
+    var cfg = CF.S('heat'), pal = heatPal(cfg), span = heatSpan(cfg.gain), img = Heat.cx.createImageData(1, rows);
     for (var r = 0; r < rows; r++) heatPixel(col[rows - 1 - r], pal, span, img.data, r * 4);
     if (Heat.cols >= Heat.COLS) { Heat.cx.drawImage(Heat.cv, -1, 0); Heat.t0 += Heat.dt; Heat.buf.shift(); }       // scroll left by one column
     else { if (Heat.cols === 0) Heat.t0 = Date.now() / 1000; Heat.cols++; }
@@ -1133,6 +1140,7 @@ function heatSample() {
 }
 function paintHeat(ctx, w, h) {
     if (!Heat.cv || !Heat.cols) return;
+    if (Heat.light !== CF.C.light) { Heat.light = CF.C.light; heatRecolor(); }   // theme switched between light and dark
     var cfg = CF.S('heat');
     var x0 = CF.xOf(Heat.t0), x1 = CF.xOf(Heat.t0 + Heat.cols * Heat.dt), y0 = CF.yOf(Heat.high), y1 = CF.yOf(Heat.low);
     if (x0 == null || x1 == null || y0 == null || y1 == null || x1 <= x0) return;
@@ -1147,14 +1155,14 @@ function paintHeat(ctx, w, h) {
     ctx.drawImage(Heat.cv, 0, 0, Heat.cols, Heat.ROWS, x0, y0, x1 - x0, y1 - y0);
     ctx.restore();
     if (cfg.legend && Date.now() - Heat.startedAt < 8000) {                 // color key for a few seconds after switching on
-        var pal = HEAT_PAL[cfg.palette] || HEAT_PAL.fire, gw = 64, gx = 28;      // clear of the rail's collapse handle
+        var pal = heatPal(cfg), gw = 64, gx = 28;      // clear of the rail's collapse handle
         var volTop = CF.ind.vol ? h * (1 - CF.S('vol').height / 100) : h, gy = Math.max(30, volTop - 22);
         var g = ctx.createLinearGradient(gx, 0, gx + gw, 0);
         g.addColorStop(0, 'rgba(0,0,0,0)');
         pal.forEach(function (st) { g.addColorStop(st[0], 'rgba(' + (st[1] | 0) + ',' + (st[2] | 0) + ',' + (st[3] | 0) + ',' + Math.min(1, st[4] / 255 + 0.15).toFixed(2) + ')'); });
-        ctx.fillStyle = 'rgba(19,23,34,.55)'; ctx.fillRect(gx - 2, gy - 2, gw + 4, 9);
+        ctx.fillStyle = CF.hexA(CF.C.bg, 0.55); ctx.fillRect(gx - 2, gy - 2, gw + 4, 9);
         ctx.fillStyle = g; ctx.fillRect(gx, gy, gw, 5);
-        tag(ctx, '호가 대기물량  적음 → 많음', gx, gy - 8, '#9aa3b2', 'left');
+        tag(ctx, '호가 대기물량  적음 → 많음', gx, gy - 8, CF.C.inkDim, 'left');
     }
 }
 // ---- heatmap history across pauses and restarts ------------------------------------------------------------------------
@@ -1371,7 +1379,7 @@ CF.registerFeature('bidask', {
         if (!ba.bid) return '';
         var cfg = CF.S('bidask'), h = '<span style="color:' + UP() + '">Bid ' + CF.fmtPrice(ba.bid) + ' ×' + CF.fmtVol(ba.bq) + '</span> <span style="color:' + DOWN() + '">Ask ' + CF.fmtPrice(ba.ask) + ' ×' + CF.fmtVol(ba.aq) + '</span>';
         if (cfg.spread) {
-            h += ' <span style="color:#B2B5BE">스프레드 ' + CF.fmtPrice(ba.ask - ba.bid) + '</span>';
+            h += ' <span style="color:' + CF.C.inkDim + '">스프레드 ' + CF.fmtPrice(ba.ask - ba.bid) + '</span>';
             var im = bookImbalance();
             if (im != null) h += ' <span style="color:' + (im >= 0.5 ? UP() : DOWN()) + '">호가 ' + (im >= 0.5 ? '매수' : '매도') + ' 우세 ' + Math.round(Math.max(im, 1 - im) * 100) + '%</span>';
         }
@@ -1464,10 +1472,10 @@ CF.registerSub('fund', {
     legend: function (i) {
         var c = CF.candles()[i]; if (!c) return '';
         var p = fundPoints().filter(function (x) { return x.time === c.time; })[0], ann = CF.S('fund').annual, per = 24 / fund.hours * 365;
-        var h = '<span style="color:#F0B90B">펀딩</span> ' + (p ? '<span class="' + (p.value >= 0 ? 'up' : 'down') + '">' + fmtRate(p.value) + '</span>' : '<span style="color:#848E9C">정산 없음</span>');
+        var h = '<span style="color:#F0B90B">펀딩</span> ' + (p ? '<span class="' + (p.value >= 0 ? 'up' : 'down') + '">' + fmtRate(p.value) + '</span>' : '<span style="color:' + CF.C.muted + '">정산 없음</span>');
         if (fund.pred != null && i === CF.candles().length - 1) {
             var left = Math.max(0, fund.next - Date.now()), hh = Math.floor(left / 3600000), mm = Math.floor(left % 3600000 / 60000);
-            h += ' <span style="color:#B2B5BE">예상 ' + fmtRate(fund.pred * 100) + (ann ? ' (연 ' + (fund.pred * 100 * per).toFixed(1) + '%)' : '') + ' · ' + hh + '시간 ' + mm + '분 후</span>';
+            h += ' <span style="color:' + CF.C.inkDim + '">예상 ' + fmtRate(fund.pred * 100) + (ann ? ' (연 ' + (fund.pred * 100 * per).toFixed(1) + '%)' : '') + ' · ' + hh + '시간 ' + mm + '분 후</span>';
         }
         return h;
     }
@@ -1523,7 +1531,7 @@ CF.registerSub('lsr', {
         if (cfg.acc && a) out.push('<span style="color:#F0B90B">롱숏 ' + a.v.toFixed(2) + (a.long ? ' (롱 ' + (a.long * 100).toFixed(1) + '%)' : '') + '</span>');
         if (cfg.top && t) out.push('<span style="color:#E040FB">상위 ' + t.v.toFixed(2) + '</span>');
         if (cfg.taker && k) out.push('<span style="color:#00BCD4">테이커 ' + k.v.toFixed(2) + '</span>');
-        return out.join(' ') || '<span style="color:#848E9C">롱숏 비율 (최근 30일만)</span>';
+        return out.join(' ') || '<span style="color:' + CF.C.muted + '">롱숏 비율 (최근 30일만)</span>';
     }
 });
 CF.registerFeature('lsr', {
@@ -1650,10 +1658,10 @@ CF.registerSub('bfx', {
     setData: function (o) { o.lng.setData(bfxSeriesData('long')); o.sht.setData(bfxSeriesData('short')); },
     legend: function (i) {
         var cs = CF.candles(), c = cs[i], cfg = CF.S('bfx'); if (!c) return '';
-        if (bfx.state === 'none') return '<span style="color:#848E9C">BFX 롱숏 · 이 코인은 비트파이넥스 마진 자료가 없어요</span>';
-        if (bfx.state !== 'ok') return '<span style="color:#848E9C">BFX 롱숏 · 불러오는 중…</span>';
+        if (bfx.state === 'none') return '<span style="color:' + CF.C.muted + '">BFX 롱숏 · 이 코인은 비트파이넥스 마진 자료가 없어요</span>';
+        if (bfx.state !== 'ok') return '<span style="color:' + CF.C.muted + '">BFX 롱숏 · 불러오는 중…</span>';
         var la = bfxArr('long'), sa = bfxArr('short'), l = la[i], sh = sa[i], base = CF.symbol().replace(/USDT$|USDC$/, ''), out = [];
-        if (l == null && sh == null) return '<span style="color:#848E9C">BFX 롱숏 · 이 구간은 자료가 없어요</span>';
+        if (l == null && sh == null) return '<span style="color:' + CF.C.muted + '">BFX 롱숏 · 이 구간은 자료가 없어요</span>';
         var span = +cfg.span || 24, pl = i >= span ? la[i - span] : null, ps = i >= span ? sa[i - span] : null;
         function fmtV(v) { var a = Math.abs(v); return (a >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : a >= 1e3 ? (v / 1e3).toFixed(1) + 'K' : v.toFixed(1)) + ' ' + base; }
         function part(v, prev, color, name) {

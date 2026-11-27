@@ -523,7 +523,7 @@ function legendOf(s, rt, ci) {
         var v = p.values[ci - rt.feedStart - (p.offset || 0)];
         if (typeof v === 'number' && isFinite(v)) vals.push('<span style="color:' + hex6((s.style && s.style[k] && s.style[k].c) || p.color) + '">' + fmt(v) + '</span>');
     });
-    return '<span style="color:#B2B5BE">' + esc(rt.title || titleOf(s)) + '</span>' + (vals.length ? ' ' + vals.join(' ') : '');
+    return '<span style="color:' + CF.C.inkDim + '">' + esc(rt.title || titleOf(s)) + '</span>' + (vals.length ? ' ' + vals.join(' ') : '');
 }
 // scripts drawn over the price get a chart legend row each (tap: hide · settings · remove); scripts in a pane of their
 // own are pane members and have the pane's tag instead

@@ -481,13 +481,13 @@ function paintFpText(ctx, w, h) {
             var y = CF.yOf((j + 0.5) * step); if (y == null || y < -10 || y > h + 10) continue;
             if (cfg.mode === 'split') {
                 ctx.textAlign = 'right'; ctx.font = (sImb ? '700 ' : '') + fs + 'px ui-monospace, monospace';
-                ctx.fillStyle = sImb ? DOWN() : 'rgba(209,212,220,.82)'; ctx.fillText(fmtQ(v[1]), x - 2, y);
+                ctx.fillStyle = sImb ? DOWN() : CF.hexA(CF.C.ink, 0.82); ctx.fillText(fmtQ(v[1]), x - 2, y);
                 ctx.textAlign = 'left'; ctx.font = (bImb ? '700 ' : '') + fs + 'px ui-monospace, monospace';
-                ctx.fillStyle = bImb ? UP() : 'rgba(209,212,220,.82)'; ctx.fillText(fmtQ(v[0]), x + 2, y);
+                ctx.fillStyle = bImb ? UP() : CF.hexA(CF.C.ink, 0.82); ctx.fillText(fmtQ(v[0]), x + 2, y);
             } else {
                 var val = cfg.mode === 'delta' ? v[0] - v[1] : v[0] + v[1];
                 ctx.textAlign = 'center'; ctx.font = ((bImb || sImb) ? '700 ' : '') + fs + 'px ui-monospace, monospace';
-                ctx.fillStyle = cfg.mode === 'delta' ? (val >= 0 ? UP() : DOWN()) : 'rgba(209,212,220,.85)';
+                ctx.fillStyle = cfg.mode === 'delta' ? (val >= 0 ? UP() : DOWN()) : CF.hexA(CF.C.ink, 0.85);
                 ctx.fillText((cfg.mode === 'delta' && val > 0 ? '+' : '') + fmtQ(val), x, y);
             }
         }
@@ -504,11 +504,11 @@ function paintFpText(ctx, w, h) {
             var yl = CF.yOf(Math.min(c.low, lo * step)); if (yl == null || yl > h - 12) continue;
             var d = cl.bq - cl.sq;
             ctx.font = '600 ' + Math.min(10, fs) + 'px ui-monospace, monospace'; ctx.textAlign = 'center';
-            ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.9)';
+            ctx.lineWidth = 3; ctx.strokeStyle = CF.C.halo;
             var t1 = (d >= 0 ? '+' : '') + fmtQ(d), t2 = fmtQ(cl.bq + cl.sq);
             ctx.strokeText(t1, x, yl + 9); ctx.fillStyle = d >= 0 ? UP() : DOWN(); ctx.fillText(t1, x, yl + 9);
-            ctx.strokeText(t2, x, yl + 20); ctx.fillStyle = 'rgba(178,181,190,.9)'; ctx.fillText(t2, x, yl + 20);
-            if (cl.cover < 0.98) { ctx.strokeText('일부', x, yl + 31); ctx.fillStyle = '#F0B90B'; ctx.fillText('일부', x, yl + 31); }
+            ctx.strokeText(t2, x, yl + 20); ctx.fillStyle = CF.hexA(CF.C.inkDim, 0.9); ctx.fillText(t2, x, yl + 20);
+            if (cl.cover < 0.98) { ctx.strokeText('일부', x, yl + 31); ctx.fillStyle = CF.C.goldInk; ctx.fillText('일부', x, yl + 31); }
         }
     }
     ctx.textAlign = 'start';
@@ -555,7 +555,7 @@ CF.registerFeature('fp', {
         if (bf.total) parts += ' · 체결 불러오는 중 ' + Math.floor(bf.done / bf.total * 100) + '%';
         else if (!fp.active) parts += ' · 확대하면 표시';
         else parts += ' · 칸 ' + CF.fmtPrice(fp.k * E.tick);
-        return '<span style="color:#B2B5BE">' + parts + '</span>';
+        return '<span style="color:' + CF.C.inkDim + '">' + parts + '</span>';
     },
     start: function () {
         fp.on = true; engineUse(true);
@@ -715,7 +715,7 @@ function domDraw(force) {
         }
         ctx.textAlign = 'left'; ctx.fillStyle = isAsk ? dn : up; ctx.font = (big ? '700 ' : '') + FS + 'px ui-monospace, monospace';
         ctx.fillText(price.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }), TW + 2, y + rowH / 2);
-        ctx.textAlign = 'right'; ctx.fillStyle = big ? '#FFFFFF' : 'rgba(209,212,220,.85)';
+        ctx.textAlign = 'right'; ctx.fillStyle = big ? CF.C.inkHi : CF.hexA(CF.C.ink, 0.85);
         if (qty > 0) ctx.fillText(fmtQ(qty), W - 4, y + rowH / 2);
         if (!ref || !cfg.chg) return;
         var was = ref.m.get(key) || 0, d = single - was;
@@ -739,10 +739,10 @@ function domDraw(force) {
     for (k = 0; k < n; k++) row(top + midH + k * rowH, (b0 - k) * step, bids[k], rb ? rb[k] : bids[k] - (k ? bids[k - 1] : 0), false, n + k);
     // middle: last trade price and the row step
     var last = dom.orders[0] || dom.pend, lp = last ? (last.p || last.pq / last.q) : (q.bid + q.ask) / 2;
-    ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.fillRect(0, top, W, midH);
-    ctx.textAlign = 'left'; ctx.font = '700 ' + (FS + 3) + 'px ui-monospace, monospace'; ctx.fillStyle = last ? (last.buy ? up : dn) : '#D1D4DC';
+    ctx.fillStyle = CF.hexA(CF.C.ink, 0.06); ctx.fillRect(0, top, W, midH);
+    ctx.textAlign = 'left'; ctx.font = '700 ' + (FS + 3) + 'px ui-monospace, monospace'; ctx.fillStyle = last ? (last.buy ? up : dn) : CF.C.ink;
     ctx.fillText(CF.fmtPrice(lp), 4, top + midH / 2);
-    if (W >= 130) { ctx.textAlign = 'right'; ctx.font = '10px ui-monospace, monospace'; ctx.fillStyle = 'rgba(178,181,190,.9)'; ctx.fillText('±' + CF.fmtPrice(step), W - 4, top + midH / 2); }
+    if (W >= 130) { ctx.textAlign = 'right'; ctx.font = '10px ui-monospace, monospace'; ctx.fillStyle = CF.hexA(CF.C.inkDim, 0.9); ctx.fillText('±' + CF.fmtPrice(step), W - 4, top + midH / 2); }
     if (!dom.snaps.length || nowMs - dom.snaps[dom.snaps.length - 1].t >= 700) {
         dom.snaps.push({ t: nowMs, step: step, m: cur });
         while (dom.snaps.length && nowMs - dom.snaps[0].t > 3500) dom.snaps.shift();
@@ -773,7 +773,7 @@ function tapeDraw(force) {
         var col = o.buy ? CF.C.up : CF.C.down, hi = o.usd >= big;
         html += '<div class="tp' + (hi ? ' big' : '') + '"' + (hi ? ' style="background:' + CF.hexA(col, 0.22) + '"' : '') + '><span class="t">' + fmtTime(o.T) + '</span>' +
             (o.src && o.src !== 'bn' ? '<span class="x">' + XLETTER[o.src] + '</span>' : '') + '<span class="p" style="color:' + col + '">' + CF.fmtPrice(o.p) +
-            '</span><span class="v" style="color:' + (hi ? '#fff' : col) + '">' + fmtUsdShort(o.usd) + '</span></div>';
+            '</span><span class="v" style="color:' + (hi ? CF.C.inkHi : col) + '">' + fmtUsdShort(o.usd) + '</span></div>';
     }
     dom.list.innerHTML = html || '<div class="tp-empty">체결을 기다리는 중…</div>';
 }
@@ -1041,7 +1041,7 @@ function xLegend() {
         var st = X.status[id], txt = st.state === 'live' ? '✓' : st.state === 'none' ? '없음' : st.state === 'mismatch' ? '제외' : '연결 중';
         parts.push(XNAME[id] + ' ' + txt);
     });
-    return parts.length ? '<span style="color:#B2B5BE">합산: ' + parts.join(' · ') + '</span>' : '';
+    return parts.length ? '<span style="color:' + CF.C.inkDim + '">합산: ' + parts.join(' · ') + '</span>' : '';
 }
 CF.registerFeature('xex', {
     legend: xLegend,

@@ -87,13 +87,13 @@ CF.registerSub('whale', {
     },
     legend: function (i, c, open) {
         var cfg = CF.S('whale'), bf = OF.E.bf, row = c && wh.byTime[c.time];
-        var h = '<span style="color:#848E9C">크기별 CVD</span>';
+        var h = '<span style="color:' + CF.C.muted + '">크기별 CVD</span>';
         if (row) {
             for (var k = CLS.length - 1; k >= 0; k--) if (cfg[CLS[k].k]) h += ' <span style="color:' + CLS[k].color + '">' + CLS[k].tag + ' ' + fmtS(row.cum[k]) + '</span>';
-        } else if (!wh.rows.length) h += ' <span style="color:#848E9C">' + (bf.total ? '체결 불러오는 중 ' + Math.floor(bf.done / bf.total * 100) + '%' : CF.secs() > 3600 ? '1분~15분봉에서 보세요' : '체결 모으는 중') + '</span>';
+        } else if (!wh.rows.length) h += ' <span style="color:' + CF.C.muted + '">' + (bf.total ? '체결 불러오는 중 ' + Math.floor(bf.done / bf.total * 100) + '%' : CF.secs() > 3600 ? '1분~15분봉에서 보세요' : '체결 모으는 중') + '</span>';
         if (open) {
             var span = wh.rows.length ? (Date.now() / 1000 - wh.rows[0].time) / 3600 : 0;
-            h += ' <span style="color:#848E9C">· 최근 ' + (span >= 1 ? span.toFixed(1) + '시간' : Math.round(span * 60) + '분') + (bf.total ? ' · 과거 채우는 중 ' + Math.floor(bf.done / bf.total * 100) + '%' : '') + ' · 시장가 주문 금액별 누적 (매수 − 매도)</span>';
+            h += ' <span style="color:' + CF.C.muted + '">· 최근 ' + (span >= 1 ? span.toFixed(1) + '시간' : Math.round(span * 60) + '분') + (bf.total ? ' · 과거 채우는 중 ' + Math.floor(bf.done / bf.total * 100) + '%' : '') + ' · 시장가 주문 금액별 누적 (매수 − 매도)</span>';
         }
         return h;
     }

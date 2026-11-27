@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.47.0] - 2026-11-27
+
+### Added
+- **Light themes** (차트 설정 → 화면 → 테마):
+  - **Catppuccin Latte**, from that open palette (MIT): base `#EFF1F5`, text `#4C4F69`, blue accent, green / red candles.
+  - **라이트**: a plain white chart.
+  On a light theme, the labels drawn on the chart switch to dark text with a light outline. This covers price tags, high / low, POC, walls, liquidations, the footprint, the bar stats rows and the position tool.
+  The sheets, menus, inputs and switches follow the theme too.
+- **직접 지정** now keeps a light background as a light theme, instead of darkening it. A mid grey is pushed to the nearer side so the text stays readable.
+
+### Changed
+- Every label colour on the chart now comes from the theme (`C.ink`, `C.inkDim`, `C.inkHi`, `C.halo`, `C.tag`, `C.crossBg`, `C.goldInk`, shared with the add-on files through `CF.C`). The page's remaining fixed light-on-dark colours are now CSS variables (`--strong --dim --faint --field --track --fg-rgb --bg-rgb --panel-rgb --line-rgb`).
+- On a light theme:
+  - The heatmap uses palettes that end in a deep colour, so the thickest orders stay visible. Switching between light and dark recolours its history.
+  - White lines (EMA 200, white drawings) are drawn in the theme's text colour.
+  - The crosshair price and time tags are dark.
+  - Indicator colours are unchanged.
+
 ## [1.46.0] - 2026-11-27
 
 ### Added

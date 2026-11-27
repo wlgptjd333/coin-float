@@ -13,9 +13,9 @@ var CF = window.CF;
 if (!CF) return;
 var GOLD = '#F0B90B';
 function pctS(v, d) { return (v >= 0 ? '+' : '') + v.toFixed(d == null ? 2 : d) + '%'; }
-function col(v) { return v > 0 ? CF.C.up : v < 0 ? CF.C.down : '#B2B5BE'; }
+function col(v) { return v > 0 ? CF.C.up : v < 0 ? CF.C.down : CF.C.inkDim; }
 function span(c, t) { return '<span style="color:' + c + '">' + t + '</span>'; }
-function muted(t) { return span('#848E9C', t); }
+function muted(t) { return span(CF.C.muted, t); }
 // bars that make up an hour and four hours on this chart (at least one)
 function horizons() { var s = CF.secs(); return [Math.max(1, Math.round(3600 / s)), Math.max(1, Math.round(14400 / s))]; }
 function hName(k) { var s = CF.secs(); return s <= 3600 ? (k ? '4h' : '1h') : (k ? '4봉' : '1봉'); }
@@ -197,7 +197,7 @@ function lvPaint(ctx, w, h) {
         if (ty == null) return;
         used.push(ty);
         ctx.font = '600 10px -apple-system, "Segoe UI", Roboto, sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.92)'; ctx.strokeText(l.n, w - 6, ty);
+        ctx.lineWidth = 3; ctx.strokeStyle = CF.C.halo; ctx.strokeText(l.n, w - 6, ty);
         ctx.fillStyle = CF.hexA(l.col, 0.95); ctx.fillText(l.n, w - 6, ty);
         ctx.textAlign = 'start';
     });
@@ -360,8 +360,8 @@ function bsDraw(ctx, w, h) {
     ctx.font = '600 ' + fs + 'px -apple-system, "Segoe UI", Roboto, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
     list.forEach(function (r, k) {
         var y = top + Math.round((k + 0.5) * rh);
-        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.92)'; ctx.strokeText(r.n, 5, y);
-        ctx.fillStyle = 'rgba(209,212,220,.9)'; ctx.fillText(r.n, 5, y);
+        ctx.lineWidth = 3; ctx.strokeStyle = CF.C.halo; ctx.strokeText(r.n, 5, y);
+        ctx.fillStyle = CF.hexA(CF.C.ink, 0.9); ctx.fillText(r.n, 5, y);
     });
 }
 // the pane is a hidden, flat series (it keeps the pane on the candles' time scale) with the cells drawn over it
@@ -393,7 +393,7 @@ CF.registerSub('bstat', {
     },
     legend: function (i, c, open) {
         var rows = bsData(), r = rows[i], cfg = CF.S('bstat'), parts = [];
-        if (!r) return span('#848E9C', '봉 통계');
+        if (!r) return span(CF.C.muted, '봉 통계');
         if (cfg.buy && r.buy != null) parts.push(span(CF.C.up, '매수 $' + CF.fmtVol(r.buy)));
         if (cfg.sell && r.sell != null) parts.push(span(CF.C.down, '매도 $' + CF.fmtVol(r.sell)));
         if ((cfg.delta || cfg.dpct) && r.delta != null) parts.push(span(col(r.delta), '델타 ' + usdS(r.delta) + ' (' + pctS(r.dpct, 0) + ')'));
@@ -401,7 +401,7 @@ CF.registerSub('bstat', {
         if (cfg.cnt && r.cnt != null) parts.push(span(BS_CNT, '체결 ' + fmtCnt(r.cnt)));
         if (cfg.liq && (r.liqL || r.liqS)) parts.push(muted('청산') + ' ' + span(CF.C.down, '롱 $' + CF.fmtVol(r.liqL)) + ' ' + span(CF.C.up, '숏 $' + CF.fmtVol(r.liqS)));
         if (cfg.oi && r.oi != null) parts.push(span(col(r.oi), 'OI ' + pctS(r.oi)));
-        var h = span('#848E9C', '봉 통계') + (parts.length ? ' ' + parts.join(' ') : '');
+        var h = span(CF.C.muted, '봉 통계') + (parts.length ? ' ' + parts.join(' ') : '');
         if (open) h += ' ' + muted('· 칸이 진할수록 이 코인 · 봉 주기에서 큰 값' + (CF.venue() !== 'bn' ? ' · 이 거래소는 매수 · 매도 구분과 OI 기록이 없어 체결 수 · 청산만' : ''));
         return h;
     }
