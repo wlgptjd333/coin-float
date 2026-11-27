@@ -106,10 +106,10 @@ defineSettings('chart', {
         { k: 'bottom', t: 'range', label: '아래쪽 여백', def: 20, min: 0, max: 50, step: 1, unit: '%' },
         { k: 'lastLine', t: 'bool', label: '현재가 선 · 라벨', def: true },
         { t: 'sec', label: '화면' },
-        { k: 'theme', t: 'themes', label: '테마', def: 'dark', opts: [['dark', '기본'], ['black', '블랙'], ['mocha', 'Catppuccin Mocha'], ['tokyo', 'Tokyo Night'], ['nord', 'Nord'], ['onedark', 'One Dark'], ['gruvbox', 'Gruvbox Dark'], ['dracula', 'Dracula'], ['custom', '직접 지정']] },
-        { k: 'tBg', t: 'color', label: '배경 색 (어두운 색으로)', def: '#16161E', showIf: function (c) { return c.theme === 'custom'; } },
+        { k: 'theme', t: 'themes', label: '테마', def: 'dark', opts: [['dark', '기본'], ['black', '블랙'], ['mocha', 'Catppuccin Mocha'], ['tokyo', 'Tokyo Night'], ['nord', 'Nord'], ['onedark', 'One Dark'], ['gruvbox', 'Gruvbox Dark'], ['dracula', 'Dracula'], ['latte', 'Catppuccin Latte'], ['light', '라이트'], ['custom', '직접 지정']] },
+        { k: 'tBg', t: 'color', label: '배경 색', def: '#16161E', showIf: function (c) { return c.theme === 'custom'; } },
         { k: 'tAccent', t: 'color', label: '강조 색 (선 차트 · 선택 표시)', def: '#7AA2F7', showIf: function (c) { return c.theme === 'custom'; } },
-        { t: 'note', label: '테마를 누르면 캔들 색도 그 테마의 상승 · 하락 색으로 바뀝니다(캔들 색이 빨강 / 파랑이면 그대로). 직접 지정은 배경 · 강조 색만 고르면 나머지(창 · 선 · 글자 색)는 맞춰 만들어지고, 상승 · 하락 색은 위 "상승 / 하락 색"에서 정합니다. 밝은(라이트) 테마는 아직 없어요.' },
+        { t: 'note', label: '테마를 누르면 캔들 색도 그 테마의 상승 · 하락 색으로 바뀝니다(캔들 색이 빨강 / 파랑이면 그대로). 직접 지정은 배경 · 강조 색만 고르면 나머지(창 · 선 · 글자 색)는 맞춰 만들어지고, 상승 · 하락 색은 위 "상승 / 하락 색"에서 정합니다. 밝은 배경 색을 고르면 라이트 테마(어두운 글자), 어두운 색을 고르면 다크 테마로 만들어져요.' },
         { k: 'grid', t: 'sel', label: '격자', def: 'both', opts: [['both', '가로·세로'], ['horz', '가로만'], ['none', '없음']] },
         { k: 'cross', t: 'sel', label: '십자선', sub: '길게 누르면 나타나고, 끌어서 옮기고, 한 번 더 탭하면 사라져요', def: 'free', opts: [['free', '자유 (TradingView 기본)'], ['magnet', '캔들에 붙이기']] },
         { k: 'tz', t: 'sel', label: '시간대', def: 'local', opts: [['local', '휴대폰 시간'], ['utc', 'UTC']] },
@@ -336,7 +336,8 @@ function crosshairTimeFmt(time) {
 var LW = window.LightweightCharts;
 // Themes: the page's own dark look plus dark themes built from well-known open palettes (Catppuccin, Tokyo Night, Nord,
 // One Dark, Gruvbox, Dracula; all MIT-licensed). Each sets the chart, the panels and sheets (CSS variables) and offers its
-// own rising / falling colours. The labels drawn on the chart are light text with a dark halo, so only dark themes for now.
+// own rising / falling colours. Light themes (light: true) turn the labels drawn on the chart into dark text with a light
+// halo: every canvas label takes its colours from C.ink / C.inkDim / C.halo, set in computeColors().
 var THEMES = {
     dark: { bg: '#131722', panel: '#1E222D', sheet: '#1C2029', line: '#2A2E39', grid: '#1E222D', text: '#D1D4DC', muted: '#848E9C', accent: '#2962FF', up: '#0ECB81', down: '#F6465D' },
     black: { bg: '#000000', panel: '#1E222D', sheet: '#1C2029', line: '#2A2E39', grid: '#171b24', text: '#D1D4DC', muted: '#848E9C', accent: '#2962FF', up: '#0ECB81', down: '#F6465D' },
@@ -345,7 +346,9 @@ var THEMES = {
     nord: { bg: '#2E3440', panel: '#3B4252', sheet: '#343A47', line: '#4C566A', grid: '#353B49', text: '#E5E9F0', muted: '#9AA5B8', accent: '#88C0D0', up: '#A3BE8C', down: '#BF616A' },
     onedark: { bg: '#282C34', panel: '#2F343E', sheet: '#2C313A', line: '#3E4451', grid: '#2E333C', text: '#ABB2BF', muted: '#7F848E', accent: '#61AFEF', up: '#98C379', down: '#E06C75' },
     gruvbox: { bg: '#282828', panel: '#3C3836', sheet: '#32302F', line: '#504945', grid: '#302E2D', text: '#EBDBB2', muted: '#A89984', accent: '#83A598', up: '#B8BB26', down: '#FB4934' },
-    dracula: { bg: '#282A36', panel: '#343746', sheet: '#2E303E', line: '#44475A', grid: '#2D2F3C', text: '#F8F8F2', muted: '#8B93B8', accent: '#BD93F9', up: '#50FA7B', down: '#FF5555' }
+    dracula: { bg: '#282A36', panel: '#343746', sheet: '#2E303E', line: '#44475A', grid: '#2D2F3C', text: '#F8F8F2', muted: '#8B93B8', accent: '#BD93F9', up: '#50FA7B', down: '#FF5555' },
+    latte: { light: true, bg: '#EFF1F5', panel: '#E6E9EF', sheet: '#E9ECF1', line: '#CCD0DA', grid: '#E1E4EB', text: '#4C4F69', muted: '#6C6F85', accent: '#1E66F5', up: '#40A02B', down: '#D20F39' },
+    light: { light: true, bg: '#FFFFFF', panel: '#F3F4F7', sheet: '#F7F8FA', line: '#E0E3EB', grid: '#F0F3FA', text: '#131722', muted: '#6A6D78', accent: '#2962FF', up: '#089981', down: '#F23645' }
 };
 function mixHex(a, b, t) {
     var p = function (h, i) { return parseInt(h.slice(1 + i * 2, 3 + i * 2), 16); }, out = '#';
@@ -354,30 +357,54 @@ function mixHex(a, b, t) {
 }
 function lum(h) { var p = function (i) { return parseInt(h.slice(1 + i * 2, 3 + i * 2), 16) / 255; }; return 0.2126 * p(0) + 0.7152 * p(1) + 0.0722 * p(2); }
 function hexOk(h) { return typeof h === 'string' && /^#[0-9a-f]{6}$/i.test(h); }
-// "직접 지정": panels, lines and text made from the chosen background; a light colour is darkened, since the chart's own
-// labels need a dark background
+// "직접 지정": panels, lines and text made from the chosen background. A dark colour gives a dark theme, a light one a
+// light theme; a middle grey is pushed to whichever side it is nearer, so the text stays readable
 function customTheme(bg, accent) {
     bg = hexOk(bg) ? bg : '#16161E'; accent = hexOk(accent) ? accent : '#7AA2F7';
-    if (lum(bg) > 0.22) bg = mixHex(bg, '#000000', 1 - 0.22 / lum(bg));
+    var L = lum(bg);
+    if (L > 0.36) {
+        if (L < 0.62) bg = mixHex(bg, '#FFFFFF', (0.62 - L) / (1 - L));
+        return { light: true, bg: bg, panel: mixHex(bg, '#000000', 0.035), sheet: mixHex(bg, '#000000', 0.02), line: mixHex(bg, '#000000', 0.12), grid: mixHex(bg, '#000000', 0.045),
+            text: '#1F232C', muted: '#666B78', accent: accent, up: '#089981', down: '#F23645' };
+    }
+    if (L > 0.22) bg = mixHex(bg, '#000000', 1 - 0.22 / L);
     return { bg: bg, panel: mixHex(bg, '#FFFFFF', 0.07), sheet: mixHex(bg, '#FFFFFF', 0.045), line: mixHex(bg, '#FFFFFF', 0.13), grid: mixHex(bg, '#FFFFFF', 0.045),
         text: '#D1D4DC', muted: '#8C93A1', accent: accent, up: '#0ECB81', down: '#F6465D' };
 }
 function themeOf(c) { return c.theme === 'custom' ? customTheme(c.tBg, c.tAccent) : THEMES[c.theme] || THEMES.dark; }
+function rgbOf(h) { var n = parseInt(h.slice(1), 16); return (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255); }
+// On a light theme a white line (the default EMA 200, a white drawing) would vanish: draw it in the theme's text colour
+function ink(c) { return C.light && typeof c === 'string' && /^#(fff|ffffff|e7eaee)$/i.test(c) ? C.ink : c; }
+// text on a coloured tag: dark on light colours, white on dark ones
+function fgOn(c) { return hexOk(c) && lum(c) < 0.33 ? '#FFFFFF' : '#1a1a1a'; }
 function computeColors() {
-    var c = S('chart'), th = themeOf(c);
+    var c = S('chart'), th = themeOf(c), light = !!th.light;
     C.up = c.palette === 'kr' ? '#F6465D' : c.palette === 'custom' ? c.up : c.palette === 'theme' ? th.up : '#0ECB81';
     C.down = c.palette === 'kr' ? '#3B82F6' : c.palette === 'custom' ? c.down : c.palette === 'theme' ? th.down : '#F6465D';
     C.bg = th.bg; C.grid = th.grid; C.border = th.line; C.text = th.muted; C.accent = th.accent;
+    // label colours for everything drawn on the canvases (here and in the add-on files, through CF.C)
+    C.light = light; C.panel = th.panel; C.muted = th.muted;
+    C.ink = th.text;                                                     // label text
+    C.inkDim = mixHex(th.text, th.muted, 0.45);                          // secondary label text (was #B2B5BE)
+    C.inkHi = light ? mixHex(th.text, '#000000', 0.35) : '#FFFFFF';       // emphasised text (was white)
+    C.halo = hexA(th.bg, 0.9);                                           // outline behind label text, so it reads over candles
+    C.tag = hexA(th.panel, 0.92);                                        // background of boxed labels
+    C.crossBg = light ? th.text : th.line;                               // crosshair price / time tags
+    C.goldInk = light ? '#A87A00' : '#F0B90B';                           // gold text (POC): yellow is too faint on white
     var st = document.documentElement.style;
-    [['--bg', th.bg], ['--panel', th.panel], ['--sheet', th.sheet], ['--line', th.line], ['--text', th.text], ['--muted', th.muted], ['--accent', th.accent], ['--up', C.up], ['--down', C.down]]
+    [['--bg', th.bg], ['--panel', th.panel], ['--sheet', th.sheet], ['--line', th.line], ['--text', th.text], ['--muted', th.muted], ['--accent', th.accent], ['--up', C.up], ['--down', C.down],
+        ['--strong', C.inkHi], ['--dim', C.inkDim], ['--faint', light ? mixHex(th.muted, th.bg, 0.25) : '#5d6574'],
+        ['--field', light ? mixHex(th.bg, '#FFFFFF', 0.7) : mixHex(th.bg, '#000000', 0.12)], ['--track', light ? mixHex(th.bg, th.text, 0.22) : '#3A3F4B'],
+        ['--fg-rgb', light ? rgbOf(th.text) : '255,255,255'], ['--bg-rgb', rgbOf(th.bg)], ['--panel-rgb', rgbOf(th.panel)], ['--line-rgb', rgbOf(th.line)]]
         .forEach(function (p) { st.setProperty(p[0], p[1]); });
+    document.documentElement.classList.toggle('light', light);
 }
 computeColors();
 var chart = LW.createChart($('chart'), {
     autoSize: true,
     layout: { background: { type: 'solid', color: C.bg }, textColor: C.text, fontSize: 11, attributionLogo: false, panes: { separatorColor: C.border, separatorHoverColor: 'rgba(41,98,255,.35)' } },
     grid: { vertLines: { color: C.grid, visible: S('chart').grid === 'both' }, horzLines: { color: C.grid, visible: S('chart').grid !== 'none' } },
-    crosshair: { mode: S('chart').cross === 'magnet' ? LW.CrosshairMode.Magnet : LW.CrosshairMode.Normal, vertLine: { labelBackgroundColor: '#2A2E39' }, horzLine: { labelBackgroundColor: '#2A2E39' } },
+    crosshair: { mode: S('chart').cross === 'magnet' ? LW.CrosshairMode.Magnet : LW.CrosshairMode.Normal, vertLine: { labelBackgroundColor: C.crossBg }, horzLine: { labelBackgroundColor: C.crossBg } },
     rightPriceScale: { borderColor: C.border, scaleMargins: { top: S('chart').top / 100, bottom: S('chart').bottom / 100 } },
     timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 8, minBarSpacing: MIN_BAR_SPACING, maxBarSpacing: MAX_BAR_SPACING, tickMarkFormatter: tickFmt },
     localization: { timeFormatter: crosshairTimeFmt },
@@ -1006,8 +1033,8 @@ SUBS.cvd = {
     },
     legend: function (i) {
         if (D.cvd[i] == null) return '';
-        var h = '<span style="color:' + S('cvd').color + '">CVD ' + signedVol(D.cvd[i]) + '</span>' + (D.cvdX[i] ? ' <span style="color:#B2B5BE">합산</span>' : '');
-        if (spotOn()) h += spot.none ? ' <span style="color:#848E9C">현물 없음</span>' : spot.vals && spot.vals[i] != null ? ' <span style="color:' + S('cvd').spotColor + '">현물 ' + signedVol(spot.vals[i]) + '</span>' : '';
+        var h = '<span style="color:' + S('cvd').color + '">CVD ' + signedVol(D.cvd[i]) + '</span>' + (D.cvdX[i] ? ' <span style="color:' + C.inkDim + '">합산</span>' : '');
+        if (spotOn()) h += spot.none ? ' <span style="color:' + C.muted + '">현물 없음</span>' : spot.vals && spot.vals[i] != null ? ' <span style="color:' + S('cvd').spotColor + '">현물 ' + signedVol(spot.vals[i]) + '</span>' : '';
         return h + ' <span class="' + (D.delta[i] >= 0 ? 'up' : 'down') + '">Δ ' + signedVol(D.delta[i]) + '</span>';
     }
 };
@@ -1125,7 +1152,7 @@ function paneTagColor(key) {
         if (key === 'oi') return S('oi').color;
         if (key === 'liq') return C.down;
     } catch (e) { /* schema not registered yet */ }
-    return '#B2B5BE';
+    return C.inkDim;
 }
 var tagsRaf = 0;
 function scheduleTags() { if (tagsRaf) return; tagsRaf = requestAnimationFrame(function () { tagsRaf = 0; layoutPaneTags(); }); }
@@ -1236,8 +1263,8 @@ function applyIndicators() {
 function applyStyles() {
     volSeries.priceScale().applyOptions({ scaleMargins: { top: 1 - S('vol').height / 100, bottom: 0 } });
     var m = S('ma'), e = S('ema'), b = S('boll');
-    maS.forEach(function (s, k) { var l = m.lines[k]; s.applyOptions({ color: l.c, lineWidth: l.w, lastValueVisible: m.labels }); });
-    emaS.forEach(function (s, k) { var l = e.lines[k]; s.applyOptions({ color: l.c, lineWidth: l.w }); });
+    maS.forEach(function (s, k) { var l = m.lines[k]; s.applyOptions({ color: ink(l.c), lineWidth: l.w, lastValueVisible: m.labels }); });
+    emaS.forEach(function (s, k) { var l = e.lines[k]; s.applyOptions({ color: ink(l.c), lineWidth: l.w }); });
     bUpS.applyOptions({ color: b.cBand, lineWidth: b.width }); bLoS.applyOptions({ color: b.cBand, lineWidth: b.width });
     bMidS.applyOptions({ color: b.cMid, lineWidth: b.width });
     volMaS.applyOptions({ color: S('vol').maColor });
@@ -1271,7 +1298,7 @@ function applyChartCfg() {
         layout: { background: { type: 'solid', color: C.bg }, textColor: C.text, panes: { separatorColor: C.border } },
         rightPriceScale: { borderColor: C.border }, timeScale: { borderColor: C.border },
         grid: { vertLines: { color: C.grid, visible: c.grid === 'both' }, horzLines: { color: C.grid, visible: c.grid !== 'none' } },
-        crosshair: { mode: c.cross === 'magnet' ? LW.CrosshairMode.Magnet : LW.CrosshairMode.Normal },
+        crosshair: { mode: c.cross === 'magnet' ? LW.CrosshairMode.Magnet : LW.CrosshairMode.Normal, vertLine: { labelBackgroundColor: C.crossBg }, horzLine: { labelBackgroundColor: C.crossBg } },
         handleScroll: { vertTouchDrag: c.vdrag }
     });
     chart.priceScale('right').applyOptions({
@@ -1604,12 +1631,12 @@ function paint(ctx, d, selected, w, h) {
         ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(0, a.y); ctx.lineTo(w, a.y); ctx.stroke();
         if (d.lbl !== false) {
             ctx.setLineDash([]);
-            if (d.lpos === 'left') label(ctx, fmtPrice(d.a.price), 4, a.y - 11, col, '#1a1a1a'); else label(ctx, fmtPrice(d.a.price), w - 4, a.y - 11, col, '#1a1a1a', 'right');
+            if (d.lpos === 'left') label(ctx, fmtPrice(d.a.price), 4, a.y - 11, col, fgOn(col)); else label(ctx, fmtPrice(d.a.price), w - 4, a.y - 11, col, fgOn(col), 'right');
         }
         if (selected) handle(ctx, { x: Math.min(40, w / 3), y: a.y });
     } else if (d.type === 'vline') {
         ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(a.x, 0); ctx.lineTo(a.x, h); ctx.stroke();
-        if (d.lbl !== false) { ctx.setLineDash([]); label(ctx, crosshairTimeFmt(d.a.time), a.x + 4, h - 12, col, '#1a1a1a'); }
+        if (d.lbl !== false) { ctx.setLineDash([]); label(ctx, crosshairTimeFmt(d.a.time), a.x + 4, h - 12, col, fgOn(col)); }
         if (selected) handle(ctx, { x: a.x, y: Math.max(20, h - 40) });
     } else if (d.type === 'trend' && b) {
         var tp = trendEnds(d, a, b, w, h);
@@ -1618,7 +1645,7 @@ function paint(ctx, d, selected, w, h) {
             ctx.setLineDash([]);
             var st = moveText(d); ctx.font = '600 10.5px -apple-system, Roboto, sans-serif';
             var sw = ctx.measureText(st).width + 10, sy = b.y + (d.b.price >= d.a.price ? -14 : 14);
-            label(ctx, st, Math.max(2, Math.min(w - sw - 2, b.x + 6)), Math.max(11, Math.min(h - 11, sy)), hexA(col, 0.9), '#0b0e11');
+            label(ctx, st, Math.max(2, Math.min(w - sw - 2, b.x + 6)), Math.max(11, Math.min(h - 11, sy)), hexA(col, 0.9), fgOn(col));
         }
         if (selected) { handle(ctx, a); handle(ctx, b); }
     } else if (d.type === 'ray' && b) {
@@ -1645,9 +1672,9 @@ function paint(ctx, d, selected, w, h) {
         if (f.lvl !== 'off' || f.price) rows.forEach(function (r) {
             var lt = f.lvl === 'val' ? fmtLevel(r.v) : f.lvl === 'pct' ? fmtLevel(r.v * 100) + '%' : '';
             var t = lt + (f.price ? (lt ? '(' + fmtPrice(r.price) + ')' : fmtPrice(r.price)) : '');
-            var fg = r.c.toUpperCase() === '#787B86' ? '#B2B5BE' : r.c;
+            var fg = r.c.toUpperCase() === '#787B86' ? C.inkDim : ink(r.c);
             // labels stay on screen when the drawing starts left of it / ends right of it
-            if (f.lpos === 'right') label(ctx, t, Math.min(fr.x2, w) - 2, r.y - 10, 'rgba(19,23,34,.85)', fg, 'right'); else label(ctx, t, Math.max(fr.x1, 0) + 2, r.y - 10, 'rgba(19,23,34,.85)', fg);
+            if (f.lpos === 'right') label(ctx, t, Math.min(fr.x2, w) - 2, r.y - 10, C.halo, fg, 'right'); else label(ctx, t, Math.max(fr.x1, 0) + 2, r.y - 10, C.halo, fg);
         });
         var cpt = d.type === 'fibext' && d.c ? px(d.c) : null;
         if (f.trend) {
@@ -1657,7 +1684,7 @@ function paint(ctx, d, selected, w, h) {
         if (selected) { handle(ctx, a); handle(ctx, b); if (cpt) handle(ctx, cpt); }
     } else if (d.type === 'hray') {
         ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(w, a.y); ctx.stroke();
-        if (d.lbl !== false) { ctx.setLineDash([]); label(ctx, fmtPrice(d.a.price), w - 4, a.y - 11, col, '#1a1a1a', 'right'); }
+        if (d.lbl !== false) { ctx.setLineDash([]); label(ctx, fmtPrice(d.a.price), w - 4, a.y - 11, col, fgOn(col), 'right'); }
         if (selected) handle(ctx, a);
     } else if (d.type === 'arrow' && b) {
         ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
@@ -1696,7 +1723,7 @@ function paint(ctx, d, selected, w, h) {
         var cx = mx + mw / 2, cy = up ? my - 14 : my + mh + 14;
         ctx.font = '600 10.5px -apple-system, Roboto, sans-serif';
         var tw = ctx.measureText(txt).width + 12, lx = Math.max(2, Math.min(w - tw - 2, cx - tw / 2));
-        label(ctx, txt, lx, Math.max(11, Math.min(h - 11, cy)), col, '#0b0e11');
+        label(ctx, txt, lx, Math.max(11, Math.min(h - 11, cy)), col, fgOn(col));
     }
 }
 // ---- volume profile -----------------------------------------------------------------------------------------
@@ -1759,7 +1786,7 @@ addLayer('bottom', function (ctx, w, h) {
             ctx.fillStyle = hexA(C.up, al); ctx.fillRect(right ? w - len : 0, yTop, lb, hh);
             ctx.fillStyle = hexA(C.down, al); ctx.fillRect(right ? w - len + lb : lb, yTop, len - lb, hh);
         } else {
-            ctx.fillStyle = 'rgba(178,181,190,' + al.toFixed(3) + ')'; ctx.fillRect(right ? w - len : 0, yTop, len, hh);
+            ctx.fillStyle = hexA(C.inkDim, al.toFixed(3)); ctx.fillRect(right ? w - len : 0, yTop, len, hh);
         }
     }
     if (c.poc) {
@@ -1768,9 +1795,9 @@ addLayer('bottom', function (ctx, w, h) {
             ctx.strokeStyle = 'rgba(240,185,11,.85)'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
             ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke(); ctx.setLineDash([]);
             ctx.font = '600 10px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle';
-            ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.9)'; ctx.textAlign = right ? 'right' : 'left';
+            ctx.lineWidth = 3; ctx.strokeStyle = C.halo; ctx.textAlign = right ? 'right' : 'left';
             var tx = right ? w - maxW - 6 : maxW + 6;
-            ctx.strokeText('POC', tx, py - 8); ctx.fillStyle = '#F0B90B'; ctx.fillText('POC', tx, py - 8); ctx.textAlign = 'start';
+            ctx.strokeText('POC', tx, py - 8); ctx.fillStyle = C.goldInk; ctx.fillText('POC', tx, py - 8); ctx.textAlign = 'start';
             CF.pocY = py - 8;
         }
     }
@@ -1782,7 +1809,7 @@ function rayEnd(a, b, w, h) {
     var k = 4 * (w + h) / Math.max(1e-6, Math.hypot(dx, dy));
     return { x: a.x + dx * k, y: a.y + dy * k };
 }
-function drawingColor(d) { return d.col || (d.type === 'hline' || d.type === 'hray' ? C.gold : d.type === 'avwap' ? '#E040FB' : C.accent); }
+function drawingColor(d) { return ink(d.col) || (d.type === 'hline' || d.type === 'hray' ? C.gold : d.type === 'avwap' ? '#E040FB' : C.accent); }
 // ---- tools added in 1.23: trend-based Fibonacci extension, anchored VWAP, fixed range volume profile -----------------
 function isFib(d) { return d.type === 'fib' || d.type === 'fibext'; }
 // anchored VWAP from the anchor candle on: (high + low + close) / 3 weighted by volume, with a one-sigma band
@@ -1819,7 +1846,7 @@ function paintAvwap(ctx, d, selected, w) {
     ctx.lineWidth = d.w || 1.6; line(0, 1, dashOf(d.ds));
     if (d.bands) { ctx.lineWidth = 1; line(1, 0.55, [4, 3]); line(-1, 0.55, [4, 3]); }
     var lx = ts.logicalToCoordinate(candles.length - 1), ly = yOf(r.vw[candles.length - 1]);
-    if (lx != null && ly != null && d.lbl !== false) label(ctx, 'AVWAP ' + fmtPrice(r.vw[candles.length - 1]), Math.min(w - 4, lx + 6) , ly, col, '#0b0e11', lx + 120 > w ? 'right' : undefined);
+    if (lx != null && ly != null && d.lbl !== false) label(ctx, 'AVWAP ' + fmtPrice(r.vw[candles.length - 1]), Math.min(w - 4, lx + 6) , ly, col, fgOn(col), lx + 120 > w ? 'right' : undefined);
     if (selected) { var ax = ts.logicalToCoordinate(r.i0), ay = yOf(r.vw[r.i0]); if (ax != null && ay != null) handle(ctx, { x: ax, y: ay }); }
 }
 // volume per price over candles a..z, with the real trade prices where every trade of a candle is held
@@ -1914,7 +1941,7 @@ function paintPosition(ctx, d, selected, w, h) {
     ctx.fillStyle = hexA(up, 0.16); ctx.fillRect(x1, Math.min(a.y, yt), x2 - x1, Math.abs(yt - a.y));
     ctx.fillStyle = hexA(dn, 0.16); ctx.fillRect(x1, Math.min(a.y, ys), x2 - x1, Math.abs(ys - a.y));
     ctx.lineWidth = 1.2;
-    ctx.strokeStyle = '#B2B5BE'; ctx.beginPath(); ctx.moveTo(x1, a.y); ctx.lineTo(x2, a.y); ctx.stroke();
+    ctx.strokeStyle = C.inkDim; ctx.beginPath(); ctx.moveTo(x1, a.y); ctx.lineTo(x2, a.y); ctx.stroke();
     ctx.strokeStyle = hexA(up, 0.9); ctx.beginPath(); ctx.moveTo(x1, yt); ctx.lineTo(x2, yt); ctx.stroke();
     ctx.strokeStyle = hexA(dn, 0.9); ctx.beginPath(); ctx.moveTo(x1, ys); ctx.lineTo(x2, ys); ctx.stroke();
     var e = d.a.price, tpPct = (d.b.price - e) / e * 100 * (long ? 1 : -1), slPct = (d.c.price - e) / e * 100 * (long ? -1 : 1);
@@ -1932,8 +1959,8 @@ function paintPosition(ctx, d, selected, w, h) {
         else { var pl = (o.price - e) / e * 100 * (long ? 1 : -1); st = (o.kind === 'open' ? '진행 ' : '종료 ') + (pl >= 0 ? '+' : '') + pl.toFixed(2) + '%'; }
     }
     var info = (long ? '롱' : '숏') + ' · 손익비 ' + rr.toFixed(2) + (st ? ' · ' + st : '');
-    lab(info, a.y + inT * 11, 'rgba(30,34,45,.92)', '#E7EAEE');
-    if (d.qty !== false) lab('수량 ' + (qty >= 100 ? qty.toFixed(0) : qty >= 1 ? qty.toFixed(2) : qty.toPrecision(3)) + ' · 위험 $' + (acc * risk / 100).toFixed(0), a.y + inT * 29, 'rgba(30,34,45,.85)', '#B2B5BE');
+    lab(info, a.y + inT * 11, C.tag, C.ink);
+    if (d.qty !== false) lab('수량 ' + (qty >= 100 ? qty.toFixed(0) : qty >= 1 ? qty.toFixed(2) : qty.toPrecision(3)) + ' · 위험 $' + (acc * risk / 100).toFixed(0), a.y + inT * 29, C.tag, C.inkDim);
     if (selected) { handle(ctx, a); handle(ctx, { x: a.x, y: yt }); handle(ctx, { x: a.x, y: ys }); handle(ctx, { x: xe, y: a.y }); }
 }
 // new drawings start with sensible geometry: a channel 6 % of the visible range wide, a position 1 : 2 with the stop
@@ -2089,7 +2116,7 @@ chart.timeScale().subscribeVisibleLogicalRangeChange(function () {
 function cmpLegend(i) {
     var syms = cmpSyms(); if (!syms.length || !candles.length) return '';
     var i0 = cmpBase(), parts = [], c0 = candles[i0], c = candles[i];
-    if (c0 && c) { var pm = (c.close / c0.close - 1) * 100; parts.push('<span style="color:#D1D4DC">' + symbol.replace(/USDT$/, '') + ' ' + (pm >= 0 ? '+' : '') + pm.toFixed(2) + '%</span>'); }
+    if (c0 && c) { var pm = (c.close / c0.close - 1) * 100; parts.push('<span style="color:' + C.ink + '">' + symbol.replace(/USDT$/, '') + ' ' + (pm >= 0 ? '+' : '') + pm.toFixed(2) + '%</span>'); }
     syms.forEach(function (sym, k) {
         var d = cmp.data[sym]; if (!d || !d.map.size || d.j == null || !c) return;
         var a = d.map.get(candles[d.j].time), b = d.map.get(c.time); if (a == null || b == null) return;
@@ -2254,10 +2281,10 @@ function shareChart() {
     g.fillStyle = C.bg; g.fillRect(0, 0, cv.width, cv.height);
     g.drawImage(shot, 0, head);
     var c = candles[candles.length - 1], d = tz(c.time), now = new Date();
-    g.font = '700 ' + Math.round(14 * dpr) + 'px -apple-system, Roboto, sans-serif'; g.textBaseline = 'middle'; g.fillStyle = '#E7EAEE';
+    g.font = '700 ' + Math.round(14 * dpr) + 'px -apple-system, Roboto, sans-serif'; g.textBaseline = 'middle'; g.fillStyle = C.ink;
     var title = symbol + ' · ' + interval + ' · ' + fmtPrice(c.close);
     g.fillText(title, 10 * dpr, head / 2);
-    g.font = '500 ' + Math.round(11 * dpr) + 'px -apple-system, Roboto, sans-serif'; g.fillStyle = '#848E9C'; g.textAlign = 'right';
+    g.font = '500 ' + Math.round(11 * dpr) + 'px -apple-system, Roboto, sans-serif'; g.fillStyle = C.muted; g.textAlign = 'right';
     g.fillText(now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate()) + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + ' · CoinFloat', cv.width - 10 * dpr, head / 2);
     void d;
     var data = cv.toDataURL('image/png');
@@ -2275,7 +2302,7 @@ addLayer('bottom', function (ctx, w, h) {
     var ts = chart.timeScale(), r = ts.getVisibleLogicalRange(); if (!r) return;
     var a = Math.max(1, Math.floor(r.from)), z = Math.min(candles.length - 1, Math.ceil(r.to)), bw = barSpacingPx() || 6;
     if ((z - a) * (curSec() >= 86400 ? 1 / 7 : curSec() / 86400) > 400) return;          // too many to read: skip
-    ctx.strokeStyle = 'rgba(132,142,156,.28)'; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = hexA(C.muted, 0.28); ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
     for (var i = a; i <= z; i++) {
         if (periodKey(candles[i].time) === periodKey(candles[i - 1].time)) continue;
         var x = ts.logicalToCoordinate(i); if (x == null) continue;
@@ -2292,10 +2319,10 @@ addLayer('top', function (ctx, w, h) {
     function mark(i, price, above) {
         var x = ts.logicalToCoordinate(i), y = yOf(price); if (x == null || y == null) return;
         var left = x > w * 0.6, txt = fmtPrice(price), tx = left ? x - 22 : x + 22, ty = y + (above ? -1 : 1) * 2;
-        ctx.strokeStyle = 'rgba(209,212,220,.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + (left ? -3 : 3), ty); ctx.lineTo(tx, ty); ctx.stroke();
+        ctx.strokeStyle = hexA(C.ink, 0.6); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + (left ? -3 : 3), ty); ctx.lineTo(tx, ty); ctx.stroke();
         ctx.font = '600 10.5px -apple-system, Roboto, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = left ? 'right' : 'left';
-        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(19,23,34,.85)'; ctx.strokeText(txt, tx + (left ? -3 : 3), ty);
-        ctx.fillStyle = '#D1D4DC'; ctx.fillText(txt, tx + (left ? -3 : 3), ty); ctx.textAlign = 'start';
+        ctx.lineWidth = 3; ctx.strokeStyle = C.halo; ctx.strokeText(txt, tx + (left ? -3 : 3), ty);
+        ctx.fillStyle = C.ink; ctx.fillText(txt, tx + (left ? -3 : 3), ty); ctx.textAlign = 'start';
     }
     mark(hi, src[hi].high, true); mark(lo, src[lo].low, false);
 });
@@ -3681,7 +3708,7 @@ function legendItems(i) {
             else if (k === 'st' && D.stDir[i] != null) v = '<span style="color:' + (D.stDir[i] === 1 ? S('st').up : S('st').down) + '">' + fmtPrice(D.stDir[i] === 1 ? D.stUp[i] : D.stDn[i]) + (D.stDir[i] === 1 ? ' ▲' : ' ▼') + '</span>';
             else if (k === 'vp' && vpCache.res) {
                 var vr = vpCache.res;
-                v = '<span style="color:#F0B90B">POC ' + fmtPrice(vr.lo + (vr.poc + 0.5) * vr.step) + '</span> <span style="color:#B2B5BE">VA ' + fmtPrice(vr.lo + vr.vaLo * vr.step) + ' – ' + fmtPrice(vr.lo + (vr.vaHi + 1) * vr.step) + '</span>';
+                v = '<span style="color:#F0B90B">POC ' + fmtPrice(vr.lo + (vr.poc + 0.5) * vr.step) + '</span> <span style="color:' + C.inkDim + '">VA ' + fmtPrice(vr.lo + vr.vaLo * vr.step) + ' – ' + fmtPrice(vr.lo + (vr.vaHi + 1) * vr.step) + '</span>';
             }
         }
         out.push(builtinItem(k, name + (v ? ' ' + v : '')));
