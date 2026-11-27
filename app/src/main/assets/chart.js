@@ -70,7 +70,7 @@ function fieldValue(f, v) {
         case 'color': return typeof v === 'string' && HEX.test(v) ? v : f.def;
         case 'bool': return typeof v === 'boolean' ? v : f.def;
         case 'num': case 'range': return typeof v === 'number' && isFinite(v) ? clampN(v, f.min, f.max) : f.def;
-        case 'sel': return f.opts.some(function (o) { return o[0] === v; }) ? v : f.def;
+        case 'sel': case 'themes': return f.opts.some(function (o) { return o[0] === v; }) ? v : f.def;
         case 'lines': return fixLines(f, v);
     }
     return f.def;
@@ -95,7 +95,7 @@ defineSettings('chart', {
     title: '차트 설정', onChange: function (c, k) { scheduleChartCfg(); if (k === 'tz') chart.applyOptions({ timeScale: { tickMarkFormatter: tickFmt } }); if (k === 'stats' || k == null) syncStrip(); },
     fields: [
         { t: 'sec', label: '캔들' },
-        { k: 'palette', t: 'sel', label: '상승 / 하락 색', def: 'gr', opts: [['gr', '초록 / 빨강'], ['kr', '빨강 / 파랑'], ['custom', '직접 지정']] },
+        { k: 'palette', t: 'sel', label: '상승 / 하락 색', def: 'gr', opts: [['theme', '테마 색'], ['gr', '초록 / 빨강'], ['kr', '빨강 / 파랑'], ['custom', '직접 지정']] },
         { k: 'up', t: 'color', label: '상승 색', def: '#0ECB81', showIf: function (c) { return c.palette === 'custom'; } },
         { k: 'down', t: 'color', label: '하락 색', def: '#F6465D', showIf: function (c) { return c.palette === 'custom'; } },
         { k: 'hollow', t: 'bool', label: '상승 캔들 속 비우기', def: false },
@@ -106,7 +106,10 @@ defineSettings('chart', {
         { k: 'bottom', t: 'range', label: '아래쪽 여백', def: 20, min: 0, max: 50, step: 1, unit: '%' },
         { k: 'lastLine', t: 'bool', label: '현재가 선 · 라벨', def: true },
         { t: 'sec', label: '화면' },
-        { k: 'theme', t: 'sel', label: '배경', def: 'dark', opts: [['dark', '다크'], ['black', '블랙']] },
+        { k: 'theme', t: 'themes', label: '테마', def: 'dark', opts: [['dark', '기본'], ['black', '블랙'], ['mocha', 'Catppuccin Mocha'], ['tokyo', 'Tokyo Night'], ['nord', 'Nord'], ['onedark', 'One Dark'], ['gruvbox', 'Gruvbox Dark'], ['dracula', 'Dracula'], ['custom', '직접 지정']] },
+        { k: 'tBg', t: 'color', label: '배경 색 (어두운 색으로)', def: '#16161E', showIf: function (c) { return c.theme === 'custom'; } },
+        { k: 'tAccent', t: 'color', label: '강조 색 (선 차트 · 선택 표시)', def: '#7AA2F7', showIf: function (c) { return c.theme === 'custom'; } },
+        { t: 'note', label: '테마를 누르면 캔들 색도 그 테마의 상승 · 하락 색으로 바뀝니다(캔들 색이 빨강 / 파랑이면 그대로). 직접 지정은 배경 · 강조 색만 고르면 나머지(창 · 선 · 글자 색)는 맞춰 만들어지고, 상승 · 하락 색은 위 "상승 / 하락 색"에서 정합니다. 밝은(라이트) 테마는 아직 없어요.' },
         { k: 'grid', t: 'sel', label: '격자', def: 'both', opts: [['both', '가로·세로'], ['horz', '가로만'], ['none', '없음']] },
         { k: 'cross', t: 'sel', label: '십자선', sub: '길게 누르면 나타나고, 끌어서 옮기고, 한 번 더 탭하면 사라져요', def: 'free', opts: [['free', '자유 (TradingView 기본)'], ['magnet', '캔들에 붙이기']] },
         { k: 'tz', t: 'sel', label: '시간대', def: 'local', opts: [['local', '휴대폰 시간'], ['utc', 'UTC']] },
@@ -331,12 +334,43 @@ function crosshairTimeFmt(time) {
 // Chart
 // =====================================================================================================
 var LW = window.LightweightCharts;
+// Themes: the page's own dark look plus dark themes built from well-known open palettes (Catppuccin, Tokyo Night, Nord,
+// One Dark, Gruvbox, Dracula; all MIT-licensed). Each sets the chart, the panels and sheets (CSS variables) and offers its
+// own rising / falling colours. The labels drawn on the chart are light text with a dark halo, so only dark themes for now.
+var THEMES = {
+    dark: { bg: '#131722', panel: '#1E222D', sheet: '#1C2029', line: '#2A2E39', grid: '#1E222D', text: '#D1D4DC', muted: '#848E9C', accent: '#2962FF', up: '#0ECB81', down: '#F6465D' },
+    black: { bg: '#000000', panel: '#1E222D', sheet: '#1C2029', line: '#2A2E39', grid: '#171b24', text: '#D1D4DC', muted: '#848E9C', accent: '#2962FF', up: '#0ECB81', down: '#F6465D' },
+    mocha: { bg: '#1E1E2E', panel: '#313244', sheet: '#262637', line: '#45475A', grid: '#28283A', text: '#CDD6F4', muted: '#9399B2', accent: '#89B4FA', up: '#A6E3A1', down: '#F38BA8' },
+    tokyo: { bg: '#1A1B26', panel: '#24283B', sheet: '#1F2130', line: '#3B4261', grid: '#1F2232', text: '#C0CAF5', muted: '#737AA2', accent: '#7AA2F7', up: '#9ECE6A', down: '#F7768E' },
+    nord: { bg: '#2E3440', panel: '#3B4252', sheet: '#343A47', line: '#4C566A', grid: '#353B49', text: '#E5E9F0', muted: '#9AA5B8', accent: '#88C0D0', up: '#A3BE8C', down: '#BF616A' },
+    onedark: { bg: '#282C34', panel: '#2F343E', sheet: '#2C313A', line: '#3E4451', grid: '#2E333C', text: '#ABB2BF', muted: '#7F848E', accent: '#61AFEF', up: '#98C379', down: '#E06C75' },
+    gruvbox: { bg: '#282828', panel: '#3C3836', sheet: '#32302F', line: '#504945', grid: '#302E2D', text: '#EBDBB2', muted: '#A89984', accent: '#83A598', up: '#B8BB26', down: '#FB4934' },
+    dracula: { bg: '#282A36', panel: '#343746', sheet: '#2E303E', line: '#44475A', grid: '#2D2F3C', text: '#F8F8F2', muted: '#8B93B8', accent: '#BD93F9', up: '#50FA7B', down: '#FF5555' }
+};
+function mixHex(a, b, t) {
+    var p = function (h, i) { return parseInt(h.slice(1 + i * 2, 3 + i * 2), 16); }, out = '#';
+    for (var i = 0; i < 3; i++) { var v = Math.round(p(a, i) + (p(b, i) - p(a, i)) * t); out += (v < 16 ? '0' : '') + v.toString(16); }
+    return out;
+}
+function lum(h) { var p = function (i) { return parseInt(h.slice(1 + i * 2, 3 + i * 2), 16) / 255; }; return 0.2126 * p(0) + 0.7152 * p(1) + 0.0722 * p(2); }
+function hexOk(h) { return typeof h === 'string' && /^#[0-9a-f]{6}$/i.test(h); }
+// "직접 지정": panels, lines and text made from the chosen background; a light colour is darkened, since the chart's own
+// labels need a dark background
+function customTheme(bg, accent) {
+    bg = hexOk(bg) ? bg : '#16161E'; accent = hexOk(accent) ? accent : '#7AA2F7';
+    if (lum(bg) > 0.22) bg = mixHex(bg, '#000000', 1 - 0.22 / lum(bg));
+    return { bg: bg, panel: mixHex(bg, '#FFFFFF', 0.07), sheet: mixHex(bg, '#FFFFFF', 0.045), line: mixHex(bg, '#FFFFFF', 0.13), grid: mixHex(bg, '#FFFFFF', 0.045),
+        text: '#D1D4DC', muted: '#8C93A1', accent: accent, up: '#0ECB81', down: '#F6465D' };
+}
+function themeOf(c) { return c.theme === 'custom' ? customTheme(c.tBg, c.tAccent) : THEMES[c.theme] || THEMES.dark; }
 function computeColors() {
-    var c = S('chart');
-    C.up = c.palette === 'kr' ? '#F6465D' : c.palette === 'custom' ? c.up : '#0ECB81';
-    C.down = c.palette === 'kr' ? '#3B82F6' : c.palette === 'custom' ? c.down : '#F6465D';
-    C.bg = c.theme === 'black' ? '#000000' : '#131722';
-    C.grid = c.theme === 'black' ? '#171b24' : '#1E222D';
+    var c = S('chart'), th = themeOf(c);
+    C.up = c.palette === 'kr' ? '#F6465D' : c.palette === 'custom' ? c.up : c.palette === 'theme' ? th.up : '#0ECB81';
+    C.down = c.palette === 'kr' ? '#3B82F6' : c.palette === 'custom' ? c.down : c.palette === 'theme' ? th.down : '#F6465D';
+    C.bg = th.bg; C.grid = th.grid; C.border = th.line; C.text = th.muted; C.accent = th.accent;
+    var st = document.documentElement.style;
+    [['--bg', th.bg], ['--panel', th.panel], ['--sheet', th.sheet], ['--line', th.line], ['--text', th.text], ['--muted', th.muted], ['--accent', th.accent], ['--up', C.up], ['--down', C.down]]
+        .forEach(function (p) { st.setProperty(p[0], p[1]); });
 }
 computeColors();
 var chart = LW.createChart($('chart'), {
@@ -1234,7 +1268,8 @@ function applyChartCfg() {
     lastMerge = !!c.merge;
     document.documentElement.style.setProperty('--bg', C.bg);
     chart.applyOptions({
-        layout: { background: { type: 'solid', color: C.bg } },
+        layout: { background: { type: 'solid', color: C.bg }, textColor: C.text, panes: { separatorColor: C.border } },
+        rightPriceScale: { borderColor: C.border }, timeScale: { borderColor: C.border },
         grid: { vertLines: { color: C.grid, visible: c.grid === 'both' }, horzLines: { color: C.grid, visible: c.grid !== 'none' } },
         crosshair: { mode: c.cross === 'magnet' ? LW.CrosshairMode.Magnet : LW.CrosshairMode.Normal },
         handleScroll: { vertTouchDrag: c.vdrag }
@@ -1250,6 +1285,8 @@ function applyChartCfg() {
     if (candleOv) candleSeries.applyOptions(candleOv);
     [lineSeries, areaSeries, barSeries, baseSeries].forEach(function (x) { x.applyOptions({ priceLineVisible: c.lastLine, lastValueVisible: c.lastLine }); });
     barSeries.applyOptions({ upColor: C.up, downColor: C.down });
+    lineSeries.applyOptions({ color: C.accent });
+    areaSeries.applyOptions({ lineColor: C.accent, topColor: hexA(C.accent, 0.35), bottomColor: hexA(C.accent, 0) });
     baseSeries.applyOptions({ topLineColor: C.up, bottomLineColor: C.down, topFillColor1: hexA(C.up, 0.28), topFillColor2: hexA(C.up, 0.04), bottomFillColor1: hexA(C.down, 0.04), bottomFillColor2: hexA(C.down, 0.28) });
     syncScaleBtns();
     scheduleRefresh(false);                       // volume colors, indicator styles
@@ -3167,6 +3204,22 @@ function buildField(key, f, rerender) {
             strip = colorStrip(S(key)[f.k], function (c) { dot.style.background = c; setCfg(key, f.k, c); });
             el.appendChild(strip);
         };
+    } else if (f.t === 'themes') {
+        // cards with each theme's background, accent, rising and falling colour
+        el.innerHTML = '<div class="top"><span>' + f.label + '</span></div><div class="thgrid"></div>';
+        var grid = el.querySelector('.thgrid');
+        f.opts.forEach(function (o) {
+            var th = o[0] === 'custom' ? customTheme(cur.tBg, cur.tAccent) : THEMES[o[0]], b = document.createElement('button');
+            b.className = 'thcard' + (o[0] === v ? ' on' : '');
+            b.innerHTML = '<span class="thn"></span><span class="thsw">' + [th.bg, th.accent, th.up, th.down].map(function (x) { return '<i style="background:' + x + '"></i>'; }).join('') + '</span>';
+            b.querySelector('.thn').textContent = o[1];
+            b.onclick = function () {
+                setCfg(key, f.k, o[0]);
+                if (o[0] !== 'custom' && S(key).palette !== 'kr') setCfg(key, 'palette', 'theme');
+                rerender();
+            };
+            grid.appendChild(b);
+        });
     } else if (f.t === 'sel') {
         el.innerHTML = '<div class="top"><span>' + f.label + '</span></div><div class="seg"></div>';
         var seg = el.querySelector('.seg');

@@ -42,6 +42,27 @@ Pools: `same` (this coin and interval), `tf` (this coin, 1m 5m 15m 1h 4h), `all`
 `clamp=0` scales the look-alike's move by the plain ratio of bar-to-bar spreads (needed across intervals); without it the
 ratio is clamped to 0.5–2. `results-2026-11-25-analog.txt` is the run behind 1.44.0.
 
+## Bar stats delta check (`BarStats.java`)
+
+The delta rows of the "봉 통계" pane, for counter-trend use. 5m / 15m / 1h bars are built from the 1m CSVs, and each bar
+that makes a new 20-bar low (or high) is measured 1 h and 4 h later, in the reversal direction. Conditions added on top:
+- a bottom- / top-decile delta % with the move,
+- volume 2x,
+- a wick back,
+- delta against the move,
+- weaker delta than the last extreme.
+
+Trade counts, liquidations and open interest have no long history here, so they are not tested.
+
+```powershell
+& $java -Xmx3g BarStats.java data BTCUSDT ETHUSDT SOLUSDT ...
+```
+
+`results-2026-11-27-barstats.txt` (10 coins, 180 days):
+- A plain new extreme fades 52–55 % of the time, with moves below fees.
+- On 5m / 15m, none of the delta conditions improved on that.
+- Only 1h flush lows (bottom-decile delta + volume 2x) went up 4 h later 61 % of the time in both halves of the period (n 398 on correlated coins).
+
 `results-2026-11-10-*.txt` are the runs behind 1.39.0 (2026-05-14 to 2026-11-10). The `data/` folder is not committed.
 
 Read the results as descriptions of that period, not as a forecast: one 180-day window, seven coins, many rules tried.
